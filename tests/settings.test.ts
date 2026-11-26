@@ -10,7 +10,7 @@ beforeAll(async () => {
   othrys = await startOthrys()
 })
 
-const settings = async ({ hydra }: { hydra: Titan }) => (await hydra.owner({
+const settings = async ({ titan }: { titan: Titan }) => (await titan.owner({
   args: [
     'settings',
     'show',
@@ -19,8 +19,8 @@ const settings = async ({ hydra }: { hydra: Titan }) => (await hydra.owner({
 
 const pageSettings = () => othrys.home().settings.settings
 
-const projectWidth = async ({ hydra }: { hydra: Titan }) => {
-  const { view } = await hydra.owner({
+const projectWidth = async ({ titan }: { titan: Titan }) => {
+  const { view } = await titan.owner({
     args: [
       'view',
       'show',
@@ -33,8 +33,8 @@ const projectWidth = async ({ hydra }: { hydra: Titan }) => {
 test(
   'shared settings reach other Titans and their pages, saved 24-hour retention survives a restart, and dragged widths stay local',
   async () => {
-    const first = await othrys.hydra()
-    const second = await othrys.hydra()
+    const first = await othrys.titan()
+    const second = await othrys.titan()
 
     expect((await first.owner({
       args: [
@@ -51,7 +51,7 @@ test(
         '{"theme":"dark","doneAfterHours":0}',
       ],
     })
-    expect(await settings({ hydra: second })).toMatchObject({
+    expect(await settings({ titan: second })).toMatchObject({
       theme: 'dark',
       doneAfterHours: 0,
     })
@@ -71,7 +71,7 @@ test(
     })
     page.close()
 
-    const defaultWidth = await projectWidth({ hydra: second })
+    const defaultWidth = await projectWidth({ titan: second })
     await first.owner({
       args: [
         'view',
@@ -80,8 +80,8 @@ test(
         '{"workspace":{"projectWidths":{"ideas":600}}}',
       ],
     })
-    expect(await projectWidth({ hydra: first })).toBe(600)
-    expect(await projectWidth({ hydra: second })).toBe(defaultWidth)
+    expect(await projectWidth({ titan: first })).toBe(600)
+    expect(await projectWidth({ titan: second })).toBe(defaultWidth)
 
     await first.owner({
       args: [
@@ -92,7 +92,7 @@ test(
       ],
     })
     await othrys.restart()
-    expect(await settings({ hydra: second })).toMatchObject({
+    expect(await settings({ titan: second })).toMatchObject({
       theme: 'dark',
       doneAfterHours: 24,
     })
@@ -100,15 +100,15 @@ test(
       what: 'the page settings to show 24-hour retention after restart',
       check: () => pageSettings()?.doneAfterHours === 24,
     })
-    expect(await projectWidth({ hydra: first })).toBe(600)
+    expect(await projectWidth({ titan: first })).toBe(600)
   },
 )
 
 test(
   'settings refuse unknown keys and invalid values without saving, and a repeated event id saves once without undoing a newer edit',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -116,7 +116,7 @@ test(
         '{"theme":"light"}',
       ],
     })
-    const saved = await settings({ hydra })
+    const saved = await settings({ titan })
 
     for (const patch of [
       '{"nope":1}',
@@ -126,7 +126,7 @@ test(
       '{"defaultColumnWidth":460}',
       '{"defaultColumnWidths":{"ideas":460}}',
     ]) {
-      expect((await hydra.ownerRefused({
+      expect((await titan.ownerRefused({
         args: [
           'settings',
           'set',
@@ -136,9 +136,9 @@ test(
       })).code).toBe('VALIDATION_ERROR')
     }
 
-    expect(await settings({ hydra })).toEqual(saved)
+    expect(await settings({ titan })).toEqual(saved)
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -148,7 +148,7 @@ test(
         'theme-once',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -156,7 +156,7 @@ test(
         '{"theme":"light"}',
       ],
     })
-    const retried = await hydra.owner({
+    const retried = await titan.owner({
       args: [
         'settings',
         'set',
@@ -167,15 +167,15 @@ test(
       ],
     })
     expect(retried.event).toBe('none: duplicate')
-    expect((await settings({ hydra })).theme).toBe('light')
+    expect((await settings({ titan })).theme).toBe('light')
   },
 )
 
 test(
   'a settings change made against a stale revision is refused and saves nothing, and the current revision saves it',
   async () => {
-    const hydra = await othrys.hydra()
-    const shown = async () => await hydra.owner({
+    const titan = await othrys.titan()
+    const shown = async () => await titan.owner({
       args: [
         'settings',
         'show',
@@ -194,7 +194,7 @@ test(
       'dark',
       'light',
     ]
-    await hydra.owner({
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -205,7 +205,7 @@ test(
     const current = (await shown()).revision as number
     expect(current).toBeGreaterThan(stale)
 
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'settings',
         'set',
@@ -217,7 +217,7 @@ test(
     })).code).toBe('REVISION_CONFLICT')
     expect((await shown()).settings.theme).toBe(changed)
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -234,8 +234,8 @@ test(
 test(
   'hiding Titans is shared page state that a restart writes back into an older build\'s page row, and preserves their tasks and workers',
   async () => {
-    const first = await othrys.hydra()
-    const second = await othrys.hydra()
+    const first = await othrys.titan()
+    const second = await othrys.titan()
     const { worker } = await first.startTask({ key: 'kept' })
     const before = await first.owner({
       args: [
@@ -250,20 +250,20 @@ test(
         'set',
         '--json',
         JSON.stringify({
-          hiddenHydras: [
+          hiddenTitans: [
             first.id,
             second.id,
           ],
         }),
       ],
     })
-    expect((await settings({ hydra: second })).hiddenHydras).toEqual([
+    expect((await settings({ titan: second })).hiddenTitans).toEqual([
       first.id,
       second.id,
     ])
     await until({
       what: 'hidden Titan ids on the page',
-      check: () => JSON.stringify(pageSettings()?.hiddenHydras) === JSON.stringify([
+      check: () => JSON.stringify(pageSettings()?.hiddenTitans) === JSON.stringify([
         first.id,
         second.id,
       ]),
@@ -289,7 +289,7 @@ test(
       check: () => worker.received.some(text => text.includes('Continue while hidden')),
     })
 
-    for (const hiddenHydras of [
+    for (const hiddenTitans of [
       true,
       ['bad id'],
       [
@@ -302,19 +302,19 @@ test(
           'settings',
           'set',
           '--json',
-          JSON.stringify({ hiddenHydras }),
+          JSON.stringify({ hiddenTitans }),
         ],
       })).code).toBe('VALIDATION_ERROR')
     }
 
     await othrys.restart()
-    expect((await settings({ hydra: first })).hiddenHydras).toEqual([
+    expect((await settings({ titan: first })).hiddenTitans).toEqual([
       first.id,
       second.id,
     ])
     await until({
       what: 'the restarted server to give the page\'s row the hidden Titan ids again',
-      check: () => JSON.stringify(pageSettings()?.hiddenHydras) === JSON.stringify([
+      check: () => JSON.stringify(pageSettings()?.hiddenTitans) === JSON.stringify([
         first.id,
         second.id,
       ]),
@@ -324,18 +324,18 @@ test(
         'settings',
         'set',
         '--json',
-        '{"hiddenHydras":[]}',
+        '{"hiddenTitans":[]}',
       ],
     })
-    expect((await settings({ hydra: second })).hiddenHydras).toEqual([])
+    expect((await settings({ titan: second })).hiddenTitans).toEqual([])
   },
 )
 
 test(
   'layout reset removes project widths and keeps card heights',
   async () => {
-    const hydra = await othrys.hydra()
-    const task = await hydra.owner({
+    const titan = await othrys.titan()
+    const task = await titan.owner({
       args: [
         'task',
         'create',
@@ -344,7 +344,7 @@ test(
         'Sized card',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'view',
         'set',
@@ -355,7 +355,7 @@ test(
         }),
       ],
     })
-    expect(await hydra.owner({
+    expect(await titan.owner({
       args: [
         'layout',
         'show',
@@ -363,15 +363,15 @@ test(
     })).toMatchObject({
       widths: { projects: { ideas: 944 } },
     })
-    const reset = await hydra.owner({
+    const reset = await titan.owner({
       args: [
         'layout',
         'reset',
         '--all',
       ],
     })
-    expect(reset.hydras).toContainEqual(expect.objectContaining({ hydra: hydra.id }))
-    const { view } = await hydra.owner({
+    expect(reset.titans).toContainEqual(expect.objectContaining({ titan: titan.id }))
+    const { view } = await titan.owner({
       args: [
         'view',
         'show',
@@ -445,10 +445,10 @@ test(
 )
 
 test(
-  'existing serialized layout and hidden-Titan settings survive the rebrand without conversion',
+  'saved layout and hidden-Titan settings survive a restart unchanged',
   async () => {
-    const hydra = await othrys.hydra()
-    const before = await settings({ hydra })
+    const titan = await othrys.titan()
+    const before = await settings({ titan })
     await othrys.restart({
       whileStopped: () => {
         const path = settingsLogPath()
@@ -460,13 +460,13 @@ test(
           path,
           `${JSON.stringify({
             v: 1,
-            id: 'legacy-preference-keys',
+            id: 'saved-preference-keys',
             at: new Date().toISOString(),
             actor: 'cli',
             before: {},
             after: {
-              defaultHydraWidth: 612,
-              hiddenHydras: [hydra.id],
+              defaultTitanWidth: 612,
+              hiddenTitans: [titan.id],
             },
           })}\n`,
         )
@@ -474,27 +474,27 @@ test(
     })
 
     try {
-      expect(await settings({ hydra })).toMatchObject({
-        defaultHydraWidth: 612,
-        hiddenHydras: [hydra.id],
+      expect(await settings({ titan })).toMatchObject({
+        defaultTitanWidth: 612,
+        hiddenTitans: [titan.id],
       })
       await until({
-        what: 'the page to retain persisted legacy preference keys',
+        what: 'the page to retain persisted preference keys',
         check: () => {
           const saved = pageSettings()
 
-          return saved?.defaultHydraWidth === 612 && saved?.hiddenHydras.includes(hydra.id)
+          return saved?.defaultTitanWidth === 612 && saved?.hiddenTitans.includes(titan.id)
         },
       })
     } finally {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'settings',
           'set',
           '--json',
           JSON.stringify({
-            defaultHydraWidth: before.defaultHydraWidth,
-            hiddenHydras: before.hiddenHydras,
+            defaultTitanWidth: before.defaultTitanWidth,
+            hiddenTitans: before.hiddenTitans,
           }),
         ],
       })

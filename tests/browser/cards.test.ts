@@ -18,12 +18,12 @@ beforeAll(async () => {
   othrys = await startOthrys()
 })
 
-async function addRevealProjects({ hydra }: { hydra: Titan }) {
+async function addRevealProjects({ titan }: { titan: Titan }) {
   const projects: string[] = []
 
   for (let index = 0; index < REVEAL_PROJECTS; index++) {
-    const folder = hydra.folder({ name: `Reveal-${index}` })
-    await hydra.owner({
+    const folder = titan.folder({ name: `Reveal-${index}` })
+    await titan.owner({
       args: [
         'project',
         'add',
@@ -39,14 +39,14 @@ async function addRevealProjects({ hydra }: { hydra: Titan }) {
 test(
   'a pending project reveal resumes when its column arrives',
   async () => {
-    const hydra = await othrys.hydra()
-    await addRevealProjects({ hydra })
-    const arriving = hydra.folder({ name: 'Arriving project' })
+    const titan = await othrys.titan()
+    await addRevealProjects({ titan })
+    const arriving = titan.folder({ name: 'Arriving project' })
     const page = await openTitan({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
-    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    const workspace = page.locator(`[data-titan-workspace="${titan.id}"]`)
     await until({
       what: 'the initial project columns',
       check: async () => await workspace.locator('[data-column]').count() === REVEAL_PROJECTS + 1,
@@ -65,11 +65,11 @@ test(
         await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       },
       {
-        hydra: hydra.id,
+        titan: titan.id,
         path: arriving,
       },
     )
-    await hydra.owner({
+    await titan.owner({
       args: [
         'project',
         'add',
@@ -92,20 +92,20 @@ test(
 test(
   'an inactive Titan cannot finish a project reveal over the selected Titan',
   async () => {
-    const hydra = await othrys.hydra()
-    const projects = await addRevealProjects({ hydra })
-    const other = await othrys.hydra()
+    const titan = await othrys.titan()
+    const projects = await addRevealProjects({ titan })
+    const other = await othrys.titan()
     const project = projects.at(-1)!
     const page = await openTitan({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
-    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    const workspace = page.locator(`[data-titan-workspace="${titan.id}"]`)
     const column = workspace.locator(`[data-column="${project}"]`)
     await column.waitFor()
-    await page.locator(`[data-hydra-workspace="${other.id}"]`).waitFor()
+    await page.locator(`[data-titan-workspace="${other.id}"]`).waitFor()
     const expandedWidth = await column.evaluate(element => element.getBoundingClientRect().width)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'view',
         'set',
@@ -128,16 +128,16 @@ test(
       ) => {
         const foldedWidth = element.getBoundingClientRect().width
         const destination = document.querySelector<HTMLElement>(
-          `[data-hydra-workspace="${CSS.escape(detail.other)}"]`,
+          `[data-titan-workspace="${CSS.escape(detail.other)}"]`,
         )!
         const chip = document.querySelector<HTMLButtonElement>(
-          `button[data-sort-kind="hydra"][data-sort-id="${CSS.escape(detail.other)}"]`,
+          `button[data-sort-kind="titan"][data-sort-id="${CSS.escape(detail.other)}"]`,
         )!
         dispatchEvent(new CustomEvent(
           'othrys:workspace-target',
           {
             detail: {
-              hydra: detail.hydra,
+              titan: detail.titan,
               path: detail.project,
             },
           },
@@ -190,7 +190,7 @@ test(
         }
       },
       {
-        hydra: hydra.id,
+        titan: titan.id,
         project,
         other: other.id,
         expandedWidth,
@@ -208,8 +208,8 @@ test(
 test(
   'scrolling across projects and a full column keeps every column and task mounted without gaps',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'apply',
         '--file',
@@ -234,16 +234,16 @@ test(
     const projectPaths: string[] = []
 
     for (let project = 0; project < PROJECTS; project++) {
-      const folder = hydra.folder({ name: `Project-${project}` })
+      const folder = titan.folder({ name: `Project-${project}` })
       projectPaths.push(folder)
-      await hydra.owner({
+      await titan.owner({
         args: [
           'project',
           'add',
           folder,
         ],
       })
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'create',
@@ -258,9 +258,9 @@ test(
       })
     }
 
-    const referenced = await hydra.task({ key: 'project-6' })
-    const referring = await hydra.task({ key: 'project-7' })
-    await hydra.owner({
+    const referenced = await titan.task({ key: 'project-6' })
+    const referring = await titan.task({ key: 'project-7' })
+    await titan.owner({
       args: [
         'task',
         'brief',
@@ -272,9 +272,9 @@ test(
 
     const page = await openTitan({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
-    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    const workspace = page.locator(`[data-titan-workspace="${titan.id}"]`)
     const column = workspace.locator('[data-column="ideas"] .column-cards')
     await column.getByRole(
       'button',
@@ -658,7 +658,7 @@ test(
     await assertRequestedTaskVisible()
     await page.evaluate(
       async ({
-        hydra,
+        titan,
         project,
         task,
         frames,
@@ -668,7 +668,7 @@ test(
         }
 
         const workspace = document.querySelector<HTMLElement>(
-          `[data-hydra-workspace="${CSS.escape(hydra)}"]`,
+          `[data-titan-workspace="${CSS.escape(titan)}"]`,
         )!
         const column = workspace.querySelector<HTMLElement>(`[data-column="${CSS.escape(project)}"]`)!
         const foldedWidth = column.getBoundingClientRect().width
@@ -676,7 +676,7 @@ test(
           'othrys:workspace-target',
           {
             detail: {
-              hydra,
+              titan,
               path: project,
             },
           },
@@ -693,7 +693,7 @@ test(
               'othrys:workspace-target',
               {
                 detail: {
-                  hydra,
+                  titan,
                   id: task,
                 },
               },
@@ -706,7 +706,7 @@ test(
         throw new Error('The project did not begin unfolding before the task request')
       },
       {
-        hydra: hydra.id,
+        titan: titan.id,
         project: projectPaths[0],
         task: referenced.id,
         frames: REVEAL_FRAMES,
@@ -730,8 +730,8 @@ test(
 test(
   'Activity loads every update before scrolling and retains its rows while scrolling and receiving changes',
   async () => {
-    const hydra = await othrys.hydra()
-    const { card } = await hydra.owner({
+    const titan = await othrys.titan()
+    const { card } = await titan.owner({
       args: [
         'task',
         'create',
@@ -742,7 +742,7 @@ test(
         'Persistent history',
       ],
     })
-    const applyHistory = ({ label }: { label: string }) => hydra.owner({
+    const applyHistory = ({ label }: { label: string }) => titan.owner({
       args: [
         'apply',
         '--file',
@@ -769,7 +769,7 @@ test(
     let failOlder: (() => void) | undefined
     const page = await openTitan({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
       beforeLoad: async ({ page }) => {
         await page.routeWebSocket(
           /\/ws(\?|$)/,
@@ -893,7 +893,7 @@ test(
     expect(retained.retained).toBe(true)
     expect(retained.bottom).toBeGreaterThan(0)
     expect(retained.top).toBe(0)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'brief',
@@ -937,8 +937,8 @@ test(
 test(
   'an open task fills its column height and follows a viewport resize',
   async () => {
-    const hydra = await othrys.hydra()
-    const created = await hydra.owner({
+    const titan = await othrys.titan()
+    const created = await titan.owner({
       args: [
         'task',
         'create',
@@ -947,7 +947,7 @@ test(
         'Read the worker chat',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'view',
         'set',
@@ -957,7 +957,7 @@ test(
     })
     const page = await openTitan({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
     await page.getByRole(
       'button',
@@ -1018,9 +1018,9 @@ test(
 test(
   'starting a task attaches its worker without creating a second card',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'single-task' })
-    const created = await hydra.owner({
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'single-task' })
+    const created = await titan.owner({
       args: [
         'task',
         'create',
@@ -1034,11 +1034,11 @@ test(
     const task = created.card.id as string
     const page = await openTitan({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
     const taskCard = page.locator(`[data-task="${task}"]`)
     const card = await taskCard.elementHandle()
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'start',
@@ -1047,13 +1047,13 @@ test(
         'codex',
       ],
     })
-    const worker = await hydra.agent({ cwd: folder })
+    const worker = await titan.agent({ cwd: folder })
     await until({
       what: 'the worker first turn',
       check: () => worker.answered > 0,
     })
     expect(Object.values(loadTitan({
-      hydraId: hydra.id,
+      titanId: titan.id,
     }).state.cards).filter(card => card.title === 'One task, one card')
       .map(card => ({ id: card.id }))).toEqual([{ id: task }])
     await taskCard.locator('.card-agent[aria-label="Codex"]').waitFor()
@@ -1071,8 +1071,8 @@ test(
 test(
   'command notices remain visible after reload and clear after a clean write',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1083,14 +1083,14 @@ test(
         'Command notices',
       ],
     })
-    const task = (await hydra.task({ key: 'notice-card' })).id
+    const task = (await titan.task({ key: 'notice-card' })).id
     const page = await openTitan({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
     const taskCard = page.locator(`[data-task="${task}"]`)
     await taskCard.locator('.card-open').click()
-    const held = await hydra.owner({
+    const held = await titan.owner({
       args: [
         'task',
         'hold',
@@ -1111,7 +1111,7 @@ test(
       { exact: false },
     )
       .waitFor()
-    await hydra.owner({
+    await titan.owner({
       args: [
         'apply',
         '--file',
@@ -1139,9 +1139,9 @@ test(
 test(
   'closing a task keeps workspace wheel scrolling available',
   async () => {
-    const hydra = await othrys.hydra()
-    await addRevealProjects({ hydra })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await addRevealProjects({ titan })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1152,16 +1152,16 @@ test(
     })
     await chrome({
       script: `
-    await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`)});
-    await page.wait('[data-hydra-workspace="${hydra.id}"] .card-open');
-    await page.click('[data-hydra-workspace="${hydra.id}"] .card-open');
-    await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected');
+    await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/titan/${titan.id}/`)});
+    await page.wait('[data-titan-workspace="${titan.id}"] .card-open');
+    await page.click('[data-titan-workspace="${titan.id}"] .card-open');
+    await page.wait('[data-titan-workspace="${titan.id}"] .card.selected');
   `,
     })
     const result = await chrome({
       script: `
     console.log(await page.eval(async () => {
-      const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card.selected');
+      const card = document.querySelector('[data-titan-workspace="${titan.id}"] .card.selected');
       const axis = card.closest('.workspace-axis');
       const column = card.closest('[data-column]');
       const expandedWidth = column.getBoundingClientRect().width;
@@ -1191,8 +1191,8 @@ test(
 test(
   'Titan names and chat drafts keep pasted text readable in a narrow workspace',
   async () => {
-    const hydra = await othrys.hydra()
-    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`)});` })
+    const titan = await othrys.titan()
+    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/titan/${titan.id}/`)});` })
     await chrome({
       args: [
         'emulate',
@@ -1210,10 +1210,10 @@ test(
     ].join('\n')
     const result = JSON.parse(await chrome({
       script: `
-    await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Titan"]');
-    await page.click('[data-hydra-workspace="${hydra.id}"] .hydra-title');
+    await page.wait('[data-titan-workspace="${titan.id}"] [aria-label="Reply to Titan"]');
+    await page.click('[data-titan-workspace="${titan.id}"] .titan-title');
     const renameAtEmojiBoundary = await page.eval(() => {
-      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Titan name"]');
+      const field = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Titan name"]');
       field.select();
       const clipboardData = new DataTransfer();
       clipboardData.setData('text/plain', ${JSON.stringify(`${name.slice(1)}\n🐉`)});
@@ -1221,25 +1221,25 @@ test(
       return field.value;
     });
     await page.eval(() => {
-      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Titan name"]');
+      const field = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Titan name"]');
       field.select();
       const clipboardData = new DataTransfer();
       clipboardData.setData('text/plain', ${JSON.stringify(name.split('').join('\n'))});
       field.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
     });
-    const renameFits = await page.eval(() => { const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Titan name"]'); return field.scrollWidth <= field.clientWidth + 1 && field.scrollHeight <= field.clientHeight + 1; });
+    const renameFits = await page.eval(() => { const field = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Titan name"]'); return field.scrollWidth <= field.clientWidth + 1 && field.scrollHeight <= field.clientHeight + 1; });
     await page.press('Enter');
-    await page.wait('[data-hydra-workspace="${hydra.id}"] .hydra-title[aria-label="Edit ${name}"]');
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Titan"]', ${JSON.stringify(prose)});
+    await page.wait('[data-titan-workspace="${titan.id}"] .titan-title[aria-label="Edit ${name}"]');
+    await page.fill('[data-titan-workspace="${titan.id}"] [aria-label="Reply to Titan"]', ${JSON.stringify(prose)});
     await page.press('Shift+Enter');
     const chatDraft = await page.eval(() => {
-      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Titan"]');
+      const field = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Reply to Titan"]');
       return {
         bounded: field.scrollHeight > field.clientHeight && ['auto', 'scroll'].includes(getComputedStyle(field).overflowY) && field.getBoundingClientRect().height <= Math.min(innerHeight / 2, 480),
         text: field.value,
       };
     });
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Titan"]', '');
+    await page.fill('[data-titan-workspace="${titan.id}"] [aria-label="Reply to Titan"]', '');
     console.log(JSON.stringify({ renameAtEmojiBoundary, renameFits, chatDraft }));
   `,
     }))
@@ -1257,8 +1257,8 @@ test(
 test(
   'saving a task leaves its card closed and its writing fields readable',
   async () => {
-    const hydra = await othrys.hydra()
-    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`)});` })
+    const titan = await othrys.titan()
+    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/titan/${titan.id}/`)});` })
     await chrome({
       args: [
         'emulate',
@@ -1276,34 +1276,34 @@ test(
     ].join('\n')
     const result = JSON.parse(await chrome({
       script: `
-    await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
-    await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
-    const titleHeight = await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]').getBoundingClientRect().height);
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]', ${JSON.stringify(title.slice('Keep'.length))});
+    await page.wait('[data-titan-workspace="${titan.id}"] [aria-label="New task in Ideas"]');
+    await page.click('[data-titan-workspace="${titan.id}"] [aria-label="New task in Ideas"]');
+    const titleHeight = await page.eval(() => document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Task title"]').getBoundingClientRect().height);
+    await page.fill('[data-titan-workspace="${titan.id}"] [aria-label="Task title"]', ${JSON.stringify(title.slice('Keep'.length))});
     await page.eval(() => {
-      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]');
+      const field = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Task title"]');
       field.setSelectionRange(0, 0);
       const clipboardData = new DataTransfer();
       clipboardData.setData('text/plain', 'Ke\\nep');
       field.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
     });
     await page.press('Shift+Enter');
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"]', ${JSON.stringify('A'.repeat(MAX_BRIEF_LENGTH + 1))});
-    await page.wait('[data-hydra-workspace="${hydra.id}"] .task-create button:disabled');
+    await page.fill('[data-titan-workspace="${titan.id}"] [aria-label="Description"]', ${JSON.stringify('A'.repeat(MAX_BRIEF_LENGTH + 1))});
+    await page.wait('[data-titan-workspace="${titan.id}"] .task-create button:disabled');
     const canSaveOversizedDescription = await page.eval(() => {
-      const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
+      const form = document.querySelector('[data-titan-workspace="${titan.id}"] .task-create');
       return Array.from(form.querySelectorAll('button')).some(button => button.textContent.trim() === 'Save task' && !button.disabled);
     });
     if (canSaveOversizedDescription) throw new Error('Save task accepts an oversized description');
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"]', ${JSON.stringify(prose)});
+    await page.fill('[data-titan-workspace="${titan.id}"] [aria-label="Description"]', ${JSON.stringify(prose)});
     await page.press('Shift+Enter');
     const fields = await page.eval(() => {
-      const title = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]');
-      const description = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"]');
+      const title = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Task title"]');
+      const description = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Description"]');
       return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, pasteCaret: title.selectionStart, askGrows: description.scrollHeight <= description.clientHeight + 1 && description.getBoundingClientRect().height > innerHeight / 2, multiLine: description.value.endsWith('\\n') };
     });
     const reachability = await page.eval(async () => {
-      const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
+      const form = document.querySelector('[data-titan-workspace="${titan.id}"] .task-create');
       const surface = form.closest('.project-cards');
       surface.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       surface.scrollTo({ top: surface.scrollHeight, behavior: 'instant' });
@@ -1326,14 +1326,14 @@ test(
       };
     });
     await page.eval(() => {
-      const save = [...document.querySelectorAll('[data-hydra-workspace="${hydra.id}"] .task-create button')].find(button => button.textContent === 'Save task');
+      const save = [...document.querySelectorAll('[data-titan-workspace="${titan.id}"] .task-create button')].find(button => button.textContent === 'Save task');
       if (!save || save.disabled) throw new Error('Save task is unavailable');
       save.click();
     });
-    await page.wait('[data-hydra-workspace="${hydra.id}"]:not(:has(.task-create)) .card-open');
+    await page.wait('[data-titan-workspace="${titan.id}"]:not(:has(.task-create)) .card-open');
     const card = await page.eval(() => {
-      const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
-      const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
+      const card = document.querySelector('[data-titan-workspace="${titan.id}"] .card-open');
+      const form = document.querySelector('[data-titan-workspace="${titan.id}"] .task-create');
       return { id: card.closest('[data-task]').dataset.task, expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
     });
     console.log(JSON.stringify({ fields: { ...fields, ...reachability, titleGrows: fields.titleHeight > titleHeight }, card }));
@@ -1357,19 +1357,19 @@ test(
       formClosed: true,
       focusLabel: 'Fold Ideas',
     })
-    const saved = await hydra.task({
+    const saved = await titan.task({
       key: result.card.id,
     })
     const initialDescription = await chrome({
       script: `
-    await page.click('[data-hydra-workspace="${hydra.id}"] .card-open');
-    await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected');
-    await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] .card.selected [aria-label="Show task summary"]')?.click());
-    await page.click('[data-hydra-workspace="${hydra.id}"] .card.selected [role="tab"][id$="-tab-activity"]');
-    await page.click('[data-hydra-workspace="${hydra.id}"] .card.selected [aria-label="Focus on chat"]');
-    await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] .card.selected').dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
-    await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Edit task"]');
-    await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="Edit task"]');
+    await page.click('[data-titan-workspace="${titan.id}"] .card-open');
+    await page.wait('[data-titan-workspace="${titan.id}"] .card.selected');
+    await page.eval(() => document.querySelector('[data-titan-workspace="${titan.id}"] .card.selected [aria-label="Show task summary"]')?.click());
+    await page.click('[data-titan-workspace="${titan.id}"] .card.selected [role="tab"][id$="-tab-activity"]');
+    await page.click('[data-titan-workspace="${titan.id}"] .card.selected [aria-label="Focus on chat"]');
+    await page.eval(() => document.querySelector('[data-titan-workspace="${titan.id}"] .card.selected').dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+    await page.wait('[data-titan-workspace="${titan.id}"] [aria-label="Edit task"]');
+    await page.click('[data-titan-workspace="${titan.id}"] [aria-label="Edit task"]');
     await page.wait('.task-editor [aria-label="Description"]');
     console.log(await page.eval(() => JSON.stringify(document.querySelector('.task-editor [aria-label="Description"]').value)));
   `,
@@ -1393,13 +1393,13 @@ test(
       return bounds.top >= Math.max(0, Math.floor(surface.top)) && bounds.bottom <= Math.min(innerHeight, Math.ceil(surface.bottom)) && button.contains(hit);
     });
     if (!reachable) throw new Error('The description Save button is outside the scrolling card panel');
-    await page.click('[data-hydra-workspace="${hydra.id}"] .card.selected .task-editor button[type="submit"]');
-    await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected .card-panel');
+    await page.click('[data-titan-workspace="${titan.id}"] .card.selected .task-editor button[type="submit"]');
+    await page.wait('[data-titan-workspace="${titan.id}"] .card.selected .card-panel');
   `,
     })
     await until({
       what: 'the saved description edit',
-      check: async () => (await hydra.owner({
+      check: async () => (await titan.owner({
         args: [
           'task',
           'show',
@@ -1410,12 +1410,12 @@ test(
     })
     expect(await chrome({
       script: `
-    await page.click('[data-hydra-workspace="${hydra.id}"] .card.selected [aria-label="Show task summary"]');
-    console.log(await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"].card-section')?.textContent));
+    await page.click('[data-titan-workspace="${titan.id}"] .card.selected [aria-label="Show task summary"]');
+    console.log(await page.eval(() => document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Description"].card-section')?.textContent));
   `,
     })).toContain('Explain the empty state and its next action.')
-    const repositories = await addRevealProjects({ hydra })
-    await hydra.owner({
+    const repositories = await addRevealProjects({ titan })
+    await titan.owner({
       args: [
         'project',
         'group',
@@ -1423,7 +1423,7 @@ test(
         ...repositories,
       ],
     })
-    const existing = await hydra.owner({
+    const existing = await titan.owner({
       args: [
         'task',
         'create',
@@ -1434,14 +1434,14 @@ test(
         repositories[0]!,
       ],
     })
-    const group = loadTitan({ hydraId: hydra.id }).state.projects![0]!.group!.id
+    const group = loadTitan({ titanId: titan.id }).state.projects![0]!.group!.id
     await chrome({
       script: `
-    await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Export"]');
+    await page.click('[data-titan-workspace="${titan.id}"] [aria-label="New task in Export"]');
     await page.fill('.task-create [aria-label="Task title"]', 'An idea without a repository');
     await page.eval(() => [...document.querySelectorAll('.task-create button')].find(button => button.textContent === 'Save task').click());
     await page.wait('[data-column="ideas"] [data-task]:not([data-task="${saved.id}"]) .card-open');
-    await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Export"]');
+    await page.click('[data-titan-workspace="${titan.id}"] [aria-label="New task in Export"]');
     await page.fill('.task-create [aria-label="Task title"]', 'First grouped export');
     await page.click('.task-create [aria-label="Repository"]');
     await page.click('.task-create [role="option"][aria-label="Reveal-1"]');
@@ -1461,14 +1461,14 @@ test.each([
 ])(
   'folded Titans and project columns keep one aligned vertical strip at $viewport',
   async ({ viewport }) => {
-    const hydra = await othrys.hydra()
-    const projects = await addRevealProjects({ hydra })
+    const titan = await othrys.titan()
+    const projects = await addRevealProjects({ titan })
 
     for (const key of [
       'fold-asks',
       'fold-running',
     ]) {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'create',
@@ -1485,7 +1485,7 @@ test.each([
       })
     }
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'ask',
@@ -1497,7 +1497,7 @@ test.each([
       ],
     })
     const turn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       hold: true,
     })
 
@@ -1505,7 +1505,7 @@ test.each([
       turn.release()
       await chrome({ args: ['emulate'] })
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'start',
@@ -1513,7 +1513,7 @@ test.each([
         '--in-place',
       ],
     })
-    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`)});` })
+    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/titan/${titan.id}/`)});` })
     await chrome({
       args: [
         'emulate',
@@ -1523,10 +1523,10 @@ test.each([
     })
     const geometry = await chrome({
       script: `
-    await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .running-count');
-    await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .waiting-count');
+    await page.wait('[data-titan-workspace="${titan.id}"] .project-chips .running-count');
+    await page.wait('[data-titan-workspace="${titan.id}"] .project-chips .waiting-count');
     console.log(await page.eval(async () => {
-      const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
+      const workspace = document.querySelector('[data-titan-workspace="${titan.id}"]');
       const uprightCounts = ({ roots }) => ['.waiting-count', '.running-count > span'].every(selector => {
         const counts = roots.flatMap(root => [...root.querySelectorAll(selector)]);
         return counts.length > 0 && counts.every(count =>
@@ -1534,9 +1534,9 @@ test.each([
         );
       });
       const projects = workspace.querySelector('.project-chips');
-      const bar = workspace.querySelector('.hydra-workspace-bar');
+      const bar = workspace.querySelector('.titan-workspace-bar');
       const add = bar.querySelector('[aria-label="Add project"]');
-      const controls = [bar.querySelector('[aria-label="Fold Titan"]'), bar.querySelector('[aria-label="Fold all projects"]'), bar.querySelector('.hydra-drag-name'), add].filter(Boolean);
+      const controls = [bar.querySelector('[aria-label="Fold Titan"]'), bar.querySelector('[aria-label="Fold all projects"]'), bar.querySelector('.titan-drag-name'), add].filter(Boolean);
       const naturalPositions = controls.map(control => control.getBoundingClientRect());
       const naturalProjectsLeft = projects.getBoundingClientRect().left;
       projects.style.maxWidth = '100px';
@@ -1562,7 +1562,7 @@ test.each([
       projects.style.maxHeight = '100px';
       const box = workspace.getBoundingClientRect();
       const chips = [...projects.querySelectorAll('button')].map(chip => chip.getBoundingClientRect());
-      const marks = [...workspace.querySelectorAll('.hydra-drag-name > svg, .hydra-drag-name > .hydra-label, .hydra-workspace-bar .waiting-count, .hydra-workspace-bar .running-count > *')].map(mark => mark.getBoundingClientRect());
+      const marks = [...workspace.querySelectorAll('.titan-drag-name > svg, .titan-drag-name > .titan-label, .titan-workspace-bar .waiting-count, .titan-workspace-bar .running-count > *')].map(mark => mark.getBoundingClientRect());
       const center = (box.left + box.right) / 2;
       const strip = {
         thin: box.width <= 60,
@@ -1603,7 +1603,7 @@ test.each([
       await new Promise(requestAnimationFrame);
       add?.click();
       await new Promise(requestAnimationFrame);
-      const composer = workspace.querySelector('.hydra-chat .composer textarea');
+      const composer = workspace.querySelector('.titan-chat .composer textarea');
       const attachRequested = composer?.value.includes(' to this Titan') && document.activeElement === composer;
       return JSON.stringify({ topbar, strip, workspaceUnfolded, folded, columnCountsUpright, unfolded, attachRequested: !!attachRequested });
     }));

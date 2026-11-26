@@ -14,7 +14,7 @@ export async function legacyDuplicate({
   projects: Pick<TitanProject, 'path' | 'landing'>[]
 }) {
   await withWriter({
-    hydraId: id,
+    titanId: id,
     create: true,
     fn: ({ writer }) => {
       for (const [
@@ -32,7 +32,7 @@ export async function legacyDuplicate({
                 at: '2026-10-21T10:01:00Z',
               },
             }),
-            type: 'hydra.project',
+            type: 'titan.project',
             data: {
               before: null,
               after: {
@@ -48,7 +48,7 @@ export async function legacyDuplicate({
     },
   })
 
-  return othrys.hydra({
+  return othrys.titan({
     id,
     create: false,
   })

@@ -54,7 +54,7 @@ test(
       token: 'still-applying-command',
     })
     current.dispatchProposals = []
-    const recovery = recoverOwnerCommands({ hydraId: 'queued-approval' })
+    const recovery = recoverOwnerCommands({ titanId: 'queued-approval' })
 
     try {
       const phase = await Promise.race([
@@ -74,7 +74,7 @@ test(
       expect(append).toHaveBeenCalledTimes(1)
       expect(append).toHaveBeenCalledWith({
         event: expect.objectContaining({
-          type: 'hydra.dispatch-progress',
+          type: 'titan.dispatch-progress',
           data: expect.objectContaining({
             token: 'still-applying-command',
             status: 'failed',

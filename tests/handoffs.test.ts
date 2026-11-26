@@ -25,20 +25,20 @@ beforeAll(async () => {
 test(
   'a project task runs in its own copy on its own readable branch, leaves the project folder alone, is done only once its work is committed, and hands its worker to the queued task across declined, lost and failed checkouts',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--name',
         'Hércules',
       ],
     })
     const path = await createProject({
-      hydra,
+      titan,
       landing: 'branch',
     })
-    const createdSource = await hydra.owner({
+    const createdSource = await titan.owner({
       args: [
         'task',
         'create',
@@ -51,7 +51,7 @@ test(
         'shop',
       ],
     })
-    const started = await hydra.owner({
+    const started = await titan.owner({
       args: [
         'task',
         'start',
@@ -63,7 +63,7 @@ test(
       process.env.OTHRYS_HOME!,
       'copies',
     ))).toBe(true)
-    await hydra.agent({ cwd: copy })
+    await titan.agent({ cwd: copy })
     expect(git({
       cwd: copy,
       args: [
@@ -80,7 +80,7 @@ test(
       ),
       'cart\n',
     )
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'copy',
@@ -89,7 +89,7 @@ test(
         '--discard',
       ],
     })).code).toBe('CONFLICT')
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'copy',
@@ -107,7 +107,7 @@ test(
       ),
       'utf8',
     )).toBe('cart\n')
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'copy',
@@ -116,11 +116,11 @@ test(
     })).copy.state).toBe('active')
 
     await workerLine({
-      hydra,
+      titan,
       key: 'cart',
       line: 'done: Cart implementation ready',
     })
-    const workerDone = await hydra.owner({
+    const workerDone = await titan.owner({
       args: [
         'task',
         'show',
@@ -148,7 +148,7 @@ test(
         'Add the cart',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -161,7 +161,7 @@ test(
         'shop',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'brief',
@@ -170,7 +170,7 @@ test(
         'Draw the next chart',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -181,7 +181,7 @@ test(
         'gate',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'depend',
@@ -190,7 +190,7 @@ test(
         'gate',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'queue',
@@ -199,14 +199,14 @@ test(
         'cart',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         'cart',
         'done',
       ],
     })
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'show',
@@ -252,7 +252,7 @@ const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'ut
 if (branch === 'hercules/next-chart-2') {
   execFileSync(process.execPath, ${JSON.stringify([
     PAGE_COMMAND,
-    hydra.id,
+    titan.id,
     'task',
     'brief',
     'next',
@@ -264,7 +264,7 @@ if (branch === 'hercules/next-chart-2') {
 if (branch === 'hercules/add-cart') {
   execFileSync(process.execPath, ${JSON.stringify([
     PAGE_COMMAND,
-    hydra.id,
+    titan.id,
     'task',
     'depend',
     'next',
@@ -323,7 +323,7 @@ if (branch === 'hercules/add-cart') {
         })).toBe('hercules/add-cart')
       },
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'undepend',
@@ -349,9 +349,9 @@ if (branch === 'hercules/add-cart') {
     })
     await until({
       what: 'restoration hook blocks the queued task',
-      check: async () => (await hydra.task({ key: 'next' })).readiness.ready === false,
+      check: async () => (await titan.task({ key: 'next' })).readiness.ready === false,
     })
-    const declined = await hydra.owner({
+    const declined = await titan.owner({
       args: [
         'task',
         'show',
@@ -376,11 +376,11 @@ if (branch === 'hercules/add-cart') {
         'core.hooksPath',
       ],
     })
-    const nextTask = await hydra.task({ key: 'next' })
+    const nextTask = await titan.task({ key: 'next' })
     let lostReply = false
     const restoreSync = afterHandoffSync({
       home: process.env.OTHRYS_HOME!,
-      hydra: hydra.id,
+      titan: titan.id,
       source: createdSource.card.id,
       target: nextTask.id,
       cwd: copy,
@@ -411,7 +411,7 @@ if (branch === 'hercules/add-cart') {
           })).toContain('hercules/next-chart-2')
         },
       })
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'undepend',
@@ -423,7 +423,7 @@ if (branch === 'hercules/add-cart') {
       await until({
         what: 'queued task handoff on its readable branch',
         check: async () => {
-          const { copy } = await hydra.owner({
+          const { copy } = await titan.owner({
             args: [
               'task',
               'copy',
@@ -443,14 +443,14 @@ if (branch === 'hercules/add-cart') {
       })).toBe('hercules/next-chart-3')
       await until({
         what: 'readable branch in delivered brief',
-        check: async () => (await hydra.agent({ cwd: copy })).received.some(text => text.includes('on fresh branch hercules/next-chart-3')),
+        check: async () => (await titan.agent({ cwd: copy })).received.some(text => text.includes('on fresh branch hercules/next-chart-3')),
       })
       expect(lostReply).toBe(true)
     } finally {
       restoreSync()
     }
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -463,7 +463,7 @@ if (branch === 'hercules/add-cart') {
         'shop',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'brief',
@@ -472,7 +472,7 @@ if (branch === 'hercules/add-cart') {
         'Check the hook failure',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'queue',
@@ -514,8 +514,8 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
         hooks,
       ],
     })
-    await hydra.agent({ cwd: copy })
-    await hydra.owner({
+    await titan.agent({ cwd: copy })
+    await titan.owner({
       args: [
         'outcome',
         'next',
@@ -541,7 +541,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
     await until({
       what: 'hook failure reported on the released task',
       check: async () => {
-        const { task } = await hydra.owner({
+        const { task } = await titan.owner({
           args: [
             'task',
             'show',
@@ -553,7 +553,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
         return task.queueNote
       },
     })
-    const failedHandoff = await hydra.owner({
+    const failedHandoff = await titan.owner({
       args: [
         'task',
         'show',
@@ -564,7 +564,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
     expect(failedHandoff.task.queueNote.length).toBeLessThan(verboseHookOutput.length)
     expect(failedHandoff.task.queueNote).toContain('fixture checkout failure')
     expect(failedHandoff.task.queueNote).toContain('the previous checkout could not be restored')
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'reply',
         'next',
@@ -588,7 +588,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
         'core.hooksPath',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -601,14 +601,14 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
         'shop',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'start',
         'bystander',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         'bystander',
@@ -617,7 +617,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
     })
     await until({
       what: 'Done cleanup settles another copy while the handoff stays unresolved',
-      check: async () => (await hydra.owner({
+      check: async () => (await titan.owner({
         args: [
           'task',
           'show',
@@ -649,20 +649,20 @@ test.each([
     cut,
     first,
   }) => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--name',
         'Iris',
       ],
     })
     const project = await createProject({
-      hydra,
+      titan,
       landing: 'branch',
     })
-    const firstTask = await hydra.owner({
+    const firstTask = await titan.owner({
       args: [
         'task',
         'create',
@@ -673,7 +673,7 @@ test.each([
         'shop',
       ],
     })
-    const secondTask = await hydra.owner({
+    const secondTask = await titan.owner({
       args: [
         'task',
         'create',
@@ -690,7 +690,7 @@ test.each([
     ].sort()
     const sourceId = ordered[first === 'source' ? 0 : 1]!
     const targetId = ordered[first === 'source' ? 1 : 0]!
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'rename',
@@ -699,7 +699,7 @@ test.each([
         'Source',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'rename',
@@ -709,10 +709,10 @@ test.each([
       ],
     })
     const syncProof = join(
-      hydra.folder({ name: 'handoff-proof' }),
+      titan.folder({ name: 'handoff-proof' }),
       'first-scope',
     )
-    const started = await hydra.owner({
+    const started = await titan.owner({
       args: [
         'task',
         'start',
@@ -720,8 +720,8 @@ test.each([
       ],
     })
     const cwd = started.agent.folder as string
-    await hydra.agent({ cwd })
-    await hydra.owner({
+    await titan.agent({ cwd })
+    await titan.owner({
       args: [
         'task',
         'brief',
@@ -730,7 +730,7 @@ test.each([
         'Prepare target',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -741,7 +741,7 @@ test.each([
         'gate',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'depend',
@@ -750,7 +750,7 @@ test.each([
         'gate',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'queue',
@@ -759,7 +759,7 @@ test.each([
         sourceId,
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         sourceId,
@@ -819,7 +819,7 @@ const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'ut
 if (branch === 'iris/target') {
   execFileSync(process.execPath, ${JSON.stringify([
     PAGE_COMMAND,
-    hydra.id,
+    titan.id,
     'task',
     'depend',
     targetId,
@@ -860,7 +860,7 @@ if (branch === 'iris/target') {
         {
           env: {
             ...process.env,
-            OTHRYS_CRASH_TITAN: hydra.id,
+            OTHRYS_CRASH_TITAN: titan.id,
             OTHRYS_CRASH_SOURCE: sourceId,
             OTHRYS_CRASH_TARGET: targetId,
             OTHRYS_CRASH_SCOPE_CUT: cut,
@@ -905,7 +905,7 @@ if (branch === 'iris/target') {
       what: 'scratch child server ready',
       check: childReady,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'undepend',
@@ -946,7 +946,7 @@ if (branch === 'iris/target') {
       ],
     })
     await othrys.start()
-    await hydra.task({ key: sourceId })
+    await titan.task({ key: sourceId })
     expect(readFileSync(
       kept,
       'utf8',
@@ -959,7 +959,7 @@ if (branch === 'iris/target') {
       ],
     })).toBe('iris/target')
     rmSync(kept)
-    expect(await hydra.ownerRefused({
+    expect(await titan.ownerRefused({
       args: [
         'task',
         'copy',
@@ -971,7 +971,7 @@ if (branch === 'iris/target') {
       code: 'CONFLICT',
       error: expect.stringContaining('unresolved handoff'),
     })
-    expect(await hydra.ownerRefused({
+    expect(await titan.ownerRefused({
       args: [
         'task',
         'start',
@@ -983,7 +983,7 @@ if (branch === 'iris/target') {
     })
     expect(existsSync(cwd)).toBe(true)
     await othrys.restart()
-    const source = (await hydra.owner({
+    const source = (await titan.owner({
       args: [
         'task',
         'show',
@@ -991,7 +991,7 @@ if (branch === 'iris/target') {
         '--full',
       ],
     })).task
-    const target = (await hydra.owner({
+    const target = (await titan.owner({
       args: [
         'task',
         'show',
@@ -1022,7 +1022,7 @@ if (branch === 'iris/target') {
       what: 'second scratch server ready',
       check: childReady,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'undepend',
@@ -1048,7 +1048,7 @@ if (branch === 'iris/target') {
       'keep committed-checkout work',
     )
     await othrys.start()
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'reply',
         targetId,
@@ -1056,7 +1056,7 @@ if (branch === 'iris/target') {
         'Hold the dirty target',
       ],
     })).code).toBe('CONFLICT')
-    const blockedTarget = (await hydra.owner({
+    const blockedTarget = (await titan.owner({
       args: [
         'task',
         'show',
@@ -1066,7 +1066,7 @@ if (branch === 'iris/target') {
     })).task
     expect(blockedTarget.replies ?? []).toEqual([])
     const pendingSession = blockedTarget.sessionIds?.[0] ?? source.sessionIds[0]
-    expect(await hydra.ownerRefused({
+    expect(await titan.ownerRefused({
       args: [
         'task',
         'attach',
@@ -1078,7 +1078,7 @@ if (branch === 'iris/target') {
       code: 'CONFLICT',
       error: expect.stringContaining('unresolved handoff'),
     })
-    const currentHolder = (await hydra.owner({
+    const currentHolder = (await titan.owner({
       args: [
         'task',
         'sessions',
@@ -1086,7 +1086,7 @@ if (branch === 'iris/target') {
       ],
     })).sessions
       .find((session: { id: string }) => session.id === pendingSession).taskId
-    expect(await hydra.ownerRefused({
+    expect(await titan.ownerRefused({
       args: [
         'task',
         'detach',
@@ -1103,7 +1103,7 @@ if (branch === 'iris/target') {
     )).toBe('keep committed-checkout work')
     rmSync(committedWork)
     await othrys.restart({ queueDelay: HANDOFF_QUEUE_DELAY_MS })
-    const committedTarget = (await hydra.owner({
+    const committedTarget = (await titan.owner({
       args: [
         'task',
         'show',
@@ -1111,7 +1111,7 @@ if (branch === 'iris/target') {
         '--full',
       ],
     })).task
-    const committedSource = (await hydra.owner({
+    const committedSource = (await titan.owner({
       args: [
         'task',
         'show',
@@ -1130,9 +1130,9 @@ if (branch === 'iris/target') {
     })).toBe('iris/target-2')
     await until({
       what: 'recovered target receives its committed brief',
-      check: async () => (await hydra.agent({ cwd })).received.some(text => text.includes('on fresh branch iris/target-2')),
+      check: async () => (await titan.agent({ cwd })).received.some(text => text.includes('on fresh branch iris/target-2')),
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1145,7 +1145,7 @@ if (branch === 'iris/target') {
         'shop',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'brief',
@@ -1154,7 +1154,7 @@ if (branch === 'iris/target') {
         'Continue after recovery',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'queue',
@@ -1163,7 +1163,7 @@ if (branch === 'iris/target') {
         targetId,
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         targetId,
@@ -1172,7 +1172,7 @@ if (branch === 'iris/target') {
     })
     await until({
       what: 'worker advances again after committed intent recovery',
-      check: async () => (await hydra.owner({
+      check: async () => (await titan.owner({
         args: [
           'task',
           'copy',

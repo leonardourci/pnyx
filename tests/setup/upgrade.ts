@@ -270,7 +270,7 @@ esac
           args: [
             'rev-parse',
             '--git-path',
-            'pnyx-upgrade-from',
+            'othrys-upgrade-from',
           ],
         }),
       ),

@@ -104,7 +104,7 @@ test.each([
     gate.receiptState = receiptState
     const schedule = vi.fn(() => () => {})
     const recovery = createDiagnosticRecovery({
-      hydraId: 'closing-recovery',
+      titanId: 'closing-recovery',
       sessions: () => [],
       enabled: () => true,
       changed: () => {},

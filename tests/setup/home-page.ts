@@ -6,12 +6,12 @@ import { until } from './until.ts'
 
 export async function openHomePage({
   port,
-  hydraId,
+  titanId,
   previous,
   recordFrames = true,
 }: {
   port: number
-  hydraId?: string
+  titanId?: string
   recordFrames?: boolean
   previous?: {
     home: HomePage
@@ -24,7 +24,7 @@ export async function openHomePage({
   let ready = false
   const page = await openPage({
     port,
-    hydraId,
+    titanId,
     home: true,
     cursor,
     receive({ message }) {

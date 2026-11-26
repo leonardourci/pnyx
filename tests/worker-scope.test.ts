@@ -9,25 +9,25 @@ import { beforeAll, expect, test } from 'vitest'
 import { CLI, operation, startOthrys, until, type AgentSession, type Titan, type Othrys } from './setup/othrys.ts'
 
 let othrys: Othrys
-let hydra: Titan
+let titan: Titan
 let worker: AgentSession
 let asWorker: ReturnType<Titan['as']>
 let mine: { id: string }
 
-const settingsOf = async () => (await hydra.owner({
+const settingsOf = async () => (await titan.owner({
   args: [
     'settings',
     'show',
   ],
 })).settings
 
-const statusOfOther = async () => (await hydra.task({ key: 'other' })).status as string
+const statusOfOther = async () => (await titan.task({ key: 'other' })).status as string
 
 beforeAll(async () => {
   othrys = await startOthrys()
-  hydra = await othrys.hydra()
-  ;({ worker } = await hydra.startTask({ key: 'mine' }))
-  await hydra.owner({
+  titan = await othrys.titan()
+  ;({ worker } = await titan.startTask({ key: 'mine' }))
+  await titan.owner({
     args: [
       'task',
       'create',
@@ -37,11 +37,11 @@ beforeAll(async () => {
       '--key',
       'other',
       '--folder',
-      hydra.folder({ name: 'other' }),
+      titan.folder({ name: 'other' }),
     ],
   })
-  mine = await hydra.task({ key: 'mine' })
-  asWorker = hydra.as({ session: worker })
+  mine = await titan.task({ key: 'mine' })
+  asWorker = titan.as({ session: worker })
 })
 
 // The environment of a worker started with --via command: its task, never its actor.
@@ -60,9 +60,9 @@ const commandWorkerEnv = (): NodeJS.ProcessEnv => {
 test(
   'workers change other tasks and settings, with notices instead of scope refusals',
   async () => {
-    const hydra = await othrys.hydra()
-    const { worker } = await hydra.startTask({ key: 'writer' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const { worker } = await titan.startTask({ key: 'writer' })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -73,8 +73,8 @@ test(
         'Other work',
       ],
     })
-    const target = await hydra.task({ key: 'target' })
-    const asWorker = hydra.as({ session: worker })
+    const target = await titan.task({ key: 'target' })
+    const asWorker = titan.as({ session: worker })
 
     for (const args of [
       [
@@ -155,15 +155,15 @@ test(
     }))
     expect(retriedReceipt.notices).toEqual(firstReceipt.notices)
     expect(readEvents({
-      hydraId: hydra.id,
+      titanId: titan.id,
       types: ['task.brief'],
     }).filter(event => event.type === 'task.brief' && event.data.after === 'Retried guidance')).toHaveLength(1)
 
-    expect((await hydra.task({ key: 'target' })).status).toBe('done')
-    expect((await hydra.task({ key: 'target' })).notices).toBeDefined()
+    expect((await titan.task({ key: 'target' })).status).toBe('done')
+    expect((await titan.task({ key: 'target' })).notices).toBeDefined()
     expect((await settingsOf()).fontSize).toBe(19)
-    expect((await hydra.task({ key: 'follow-up' })).title).toBe('Follow up')
-    const history = await hydra.owner({
+    expect((await titan.task({ key: 'follow-up' })).title).toBe('Follow up')
+    const history = await titan.owner({
       args: [
         'task',
         'history',
@@ -173,7 +173,7 @@ test(
     expect(history.events).toContainEqual(expect.objectContaining({
       actor: worker.env.OTHRYS_ACTOR,
     }))
-    const dispatchBefore = await hydra.owner({
+    const dispatchBefore = await titan.owner({
       args: [
         'rule',
         'show',
@@ -186,7 +186,7 @@ test(
       '--event-id',
       'dispatch-guidance-retry',
       '--actor',
-      'hydra',
+      'titan',
       '--json',
       JSON.stringify({
         version: 1,
@@ -212,22 +212,22 @@ test(
     const dispatchRetry = await asWorker.run({ args: dispatchArgs })
     expect(dispatchRetry.notices).toEqual(dispatch.notices)
     expect(dispatchRetry.revision).toBe(dispatch.revision)
-    expect(JSON.stringify(await hydra.owner({
+    expect(JSON.stringify(await titan.owner({
       args: [
         'rule',
         'show',
       ],
     }))).toContain('bypassPermissions')
 
-    const inboxTarget = await hydra.startTask({ key: 'inbox-target' })
-    await hydra.owner({
+    const inboxTarget = await titan.startTask({ key: 'inbox-target' })
+    await titan.owner({
       args: [
         'task',
         'hide',
         'inbox-target',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'inbox',
@@ -238,7 +238,7 @@ test(
         'Review the first instruction',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'inbox',
@@ -249,7 +249,7 @@ test(
         'Record the blocker',
       ],
     })
-    const pending = await hydra.owner({
+    const pending = await titan.owner({
       args: [
         'task',
         'inbox',
@@ -274,7 +274,7 @@ test(
     })
     expect(acknowledgement.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('older pending instruction') }))
     expect(acknowledgement.message.ack.note).toBe('Marked blocked by the explicit acknowledgement')
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'inbox',
@@ -282,7 +282,7 @@ test(
         'inbox-target',
       ],
     })).messages).toContainEqual(expect.objectContaining({ id: 'older-instruction' }))
-    await hydra.owner({
+    await titan.owner({
       args: [
         'reply',
         'inbox-target',
@@ -293,12 +293,12 @@ test(
     await until({
       what: 'the current hidden worker to receive its reply',
       check: async () => {
-        const current = await hydra.agent({ cwd: inboxTarget.folder })
+        const current = await titan.agent({ cwd: inboxTarget.folder })
 
         return current.received.some(text => text.includes('Continue the hidden task'))
       },
     })
-    const directMessage = await hydra.owner({
+    const directMessage = await titan.owner({
       args: [
         'reply',
         'inbox-target',
@@ -309,7 +309,7 @@ test(
     })
     expect(directMessage.notices).toBeDefined()
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'hold',
@@ -330,10 +330,10 @@ test(
         '--argv',
         '[]',
         '--cwd',
-        hydra.folder({ name: 'source-cwd' }),
+        titan.folder({ name: 'source-cwd' }),
       ],
     })
-    const stoppedSource = await hydra.owner({
+    const stoppedSource = await titan.owner({
       args: [
         'task',
         'source',
@@ -343,7 +343,7 @@ test(
       ],
     })
     await othrys.restart()
-    const unread = await hydra.owner({
+    const unread = await titan.owner({
       args: [
         'task',
         'source',
@@ -372,7 +372,7 @@ test(
     expect(handledSource.result.handled).toBeDefined()
     expect(handledSource.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('before its steering message') }))
     await othrys.restart()
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'source',
@@ -381,7 +381,7 @@ test(
         'manual-result',
       ],
     })).results).toBe('none: no unread results')
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'source',
@@ -398,9 +398,9 @@ test(
     const {
       folder: sourceFolder,
       worker: sourceWorker,
-    } = await hydra.startTask({ key: 'source-notice' })
-    const sourceTask = await hydra.task({ key: 'source-notice' })
-    await hydra.as({ session: sourceWorker }).run({
+    } = await titan.startTask({ key: 'source-notice' })
+    const sourceTask = await titan.task({ key: 'source-notice' })
+    await titan.as({ session: sourceWorker }).run({
       args: [
         'task',
         'source',
@@ -420,8 +420,8 @@ test(
     })
     const taskLog = join(
       process.env.OTHRYS_HOME!,
-      'hydras',
-      hydra.id,
+      'titans',
+      titan.id,
       'tasks',
       sourceTask.id,
       'task.log',
@@ -492,7 +492,7 @@ test(
 test(
   'a command-route worker keeps its identity while changing another task',
   async () => {
-    const asCommand = hydra.as({
+    const asCommand = titan.as({
       session: worker,
       env: commandWorkerEnv(),
     })
@@ -505,7 +505,7 @@ test(
       ],
     })
     expect(output.notices).toBeDefined()
-    const history = await hydra.owner({
+    const history = await titan.owner({
       args: [
         'task',
         'history',
@@ -521,7 +521,7 @@ test(
   async () => {
     const env = { ...worker.env }
     delete env.OTHRYS_ACTOR
-    const asUnnamed = hydra.as({
+    const asUnnamed = titan.as({
       session: worker,
       env,
     })
@@ -547,7 +547,7 @@ test(
       ],
     })
     expect(own.event).toBeDefined()
-    const history = await hydra.owner({
+    const history = await titan.owner({
       args: [
         'task',
         'history',
@@ -590,16 +590,16 @@ test(
 test(
   'a worker can stop another worker or Titan and receives the result with a notice',
   async () => {
-    const hydra = await othrys.hydra()
-    const { worker: caller } = await hydra.startTask({ key: 'caller' })
+    const titan = await othrys.titan()
+    const { worker: caller } = await titan.startTask({ key: 'caller' })
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('<othrys-worker'),
       partial: 'Working',
       hold: true,
     })
-    const folder = hydra.folder({ name: 'target' })
-    await hydra.owner({
+    const folder = titan.folder({ name: 'target' })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -614,19 +614,19 @@ test(
         'Work until stopped',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'start',
         'target',
       ],
     })
-    const target = await hydra.agent({ cwd: folder })
+    const target = await titan.agent({ cwd: folder })
     await until({
       what: 'target to start its turn',
       check: () => target.received.length === 1,
     })
-    const asCaller = hydra.as({ session: caller })
+    const asCaller = titan.as({ session: caller })
     const stopped = await asCaller.run({
       args: [
         'task',
@@ -636,22 +636,22 @@ test(
     })
     expect(stopped.stopped).toMatch(/^task-/)
     expect(stopped.notices).toBeDefined()
-    expect((await hydra.task({ key: 'target' })).status).toBe('ended')
+    expect((await titan.task({ key: 'target' })).status).toBe('ended')
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'Look at the result',
       partial: 'Looking',
       hold: true,
     })
-    await hydra.chat({ text: 'Look at the result' })
-    const hydraStopped = await asCaller.run({
+    await titan.chat({ text: 'Look at the result' })
+    const titanStopped = await asCaller.run({
       args: [
-        'hydra',
+        'titan',
         'stop',
       ],
     })
-    expect(hydraStopped.stopped).toBe('hydra')
-    expect(hydraStopped.notices).toBeDefined()
+    expect(titanStopped.stopped).toBe('titan')
+    expect(titanStopped.notices).toBeDefined()
   },
 )
 
@@ -659,13 +659,13 @@ test(
   'a worker\'s own question, link, progress message and sources work, and it reads any task, Titan and setting',
   async () => {
     await workerLine({
-      hydra,
+      titan,
       key: 'mine',
       line: 'note: On it',
     })
-    expect((await hydra.task({ key: 'mine' })).status).toBe('idle')
+    expect((await titan.task({ key: 'mine' })).status).toBe('idle')
     await workerLine({
-      hydra,
+      titan,
       key: 'mine',
       line: 'note: Still on it',
     })
@@ -678,7 +678,7 @@ test(
         'Which parser?',
       ],
     })
-    expect((await hydra.task({ key: 'mine' })).questionCount).toBe(1)
+    expect((await titan.task({ key: 'mine' })).questionCount).toBe(1)
     await asWorker.run({
       args: [
         'link',
@@ -689,7 +689,7 @@ test(
     })
     await asWorker.run({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--task',
         'mine',
@@ -736,11 +736,11 @@ test(
         'show',
       ],
       [
-        'hydra',
+        'titan',
         'usage',
       ],
       [
-        'hydra',
+        'titan',
         'memory',
         'list',
       ],
@@ -749,7 +749,7 @@ test(
         args: [
           ...args,
           '--titan',
-          hydra.id,
+          titan.id,
         ],
         env: worker.env,
       })
@@ -764,8 +764,8 @@ test(
 test(
   'Titan and the owner keep their rights over other tasks and settings',
   async () => {
-    const session = await hydra.chat({ text: 'Pause the other task and make the text bigger.' })
-    const asTitan = hydra.as({ session })
+    const session = await titan.chat({ text: 'Pause the other task and make the text bigger.' })
+    const asTitan = titan.as({ session })
     await asTitan.run({
       args: [
         'task',
@@ -787,7 +787,7 @@ test(
       ],
     })
     expect((await settingsOf()).fontSize).toBe(19)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'hold',
@@ -812,7 +812,7 @@ test(
       alias,
       'dir',
     )
-    const output = await hydra.as({
+    const output = await titan.as({
       session: worker,
       env: {
         ...worker.env,

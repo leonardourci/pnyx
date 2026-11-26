@@ -4,17 +4,17 @@ import type { Titan } from './othrys.ts'
 import { git } from './upgrade.ts'
 
 export const createProject = async ({
-  hydra,
+  titan,
   landing,
   remote,
   name = 'shop',
 }: {
-  hydra: Titan
+  titan: Titan
   landing: 'branch' | 'pr'
   remote?: string
   name?: string
 }) => {
-  const path = hydra.folder({ name })
+  const path = titan.folder({ name })
   const origin = remote ?? `${path}.git`
   const steps = [
     [
@@ -78,7 +78,7 @@ export const createProject = async ({
     })
   }
 
-  await hydra.owner({
+  await titan.owner({
     args: [
       'project',
       'add',

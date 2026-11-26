@@ -71,13 +71,13 @@ test(
 test(
   'one socket reads Titan state and resumes changes after a disconnect without private steering',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
 
     for (const key of [
       'changed',
       'retained',
     ]) {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'create',
@@ -90,7 +90,7 @@ test(
       })
     }
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'inbox',
@@ -103,16 +103,16 @@ test(
     })
     const page = await openHomePage({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
     const before = page.read()
-    const state = before.home.scopes[hydra.id]!.state
+    const state = before.home.scopes[titan.id]!.state
     const changed = state.keys.changed!
     const retained = state.keys.retained!
     expect(state.cards[changed]?.title).toBe('changed')
     expect(JSON.stringify(page.frames)).not.toContain('PRIVATE-STEERING')
     page.close()
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'inbox',
@@ -123,7 +123,7 @@ test(
         'PRIVATE-REPLAY-STEERING',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'rename',
@@ -134,12 +134,12 @@ test(
     })
     const resumed = await openHomePage({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
       previous: before,
     })
 
     try {
-      const current = resumed.read().home.scopes[hydra.id]!.state
+      const current = resumed.read().home.scopes[titan.id]!.state
       expect(current.cards[changed]?.title).toBe('Saved while disconnected')
       expect(current.cards[retained]).toBe(state.cards[retained])
       expect(resumed.frames.some(frame => frame.type === 'home.snapshot')).toBe(false)
@@ -156,7 +156,7 @@ test(
       expect(receipt.type).toBe('receipt')
       await until({
         what: 'the same socket to carry the next saved change',
-        check: () => resumed.read().home.scopes[hydra.id]?.state.cards[changed]?.title === 'Live change',
+        check: () => resumed.read().home.scopes[titan.id]?.state.cards[changed]?.title === 'Live change',
       })
       expect(JSON.stringify(resumed.frames)).not.toContain('PRIVATE-STEERING')
       expect(JSON.stringify(resumed.frames)).not.toContain('PRIVATE-REPLAY-STEERING')
@@ -169,24 +169,24 @@ test(
 test(
   'a cursor from another daemon falls back to a snapshot and the Titan list excludes removed Titans',
   async () => {
-    const caller = await othrys.hydra()
-    const target = await othrys.hydra()
+    const caller = await othrys.titan()
+    const target = await othrys.titan()
     const initial = await openHomePage({
       port: othrys.port(),
-      hydraId: caller.id,
+      titanId: caller.id,
     })
     const previous = initial.read()
     initial.close()
     await caller.owner({
       args: [
-        'hydra',
+        'titan',
         'remove',
         target.id,
       ],
     })
     const page = await openHomePage({
       port: othrys.port(),
-      hydraId: caller.id,
+      titanId: caller.id,
       previous: {
         ...previous,
         cursor: {
@@ -198,8 +198,8 @@ test(
 
     try {
       expect(page.frames[0]?.type).toBe('home.snapshot')
-      expect(page.read().home.hydras).toContainEqual(expect.objectContaining({ id: caller.id }))
-      expect(page.read().home.hydras).not.toContainEqual(expect.objectContaining({ id: target.id }))
+      expect(page.read().home.titans).toContainEqual(expect.objectContaining({ id: caller.id }))
+      expect(page.read().home.titans).not.toContainEqual(expect.objectContaining({ id: target.id }))
     } finally {
       page.close()
     }
@@ -209,15 +209,15 @@ test(
 test(
   'the removed database setting is refused without publishing a home change',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const page = await openHomePage({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
 
     try {
       const before = page.read().home.settings.revision
-      const rejected = await hydra.ownerRefused({
+      const rejected = await titan.ownerRefused({
         args: [
           'settings',
           'set',
@@ -231,7 +231,7 @@ test(
       expect(JSON.stringify(page.frames)).not.toContain('PRIVATE-DATABASE-PASSWORD')
       const snapshot = await openHomePage({
         port: othrys.port(),
-        hydraId: hydra.id,
+        titanId: titan.id,
       })
 
       try {
@@ -249,8 +249,8 @@ test(
 test(
   'a reconnect with more retained changes than its outgoing budget receives the latest snapshot',
   async () => {
-    const hydra = await othrys.hydra()
-    const created = await hydra.owner({
+    const titan = await othrys.titan()
+    const created = await titan.owner({
       args: [
         'task',
         'create',
@@ -264,7 +264,7 @@ test(
     const task = created.card.id
     const initial = await openHomePage({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
     const previous = initial.read()
     initial.close()
@@ -275,7 +275,7 @@ test(
         2,
         '0',
       )} ${padding}`
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'brief',
@@ -286,19 +286,19 @@ test(
       })
       await until({
         what: 'the changed brief to reach the home feed',
-        check: () => othrys.home().scopes[hydra.id]?.state.cards[task]?.brief === brief,
+        check: () => othrys.home().scopes[titan.id]?.state.cards[task]?.brief === brief,
       })
     }
 
     const resumed = await openHomePage({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
       previous,
     })
 
     try {
       expect(resumed.frames[0]?.type).toBe('home.snapshot')
-      expect(resumed.read().home.scopes[hydra.id]?.state.cards[task]?.brief).toBe(`49 ${padding}`)
+      expect(resumed.read().home.scopes[titan.id]?.state.cards[task]?.brief).toBe(`49 ${padding}`)
       expect(resumed.read().cursor.epoch).toBe(previous.cursor.epoch)
       expect(resumed.read().cursor.seq).toBeGreaterThan(previous.cursor.seq)
     } finally {

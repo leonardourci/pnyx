@@ -3,15 +3,15 @@ import { join } from 'node:path'
 import { until, type Titan } from './othrys.ts'
 
 export async function workerLine({
-  hydra,
+  titan,
   key,
   line,
 }: {
-  hydra: Titan
+  titan: Titan
   key: string
   line: string
 }) {
-  const task = await hydra.task({ key })
+  const task = await titan.task({ key })
   const dir = join(
     process.env.OTHRYS_HOME!,
     'runtime',
@@ -35,7 +35,7 @@ export async function workerLine({
   return until({
     what: 'worker line folded into its task',
     check: async () => {
-      const result = await hydra.owner({
+      const result = await titan.owner({
         args: [
           'task',
           'show',

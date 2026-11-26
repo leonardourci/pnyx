@@ -79,12 +79,12 @@ interface Result {
 }
 
 const search = async ({
-  hydra,
+  titan,
   args,
 }: {
-  hydra: Titan
+  titan: Titan
   args: string[]
-}) => ((await hydra.owner({
+}) => ((await titan.owner({
   args: [
     'oracle',
     ...args,
@@ -94,9 +94,9 @@ const search = async ({
 test(
   'the Oracle finds a new task at once by its title, brief and status notes, ranks a title match first, hides secrets and never reads agent transcripts',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'billing' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'billing' })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -111,7 +111,7 @@ test(
         'Move the job to 2am UTC; token sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -126,7 +126,7 @@ test(
     })
 
     const byTitle = await search({
-      hydra,
+      titan,
       args: ['invoice'],
     })
     expect((byTitle as Result[]).map(result => result.title)).toEqual([
@@ -145,7 +145,7 @@ test(
       'invoi*',
     ]) {
       expect((await search({
-        hydra,
+        titan,
         args: [query],
       }) as Result[]).map(result => result.title)).toEqual([
         'Invoice export nightly',
@@ -153,7 +153,7 @@ test(
       ])
     }
 
-    const fuzzy = await hydra.owner({
+    const fuzzy = await titan.owner({
       args: [
         'oracle',
         'invoce',
@@ -163,34 +163,34 @@ test(
     expect(fuzzy.results).toContainEqual(expect.objectContaining({ title: 'Tidy the ledger' }))
 
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('<othrys-worker'),
       reply: 'Checked the zebracorn scheduler config.',
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'start',
         'export',
       ],
     })
-    const worker = await hydra.agent({ cwd: folder })
+    const worker = await titan.agent({ cwd: folder })
     await until({
       what: 'the worker\'s turn',
       check: () => worker.answered === 1,
     })
     await workerLine({
-      hydra,
+      titan,
       key: 'export',
       line: 'note: Found the cron drift in the scheduler',
     })
 
     expect(await search({
-      hydra,
+      titan,
       args: ['cron drift'],
     })).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
 
-    const fromAgent = await hydra.as({ session: worker }).run({
+    const fromAgent = await titan.as({ session: worker }).run({
       args: [
         'oracle',
         'cron drift',
@@ -236,14 +236,14 @@ test(
         }),
       ].join('\n') + '\n',
     )
-    await hydra.owner({
+    await titan.owner({
       args: [
         'harvest',
         '--card',
         'export',
       ],
     })
-    const notes = await hydra.owner({
+    const notes = await titan.owner({
       args: [
         'card',
         'export',
@@ -257,21 +257,21 @@ test(
     ])
     expect(notes.notes.summary).toBe('none')
     expect(readEvents({
-      hydraId: hydra.id,
+      titanId: titan.id,
       cardId: notes.card.id,
       types: ['card.noted'],
     }).filter(event => event.actor === 'harvest')
       .map(event => event.data)).toEqual([expect.objectContaining({ kind: 'decision' })])
     expect(await search({
-      hydra,
+      titan,
       args: ['cobalt'],
     })).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
     expect(await search({
-      hydra,
+      titan,
       args: ['amber'],
     })).toBe('none: no matches for "amber"')
     await othrys.restart()
-    const restored = await hydra.owner({
+    const restored = await titan.owner({
       args: [
         'card',
         'export',
@@ -285,19 +285,19 @@ test(
     ])
     expect(restored.notes.summary).toBe('none')
     expect(await search({
-      hydra,
+      titan,
       args: ['cobalt'],
     })).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
     expect(await search({
-      hydra,
+      titan,
       args: ['amber'],
     })).toBe('none: no matches for "amber"')
     expect(await search({
-      hydra,
+      titan,
       args: ['cron drift'],
     })).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
     expect(await search({
-      hydra,
+      titan,
       args: ['zebracorn'],
     })).toBe('none: no matches for "zebracorn"')
   },
@@ -306,14 +306,14 @@ test(
 test(
   'column and date filters narrow a search the same way from the page and the CLI, and a bad filter is refused',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const done = 'ideas'
 
     for (const key of [
       'open',
       'closed',
     ]) {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'create',
@@ -326,7 +326,7 @@ test(
       })
     }
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         'closed',
@@ -335,7 +335,7 @@ test(
     })
 
     const inDone = await search({
-      hydra,
+      titan,
       args: [
         'checklist',
         '--column',
@@ -347,7 +347,7 @@ test(
       'Release checklist open',
     ])
 
-    const page = await hydra.page()
+    const page = await titan.page()
     const fromPage = await page.send({
       name: 'oracle',
       args: [
@@ -363,7 +363,7 @@ test(
     page.close()
 
     expect((await search({
-      hydra,
+      titan,
       args: ['ship'],
     }) as Result[]).map(result => result.title).toSorted()).toEqual([
       'Release checklist closed',
@@ -371,7 +371,7 @@ test(
     ])
 
     expect(await search({
-      hydra,
+      titan,
       args: [
         'checklist',
         '--since',
@@ -379,7 +379,7 @@ test(
       ],
     })).toBe('none: no matches for "checklist"')
     expect((await search({
-      hydra,
+      titan,
       args: [
         'checklist',
         '--since',
@@ -389,7 +389,7 @@ test(
       'Release checklist closed',
       'Release checklist open',
     ])
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'oracle',
         'checklist',
@@ -403,14 +403,14 @@ test(
 test(
   'the project filter keeps only the tasks of the named project, from the CLI and from the page',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const projects = {} as Record<'alpha' | 'beta', string>
 
     for (const name of [
       'alpha',
       'beta',
     ] as const) {
-      const path = hydra.folder({ name })
+      const path = titan.folder({ name })
 
       for (const args of [
         [
@@ -433,14 +433,14 @@ test(
         })
       }
 
-      await hydra.owner({
+      await titan.owner({
         args: [
           'project',
           'add',
           path,
         ],
       })
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'create',
@@ -457,14 +457,14 @@ test(
     }
 
     expect((await search({
-      hydra,
+      titan,
       args: ['roadmap'],
     }) as Result[]).map(result => result.title).toSorted()).toEqual([
       'Roadmap alpha',
       'Roadmap beta',
     ])
     expect((await search({
-      hydra,
+      titan,
       args: [
         'roadmap',
         '--project',
@@ -472,7 +472,7 @@ test(
       ],
     }) as Result[]).map(result => result.title)).toEqual(['Roadmap alpha'])
     expect((await search({
-      hydra,
+      titan,
       args: [
         'roadmap',
         '--project',
@@ -480,7 +480,7 @@ test(
       ],
     }) as Result[]).map(result => result.title)).toEqual(['Roadmap beta'])
 
-    const page = await hydra.page()
+    const page = await titan.page()
     const fromPage = await page.send({
       name: 'oracle',
       args: [
@@ -498,8 +498,8 @@ test(
 test(
   'a task folder can move after an Oracle snapshot is captured and before its worker reads',
   async () => {
-    const source = await othrys.hydra()
-    const target = await othrys.hydra()
+    const source = await othrys.titan()
+    const target = await othrys.titan()
     const created = await source.owner({
       args: [
         'task',
@@ -512,19 +512,19 @@ test(
       ],
     })
     await workerLine({
-      hydra: source,
+      titan: source,
       key: 'captured',
       line: 'note: snapshotorbit evidence',
     })
     await workerLine({
-      hydra: source,
+      titan: source,
       key: 'captured',
       line: 'note: a later report',
     })
     searchStart.enabled = true
     searchStart.release = undefined
     const pending = search({
-      hydra: source,
+      titan: source,
       args: ['snapshotorbit'],
     })
     void pending.catch(() => {})
@@ -544,14 +544,14 @@ test(
           'task',
           'move',
           'captured',
-          '--to-hydra',
+          '--to-titan',
           target.id,
         ],
       })
       release()
       expect(await pending).toEqual([expect.objectContaining({ card: created.card.id })])
       expect(await search({
-        hydra: target,
+        titan: target,
         args: ['snapshotorbit'],
       })).toEqual([expect.objectContaining({ card: created.card.id })])
     } finally {
@@ -564,8 +564,8 @@ test(
 test(
   'the Oracle follows task log tails across restart and a folder move',
   async () => {
-    const source = await othrys.hydra()
-    const destination = await othrys.hydra()
+    const source = await othrys.titan()
+    const destination = await othrys.titan()
     const created = await source.owner({
       args: [
         'task',
@@ -578,38 +578,38 @@ test(
       ],
     })
     await workerLine({
-      hydra: source,
+      titan: source,
       key: 'travel',
       line: 'note: nebularocket continuity evidence',
     })
     expect(await search({
-      hydra: source,
+      titan: source,
       args: ['nebularocket'],
     })).toEqual([expect.objectContaining({ card: created.card.id })])
     await workerLine({
-      hydra: source,
+      titan: source,
       key: 'travel',
       line: 'note: latercomet tail evidence',
     })
-    const find = async ({ hydra }: { hydra: Titan }) => search({
-      hydra,
+    const find = async ({ titan }: { titan: Titan }) => search({
+      titan,
       args: ['nebularocket'],
     })
     const portable = expect.objectContaining({ card: created.card.id })
     const concurrent = await Promise.all([
-      find({ hydra: source }),
-      find({ hydra: source }),
+      find({ titan: source }),
+      find({ titan: source }),
     ])
     expect(concurrent).toEqual([
       [portable],
       [portable],
     ])
     expect(await search({
-      hydra: source,
+      titan: source,
       args: ['latercomet'],
     })).toEqual([portable])
     await othrys.restart()
-    expect(await find({ hydra: source })).toEqual([portable])
+    expect(await find({ titan: source })).toEqual([portable])
     await source.owner({
       args: [
         'task',
@@ -624,19 +624,19 @@ test(
         'task',
         'move',
         'travel',
-        '--to-hydra',
+        '--to-titan',
         destination.id,
       ],
     })
-    expect(await find({ hydra: source })).toEqual(expect.any(String))
-    expect(await find({ hydra: destination })).toEqual([
+    expect(await find({ titan: source })).toEqual(expect.any(String))
+    expect(await find({ titan: destination })).toEqual([
       expect.objectContaining({
         card: created.card.id,
         title: 'Moved notes',
       }),
     ])
     await othrys.restart()
-    expect(await find({ hydra: destination })).toEqual([
+    expect(await find({ titan: destination })).toEqual([
       expect.objectContaining({
         card: created.card.id,
         title: 'Moved notes',
@@ -665,7 +665,7 @@ test(
     })
     expect(existsSync(join(
       process.env.OTHRYS_HOME!,
-      'hydras',
+      'titans',
       'typo-oracle',
     ))).toBe(false)
   },
@@ -674,13 +674,13 @@ test(
 test(
   'Oracle result metadata and family previews include a child’s live native work and its hidden parent’s project',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const project = await createProject({
-      hydra,
+      titan,
       landing: 'branch',
       name: 'preview-project',
     })
-    const parent = await hydra.owner({
+    const parent = await titan.owner({
       args: [
         'task',
         'create',
@@ -693,7 +693,7 @@ test(
         project,
       ],
     })
-    const child = await hydra.owner({
+    const child = await titan.owner({
       args: [
         'task',
         'create',
@@ -705,26 +705,26 @@ test(
       ],
     })
     const held = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes(`<othrys-worker task="${child.card.id}"`),
       reply: 'Child turn complete',
       hold: true,
     })
     onTestFinished(held.release)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'start',
         child.card.id,
         '--folder',
-        hydra.folder({ name: 'preview-child' }),
+        titan.folder({ name: 'preview-child' }),
       ],
     })
     await until({
       what: 'the child turn to start',
-      check: async () => (await hydra.task({ key: child.card.id })).status === 'running',
+      check: async () => (await titan.task({ key: child.card.id })).status === 'running',
     })
-    const state = structuredClone(loadTitan({ hydraId: hydra.id }).state)
+    const state = structuredClone(loadTitan({ titanId: titan.id }).state)
     const actions: Record<string, CurrentAction> = {}
     // Web modules are source-only; a runtime import keeps them out of the CLI's TypeScript emit graph.
     const resultsModule: string = '#web-oracle/results.ts'
@@ -812,8 +812,8 @@ test(
       projects: [],
       actions: [],
       cardActions: actions,
-      hydra: {
-        id: hydra.id,
+      titan: {
+        id: titan.id,
         name: 'Status search',
       },
       text,
@@ -836,14 +836,14 @@ test(
       text: 'working',
       actions,
     })).not.toContain(`task:${child.card.id}`)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'hide',
         parent.card.id,
       ],
     })
-    const { page } = await hydra.owner({
+    const { page } = await titan.owner({
       args: [
         'page',
         '--full',
@@ -857,8 +857,8 @@ test(
       projects: [],
       actions: [],
       cardActions: actions,
-      hydra: {
-        id: hydra.id,
+      titan: {
+        id: titan.id,
         name: 'Status search',
       },
       text: 'Live child',

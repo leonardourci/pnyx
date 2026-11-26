@@ -18,9 +18,9 @@ beforeAll(async () => {
 test(
   'a task uses factual state as its worker and Titan report, a second start steers its worker unless a start flag is invalid, and its dependent becomes ready once it is done',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'export' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'export' })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -35,7 +35,7 @@ test(
         'Write the CSV export',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -46,7 +46,7 @@ test(
         'ship',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'depend',
@@ -55,12 +55,12 @@ test(
         'build',
       ],
     })
-    expect((await hydra.task({ key: 'ship' })).readiness).toMatchObject({
+    expect((await titan.task({ key: 'ship' })).readiness).toMatchObject({
       ready: false,
       unmet: [expect.objectContaining({ title: 'Build the export' })],
     })
 
-    const started = await hydra.owner({
+    const started = await titan.owner({
       args: [
         'task',
         'start',
@@ -69,13 +69,13 @@ test(
     })
     expect(started.agent).toMatchObject({
       harness: 'claude',
-      host: 'pnyx',
+      host: 'othrys',
     })
-    const worker = await hydra.agent({ cwd: folder })
+    const worker = await titan.agent({ cwd: folder })
     expect(worker.received).toHaveLength(1)
     expect(worker.received[0]).toContain('Write the CSV export')
 
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'start',
@@ -87,7 +87,7 @@ test(
       ],
     })).code).toBe('VALIDATION_ERROR')
 
-    const again = await hydra.owner({
+    const again = await titan.owner({
       args: [
         'task',
         'start',
@@ -100,7 +100,7 @@ test(
     })
     expect(again).toMatchObject({
       launch: 'steered',
-      worker: (await hydra.task({ key: 'build' })).worker,
+      worker: (await titan.task({ key: 'build' })).worker,
       unapplied: ['--account, --model, --effort, --mode or --fast'],
     })
     await until({
@@ -110,8 +110,8 @@ test(
     expect(worker.received.some(text => text.includes('Export the archive too'))).toBe(false)
     expect(othrys.claude.sessions.filter(session => session.cwd === folder)).toEqual([worker])
 
-    const session = await hydra.chat({ text: 'what does the export need?' })
-    const asked = await hydra.as({ session }).run({
+    const session = await titan.chat({ text: 'what does the export need?' })
+    const asked = await titan.as({ session }).run({
       args: [
         'task',
         'ask',
@@ -121,7 +121,7 @@ test(
         '--question',
         'Include archived invoices?',
         '--context',
-        `Archived invoices change the export totals. After your choice I will implement the filter. [Export](othrys-task:${(await hydra.task({ key: 'build' })).id})`,
+        `Archived invoices change the export totals. After your choice I will implement the filter. [Export](othrys-task:${(await titan.task({ key: 'build' })).id})`,
         '--choice',
         'Only open',
         '--choice',
@@ -133,7 +133,7 @@ test(
       ],
     })
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'answer',
@@ -150,18 +150,18 @@ test(
     expect(worker.received.some(message => message.includes('No, only open ones'))).toBe(false)
 
     await workerLine({
-      hydra,
+      titan,
       key: 'build',
       line: 'done: export written',
     })
-    const dependent = await hydra.task({ key: 'ship' })
+    const dependent = await titan.task({ key: 'ship' })
     await until({
       what: 'Titan to hear that the dependent task is ready',
       check: () => session.received.some(message => message.includes(`othrys-task:${dependent.id}`)
         && message.includes('prerequisites cleared; ready for dispatch')),
     })
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         'build',
@@ -170,10 +170,10 @@ test(
         'Export written',
       ],
     })
-    expect(await hydra.task({ key: 'build' })).toMatchObject({
+    expect(await titan.task({ key: 'build' })).toMatchObject({
       status: 'done',
     })
-    expect((await hydra.task({ key: 'ship' })).readiness).toEqual({
+    expect((await titan.task({ key: 'ship' })).readiness).toEqual({
       ready: true,
       reasons: [],
       unmet: [],
@@ -184,14 +184,14 @@ test(
 test(
   'dependencies refuse a cycle or an unknown task and leave independent work ready',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
 
     for (const key of [
       'first',
       'second',
       'alone',
     ]) {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'create',
@@ -204,7 +204,7 @@ test(
       })
     }
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'depend',
@@ -213,7 +213,7 @@ test(
         'first',
       ],
     })
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'depend',
@@ -222,7 +222,7 @@ test(
         'second',
       ],
     })).code).toBe('DEPENDENCY_CYCLE')
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'depend',
@@ -231,11 +231,11 @@ test(
         'no-such-task',
       ],
     })).code).toBe('NOT_FOUND')
-    expect((await hydra.task({ key: 'first' })).readiness.ready).toBe(true)
-    expect((await hydra.task({ key: 'alone' })).readiness.ready).toBe(true)
-    expect((await hydra.task({ key: 'second' })).readiness.ready).toBe(false)
+    expect((await titan.task({ key: 'first' })).readiness.ready).toBe(true)
+    expect((await titan.task({ key: 'alone' })).readiness.ready).toBe(true)
+    expect((await titan.task({ key: 'second' })).readiness.ready).toBe(false)
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'undepend',
@@ -244,16 +244,16 @@ test(
         'first',
       ],
     })
-    expect((await hydra.task({ key: 'second' })).readiness.ready).toBe(true)
+    expect((await titan.task({ key: 'second' })).readiness.ready).toBe(true)
   },
 )
 
 test(
   'a start on a held task goes ahead and lists the hold, with the command that releases it, once on the card, and a failed or retried start adds nothing',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'held' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'held' })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -266,8 +266,8 @@ test(
         '--hold',
       ],
     })
-    const card = await hydra.task({ key: 'rename' })
-    const notes = async () => (await hydra.owner({
+    const card = await titan.task({ key: 'rename' })
+    const notes = async () => (await titan.owner({
       args: [
         'task',
         'show',
@@ -276,7 +276,7 @@ test(
       ],
     })).task.notes
 
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'start',
@@ -296,35 +296,35 @@ test(
       '--event-id',
       'rename-start',
     ]
-    const started = await hydra.owner({ args: start })
+    const started = await titan.owner({ args: start })
     expect(started.open).toEqual([
       expect.objectContaining({
         reason: 'held for discussion: Rename the API',
         clear: expect.stringContaining(`task ${card.id} in the UI`),
       }),
     ])
-    const worker = await hydra.agent({ cwd: folder })
+    const worker = await titan.agent({ cwd: folder })
     expect(worker.received).toHaveLength(1)
 
-    expect(await hydra.owner({ args: start })).toMatchObject({ event: 'none: duplicate' })
+    expect(await titan.owner({ args: start })).toMatchObject({ event: 'none: duplicate' })
     expect(worker.received).toHaveLength(1)
-    expect(await notes()).toEqual([expect.objectContaining({ source: 'pnyx:start' })])
+    expect(await notes()).toEqual([expect.objectContaining({ source: 'othrys:start' })])
   },
 )
 
 test(
   'a hold releases with an older or agent message, with a notice, and an owner go message releases it without a notice',
   async () => {
-    const hydra = await othrys.hydra()
-    const before = await hydra.owner({
+    const titan = await othrys.titan()
+    const before = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'Maybe rename the API',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -335,14 +335,14 @@ test(
         '--hold',
       ],
     })
-    const byTitan = await hydra.owner({
+    const byTitan = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'Go ahead with the rename',
         '--actor',
-        'hydra',
+        'titan',
         '--reason',
         'Titan decides to go',
       ],
@@ -353,15 +353,15 @@ test(
       byTitan.message,
       undefined,
     ]) {
-      const source = message ?? (await hydra.owner({
+      const source = message ?? (await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'send',
           '--text',
           'Proceed with the rename',
         ],
       })).message
-      const go = await hydra.owner({
+      const go = await titan.owner({
         args: [
           'task',
           'ask',
@@ -374,7 +374,7 @@ test(
           'Proceed with the rename?',
         ],
       })
-      const released = await hydra.owner({
+      const released = await titan.owner({
         args: [
           'task',
           'release',
@@ -386,7 +386,7 @@ test(
         ],
       })
       expect(released.notices).toBeDefined()
-      const releasedTask = (await hydra.owner({
+      const releasedTask = (await titan.owner({
         args: [
           'task',
           'show',
@@ -397,8 +397,8 @@ test(
       const answeredGo = releasedTask.asks.find((ask: { id: string }) => ask.id === go.ask)
       expect(answeredGo.choice).toBe('Go')
       expect(answeredGo.fromMessage ?? null).toBeNull()
-      expect((await hydra.task({ key: 'still-held' })).hold).toBeUndefined()
-      expect((await hydra.ownerRefused({
+      expect((await titan.task({ key: 'still-held' })).hold).toBeUndefined()
+      expect((await titan.ownerRefused({
         args: [
           'task',
           'release',
@@ -407,7 +407,7 @@ test(
           'missing-release-message',
         ],
       })).code).toBe('NOT_FOUND')
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'hold',
@@ -418,15 +418,15 @@ test(
       })
     }
 
-    const go = await hydra.owner({
+    const go = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'Go ahead with the rename',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'release',
@@ -437,18 +437,18 @@ test(
         'The owner said go',
       ],
     })
-    expect((await hydra.task({ key: 'still-held' })).hold).toBeUndefined()
+    expect((await titan.task({ key: 'still-held' })).hold).toBeUndefined()
   },
 )
 
 test(
   'a create files the owner ask and brief and starts its worker in one call, a replay starts nothing more, a task left unstarted shows why or that no reason was given, one set to wait on Titan itself files nothing, and a start cannot steer Titan itself',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'ring' })
-    const sent = await hydra.owner({
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'ring' })
+    const sent = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'Please fix the usage ring, it is not accurate',
@@ -468,7 +468,7 @@ test(
       '--brief',
       'Show the usage the agent reports',
       '--actor',
-      'hydra',
+      'titan',
       '--reason',
       'The owner asked for the fix',
       '--if-revision',
@@ -476,22 +476,22 @@ test(
       '--event-id',
       'ring-create',
     ]
-    const first = await hydra.owner({ args: create })
+    const first = await titan.owner({ args: create })
     expect(first).toMatchObject({
       launch: 'started',
       rule: 'default',
       agent: {
         harness: 'claude',
-        host: 'pnyx',
+        host: 'othrys',
       },
     })
-    const worker = await hydra.agent({ cwd: folder })
+    const worker = await titan.agent({ cwd: folder })
     expect(worker.received).toHaveLength(1)
     expect(worker.received[0]).toContain('fix the usage ring')
     expect(worker.received[0]).toContain('Show the usage the agent reports')
-    expect((await hydra.task({ key: first.card.id })).worker).toBe(first.worker)
+    expect((await titan.task({ key: first.card.id })).worker).toBe(first.worker)
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'hold',
@@ -509,9 +509,9 @@ test(
       '--event-id',
       'ring-description',
     ]
-    await hydra.owner({ args: changedBrief })
-    await hydra.owner({ args: changedBrief })
-    await hydra.owner({
+    await titan.owner({ args: changedBrief })
+    await titan.owner({ args: changedBrief })
+    await titan.owner({
       args: [
         'task',
         'brief',
@@ -520,7 +520,7 @@ test(
         '',
       ],
     })
-    const inbox = await hydra.owner({
+    const inbox = await titan.owner({
       args: [
         'task',
         'inbox',
@@ -531,7 +531,7 @@ test(
     })
     expect(inbox.messages.filter((message: { text: string }) => message.text.includes('Description updated:'))).toHaveLength(2)
     expect(worker.received.some(text => text.includes('Description updated:'))).toBe(false)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'release',
@@ -548,7 +548,7 @@ test(
     expect(instructions.indexOf('Description updated:\n\nShow the usage and its context window'))
       .toBeLessThan(instructions.indexOf('Description updated:\n\n(Description cleared.)'))
 
-    await hydra.as({ session: worker }).run({
+    await titan.as({ session: worker }).run({
       args: [
         'task',
         'ask',
@@ -557,13 +557,13 @@ test(
         'Which ring do you mean?',
       ],
     })
-    expect(await hydra.owner({ args: create })).toMatchObject({
+    expect(await titan.owner({ args: create })).toMatchObject({
       launch: 'started',
       worker: first.worker,
     })
     expect(othrys.claude.sessions.filter(session => session.cwd === folder)).toEqual([worker])
 
-    const later = await hydra.owner({
+    const later = await titan.owner({
       args: [
         'task',
         'create',
@@ -571,7 +571,7 @@ test(
         'Polish the usage ring',
         '--no-start',
         '--actor',
-        'hydra',
+        'titan',
         '--reason',
         'The owner wants the fix to land first',
       ],
@@ -580,9 +580,9 @@ test(
       launch: 'not started',
       reason: 'The owner wants the fix to land first',
     })
-    expect((await hydra.task({ key: later.card.id })).worker).toBe('none: not started: The owner wants the fix to land first')
+    expect((await titan.task({ key: later.card.id })).worker).toBe('none: not started: The owner wants the fix to land first')
 
-    const saved = await hydra.owner({
+    const saved = await titan.owner({
       args: [
         'task',
         'create',
@@ -591,16 +591,16 @@ test(
         '--no-start',
       ],
     })
-    expect((await hydra.task({ key: saved.card.id })).worker).toBe('none: not started, no reason given')
+    expect((await titan.task({ key: saved.card.id })).worker).toBe('none: not started, no reason given')
 
-    const session = await hydra.chat({ text: 'Also add a legend to the usage ring' })
+    const session = await titan.chat({ text: 'Also add a legend to the usage ring' })
     expect((await operation({
       args: [
         'apply',
         '--file',
         '-',
         '--titan',
-        hydra.id,
+        titan.id,
       ],
       env: session.env,
       input: JSON.stringify({
@@ -615,30 +615,30 @@ test(
         ],
       }),
     })).status).toBe(0)
-    expect((await hydra.task({ key: 'legend' })).worker).toBe('none: not started, no reason given')
+    expect((await titan.task({ key: 'legend' })).worker).toBe('none: not started, no reason given')
 
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'create',
         '--title',
         'Wait for Titan',
         '--on',
-        '$hydra',
+        '$titan',
       ],
     })).code).toBe('VALIDATION_ERROR')
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'list',
       ],
     })).tasks.some((task: { title: string }) => task.title === 'Wait for Titan')).toBe(false)
 
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'start',
-        '$hydra',
+        '$titan',
         '--prompt',
         'Drop the legend',
       ],
@@ -649,10 +649,10 @@ test(
 test(
   'a create behind a worker it cannot share starts its own worker and says why it was not queued, one with an unknown target, an unknown start route or both --start and --no-start files nothing, a queue or reorder that cannot happen explains instead of refusing, and the Titan card cannot queue',
   async () => {
-    const hydra = await othrys.hydra()
-    const { folder } = await hydra.startTask({ key: 'export' })
-    const importFolder = hydra.folder({ name: 'import' })
-    const behind = await hydra.owner({
+    const titan = await othrys.titan()
+    const { folder } = await titan.startTask({ key: 'export' })
+    const importFolder = titan.folder({ name: 'import' })
+    const behind = await titan.owner({
       args: [
         'task',
         'create',
@@ -671,7 +671,7 @@ test(
       queued: expect.stringContaining('is in Ideas'),
     })
     expect(behind.help.join('\n')).toContain('task.log session records')
-    expect((await hydra.agent({ cwd: importFolder })).received[0]).toContain('Read the exported CSV back')
+    expect((await titan.agent({ cwd: importFolder })).received[0]).toContain('Read the exported CSV back')
     expect(othrys.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
 
     const refusals = [
@@ -713,7 +713,7 @@ test(
       flags,
       code,
     } of refusals) {
-      expect((await hydra.ownerRefused({
+      expect((await titan.ownerRefused({
         args: [
           'task',
           'create',
@@ -724,14 +724,14 @@ test(
       })).code).toBe(code)
     }
 
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'list',
       ],
     })).tasks.some((task: { title: string }) => task.title === 'Import the refunds')).toBe(false)
 
-    const idea = await hydra.owner({
+    const idea = await titan.owner({
       args: [
         'task',
         'create',
@@ -740,7 +740,7 @@ test(
         '--no-start',
       ],
     })
-    const later = await hydra.owner({
+    const later = await titan.owner({
       args: [
         'task',
         'create',
@@ -772,7 +772,7 @@ test(
       anchor,
       reason,
     } of answers) {
-      expect(await hydra.owner({
+      expect(await titan.owner({
         args: [
           'task',
           action,
@@ -786,12 +786,12 @@ test(
       })
     }
 
-    expect((await hydra.task({ key: idea.card.id })).queue).toBeUndefined()
-    expect((await hydra.ownerRefused({
+    expect((await titan.task({ key: idea.card.id })).queue).toBeUndefined()
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'queue',
-        '$hydra',
+        '$titan',
         '--behind',
         'export',
       ],
@@ -802,18 +802,18 @@ test(
 test(
   'Titan holds work for the owner, a held or dependent create stays unstarted with its reason, and a start on the dependent goes ahead and lists the dependency',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'talk-first' })
-    const docsFolder = hydra.folder({ name: 'rename-docs' })
-    const sent = await hydra.owner({
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'talk-first' })
+    const docsFolder = titan.folder({ name: 'rename-docs' })
+    const sent = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'Let us talk about renaming the API before anyone builds it, and document it after',
       ],
     })
-    const held = await hydra.owner({
+    const held = await titan.owner({
       args: [
         'task',
         'create',
@@ -829,7 +829,7 @@ test(
         'Rename the public API',
         '--hold',
         '--actor',
-        'hydra',
+        'titan',
         '--reason',
         'The owner wants to talk first',
         '--event-id',
@@ -841,7 +841,7 @@ test(
       hold: 'The owner wants to talk first',
     })
     expect(othrys.claude.sessions.some(session => session.cwd === folder)).toBe(false)
-    const questionPage = await hydra.page()
+    const questionPage = await titan.page()
     const goQuestion = await questionPage.send({
       name: 'task',
       args: [
@@ -856,7 +856,7 @@ test(
         '--context',
         `Go starts the rename. [Card](othrys-task:${encodeURIComponent(held.card.id)})`,
         '--actor',
-        'hydra',
+        'titan',
         '--reason',
         'The owner wants to talk first',
       ],
@@ -864,7 +864,7 @@ test(
     questionPage.close()
     expect(goQuestion).toMatchObject({ ask: expect.any(String) })
 
-    const waiting = await hydra.owner({
+    const waiting = await titan.owner({
       args: [
         'task',
         'create',
@@ -881,7 +881,7 @@ test(
         '--on',
         held.card.id,
         '--actor',
-        'hydra',
+        'titan',
         '--reason',
         'The docs follow the rename',
         '--event-id',
@@ -894,7 +894,7 @@ test(
     })
     expect(othrys.claude.sessions.some(session => session.cwd === docsFolder)).toBe(false)
 
-    const docs = await hydra.owner({
+    const docs = await titan.owner({
       args: [
         'task',
         'start',
@@ -906,16 +906,16 @@ test(
         clear: expect.stringContaining(held.card.id),
       }),
     ])
-    expect((await hydra.agent({ cwd: docsFolder })).received).toHaveLength(1)
+    expect((await titan.agent({ cwd: docsFolder })).received).toHaveLength(1)
   },
 )
 
 test(
   'a start with an open question goes ahead and lists it with the command that answers it, and a create that cannot start notes why once however often it is retried',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'archive' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'archive' })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -930,8 +930,8 @@ test(
         'Archive the old invoices',
       ],
     })
-    const card = await hydra.task({ key: 'archive' })
-    const asked = await hydra.owner({
+    const card = await titan.task({ key: 'archive' })
+    const asked = await titan.owner({
       args: [
         'task',
         'ask',
@@ -949,13 +949,13 @@ test(
         '--recommend',
         '1',
         '--actor',
-        'hydra',
+        'titan',
         '--reason',
         'Only the owner knows the rule',
       ],
     })
 
-    const started = await hydra.owner({
+    const started = await titan.owner({
       args: [
         'task',
         'start',
@@ -968,7 +968,7 @@ test(
         clear: expect.stringContaining(`othrys answer ${card.id} ${asked.ask}`),
       }),
     ])
-    expect((await hydra.agent({ cwd: folder })).received[0]).toContain('Archive the old invoices')
+    expect((await titan.agent({ cwd: folder })).received[0]).toContain('Archive the old invoices')
 
     const idea = [
       'task',
@@ -976,7 +976,7 @@ test(
       '--title',
       'Sketch the invoice archive',
       '--actor',
-      'hydra',
+      'titan',
       '--reason',
       'The owner asked for a sketch',
       '--event-id',
@@ -984,31 +984,31 @@ test(
     ]
 
     for (let attempt = 0; attempt < 2; attempt++) {
-      expect(await hydra.owner({ args: idea })).toMatchObject({ launch: 'not started' })
+      expect(await titan.owner({ args: idea })).toMatchObject({ launch: 'not started' })
     }
 
-    const sketch = (await hydra.owner({
+    const sketch = (await titan.owner({
       args: [
         'task',
         'list',
       ],
     })).tasks.find((task: { title: string }) => task.title === 'Sketch the invoice archive')
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'show',
         sketch.id,
         '--full',
       ],
-    })).task.notes).toEqual([expect.objectContaining({ source: 'pnyx:create' })])
+    })).task.notes).toEqual([expect.objectContaining({ source: 'othrys:create' })])
   },
 )
 
 test(
   'arrangement can be undone and apply --check previews task creation without writing',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1020,7 +1020,7 @@ test(
       ],
     })
 
-    const first = await hydra.owner({
+    const first = await titan.owner({
       args: [
         'task',
         'create',
@@ -1030,7 +1030,7 @@ test(
         'First in Ideas',
       ],
     })
-    const arranged = await hydra.owner({
+    const arranged = await titan.owner({
       args: [
         'task',
         'arrange',
@@ -1039,7 +1039,7 @@ test(
         'later',
       ],
     })
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'rename',
@@ -1050,7 +1050,7 @@ test(
         arranged.event.id,
       ],
     })).code).toBe('IDEMPOTENCY_CONFLICT')
-    const { task: placed } = await hydra.owner({
+    const { task: placed } = await titan.owner({
       args: [
         'task',
         'show',
@@ -1058,7 +1058,7 @@ test(
         '--full',
       ],
     })
-    const { task: later } = await hydra.owner({
+    const { task: later } = await titan.owner({
       args: [
         'task',
         'show',
@@ -1067,13 +1067,13 @@ test(
       ],
     })
     expect(placed.rank).toBeLessThan(later.rank ?? later.createdSeq)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'undo',
         arranged.event.id,
       ],
     })
-    const { task: restored } = await hydra.owner({
+    const { task: restored } = await titan.owner({
       args: [
         'task',
         'show',
@@ -1083,7 +1083,7 @@ test(
     })
     expect(restored.rank ?? restored.createdSeq).toBeGreaterThan(later.rank ?? later.createdSeq)
 
-    const earlierArrangement = await hydra.owner({
+    const earlierArrangement = await titan.owner({
       args: [
         'task',
         'arrange',
@@ -1092,21 +1092,21 @@ test(
         'later',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'arrange',
         first.card.id,
       ],
     })
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'undo',
         earlierArrangement.event.id,
       ],
     })).code).toBe('CONFLICT')
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1118,7 +1118,7 @@ test(
         'later',
       ],
     })
-    const { task: createdBefore } = await hydra.owner({
+    const { task: createdBefore } = await titan.owner({
       args: [
         'task',
         'show',
@@ -1128,9 +1128,9 @@ test(
     })
     expect(createdBefore.rank).toBeLessThan(later.rank ?? later.createdSeq)
 
-    const seq = () => loadTitan({ hydraId: hydra.id }).state.seq
+    const seq = () => loadTitan({ titanId: titan.id }).state.seq
     const before = seq()
-    const preview = await hydra.owner({
+    const preview = await titan.owner({
       args: [
         'apply',
         '--check',
@@ -1158,7 +1158,7 @@ test(
       ],
     })
     expect(seq()).toBe(before)
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'show',
@@ -1171,8 +1171,8 @@ test(
 test(
   'tasks can be nested, moved between parents and detached with one level enforced',
   async () => {
-    const hydra = await othrys.hydra()
-    const parent = await hydra.owner({
+    const titan = await othrys.titan()
+    const parent = await titan.owner({
       args: [
         'task',
         'create',
@@ -1181,7 +1181,7 @@ test(
         'Export',
       ],
     })
-    const other = await hydra.owner({
+    const other = await titan.owner({
       args: [
         'task',
         'create',
@@ -1190,7 +1190,7 @@ test(
         'Import',
       ],
     })
-    const child = await hydra.owner({
+    const child = await titan.owner({
       args: [
         'task',
         'create',
@@ -1199,7 +1199,7 @@ test(
         'CSV',
       ],
     })
-    const leaf = await hydra.owner({
+    const leaf = await titan.owner({
       args: [
         'task',
         'create',
@@ -1208,7 +1208,7 @@ test(
         'Headers',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'parent',
@@ -1216,8 +1216,8 @@ test(
         parent.card.id,
       ],
     })
-    expect((await hydra.task({ key: child.card.id })).parent).toBe(parent.card.id)
-    expect((await hydra.ownerRefused({
+    expect((await titan.task({ key: child.card.id })).parent).toBe(parent.card.id)
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'parent',
@@ -1225,7 +1225,7 @@ test(
         child.card.id,
       ],
     })).code).toBe('VALIDATION_ERROR')
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'parent',
@@ -1233,7 +1233,7 @@ test(
         child.card.id,
       ],
     })).code).toBe('VALIDATION_ERROR')
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'parent',
@@ -1241,7 +1241,7 @@ test(
         other.card.id,
       ],
     })).code).toBe('VALIDATION_ERROR')
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'parent',
@@ -1249,8 +1249,8 @@ test(
         other.card.id,
       ],
     })
-    expect((await hydra.task({ key: child.card.id })).parent).toBe(other.card.id)
-    await hydra.owner({
+    expect((await titan.task({ key: child.card.id })).parent).toBe(other.card.id)
+    await titan.owner({
       args: [
         'task',
         'parent',
@@ -1258,8 +1258,8 @@ test(
         'none',
       ],
     })
-    expect((await hydra.task({ key: child.card.id })).parent).toBe('none')
-    expect((await hydra.ownerRefused({
+    expect((await titan.task({ key: child.card.id })).parent).toBe('none')
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'parent',
@@ -1273,10 +1273,10 @@ test(
 test(
   'parent retention waits for every child and reopens when a child resumes',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
 
     const retention = async () => {
-      const { task } = await hydra.owner({
+      const { task } = await titan.owner({
         args: [
           'task',
           'show',
@@ -1291,7 +1291,7 @@ test(
       }
     }
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1302,7 +1302,7 @@ test(
         'Release',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1315,7 +1315,7 @@ test(
         'family',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1328,7 +1328,7 @@ test(
         'family',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         'family',
@@ -1341,7 +1341,7 @@ test(
       doneAt: null,
       hidden: false,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         'part',
@@ -1354,7 +1354,7 @@ test(
       doneAt: null,
       hidden: false,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         'second-part',
@@ -1364,7 +1364,7 @@ test(
       ],
     })
     expect((await retention()).doneAt).toBeTypeOf('string')
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         'part',
@@ -1381,7 +1381,7 @@ test(
       hidden: false,
     })
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1393,7 +1393,7 @@ test(
       ],
     })
     const earned = await workerLine({
-      hydra,
+      titan,
       key: 'earned',
       line: 'done: outside work completed',
     })
@@ -1402,7 +1402,7 @@ test(
       provider: 'claude',
       sessionId: 'retention-earned',
     }
-    await hydra.owner({
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -1415,7 +1415,7 @@ test(
         activity: 'finished',
       }),
     })
-    const retained = await hydra.owner({
+    const retained = await titan.owner({
       args: [
         'task',
         'show',
@@ -1424,8 +1424,8 @@ test(
       ],
     })
     expect(retained.task.doneAt).toBe(earned.doneAt)
-    expect((await hydra.task({ key: 'earned' })).status).toBe('done')
-    await hydra.owner({
+    expect((await titan.task({ key: 'earned' })).status).toBe('done')
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -1438,7 +1438,7 @@ test(
         activity: 'working',
       }),
     })
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'show',
@@ -1446,7 +1446,7 @@ test(
         '--full',
       ],
     })).task.doneAt).toBeUndefined()
-    await hydra.owner({
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -1459,8 +1459,8 @@ test(
         activity: 'finished',
       }),
     })
-    expect((await hydra.task({ key: 'earned' })).status).toBe('idle')
-    await hydra.owner({
+    expect((await titan.task({ key: 'earned' })).status).toBe('idle')
+    await titan.owner({
       args: [
         'task',
         'ask',
@@ -1474,21 +1474,21 @@ test(
       ],
     })
     const awaitingOwner = await workerLine({
-      hydra,
+      titan,
       key: 'earned',
       line: 'done: export ready for owner review',
     })
     expect(awaitingOwner.doneAt).toBeUndefined()
-    expect((await hydra.task({ key: 'earned' })).status).toBe('needs you')
+    expect((await titan.task({ key: 'earned' })).status).toBe('needs you')
   },
 )
 
 test(
   'a retried rename answers for its own operation from the task as it is now, and with the task id alone once the task moved to another Titan',
   async () => {
-    const hydra = await othrys.hydra()
-    const other = await othrys.hydra()
-    const created = await hydra.owner({
+    const titan = await othrys.titan()
+    const other = await othrys.titan()
+    const created = await titan.owner({
       args: [
         'task',
         'create',
@@ -1509,8 +1509,8 @@ test(
       '--event-id',
       'retried-declaration',
     ]
-    const first = await hydra.owner({ args: declare })
-    const later = await hydra.owner({
+    const first = await titan.owner({ args: declare })
+    const later = await titan.owner({
       args: [
         'task',
         'rename',
@@ -1521,21 +1521,21 @@ test(
     })
     expect(later.card.revision).toBeGreaterThan(first.card.revision)
 
-    const retried = await hydra.owner({ args: declare })
+    const retried = await titan.owner({ args: declare })
     expect(retried.duplicate).toBe('event id already applied; nothing appended')
     expect(retried.event).toEqual(first.event)
     expect(retried.card).toEqual(later.card)
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'move',
         taskId,
-        '--to-hydra',
+        '--to-titan',
         other.id,
       ],
     })
-    const moved = await hydra.owner({ args: declare })
+    const moved = await titan.owner({ args: declare })
     expect(moved.duplicate).toBe('event id already applied; nothing appended')
     expect(moved.event).toEqual(first.event)
     expect(moved.card).toEqual({ id: taskId })
@@ -1545,8 +1545,8 @@ test(
 test(
   'arrange retries remain duplicates after their peer changes family',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1557,7 +1557,7 @@ test(
         'Atlas',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1568,7 +1568,7 @@ test(
         'Boreal',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1579,7 +1579,7 @@ test(
         'Parent',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'arrange',
@@ -1595,8 +1595,8 @@ test(
       '--event-id',
       'constructor',
     ]
-    await hydra.owner({ args })
-    await hydra.owner({
+    await titan.owner({ args })
+    await titan.owner({
       args: [
         'task',
         'parent',
@@ -1604,8 +1604,8 @@ test(
         'p',
       ],
     })
-    expect((await hydra.owner({ args })).duplicate).toBe('event id already applied; nothing appended')
-    await hydra.owner({
+    expect((await titan.owner({ args })).duplicate).toBe('event id already applied; nothing appended')
+    await titan.owner({
       args: [
         'task',
         'arrange',
@@ -1616,7 +1616,7 @@ test(
         'manual:lifecycle',
       ],
     })
-    expect(readEvents({ hydraId: hydra.id }).some(event => event.id === 'manual:lifecycle')).toBe(true)
+    expect(readEvents({ titanId: titan.id }).some(event => event.id === 'manual:lifecycle')).toBe(true)
   },
 )
 
@@ -1653,7 +1653,7 @@ test(
       ...event,
     })).join('\n')
     await withWriter({
-      hydraId: id,
+      titanId: id,
       create: true,
       fn: ({ writer }) => {
         for (const line of events.split('\n')) {
@@ -1666,11 +1666,11 @@ test(
         }
       },
     })
-    const hydra = await othrys.hydra({
+    const titan = await othrys.titan({
       id,
       create: false,
     })
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'push',
         '--key',
@@ -1683,7 +1683,7 @@ test(
         parent: 'untracked-child',
       }),
     })).code).toBe('VALIDATION_ERROR')
-    await hydra.owner({
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -1705,14 +1705,14 @@ test(
         },
       }),
     })
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'show',
         'untracked-leaf',
       ],
     })).code).toBe('NOT_FOUND')
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'show',
@@ -1737,7 +1737,7 @@ test(
         seq: 1,
         id: 'project',
         cardId: '$projects',
-        type: 'hydra.project',
+        type: 'titan.project',
         data: {
           before: null,
           after: {
@@ -1790,7 +1790,7 @@ test(
       ...event,
     })).join('\n')
     await withWriter({
-      hydraId: id,
+      titanId: id,
       create: true,
       fn: ({ writer }) => {
         for (const line of events.split('\n')) {
@@ -1803,11 +1803,11 @@ test(
         }
       },
     })
-    const hydra = await othrys.hydra({
+    const titan = await othrys.titan({
       id,
       create: false,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'show',
@@ -1817,7 +1817,7 @@ test(
     expect(await until({
       what: 'the reminder-only Titan summary',
       check: () => {
-        const summary = othrys.home().hydras.find(summary => summary.id === id)
+        const summary = othrys.home().titans.find(summary => summary.id === id)
 
         if (summary?.projects.length === 1) {
           return summary
@@ -1869,7 +1869,7 @@ test(
 )
 
 async function placementFamily() {
-  const hydra = await othrys.hydra()
+  const titan = await othrys.titan()
   const entries = [
     { key: 'first' },
     { key: 'parent' },
@@ -1902,13 +1902,13 @@ async function placementFamily() {
       )
     }
 
-    await hydra.owner({ args })
+    await titan.owner({ args })
   }
 
-  const parent = (await hydra.task({ key: 'parent' })).id
-  const child = (await hydra.task({ key: 'child' })).id
+  const parent = (await titan.task({ key: 'parent' })).id
+  const child = (await titan.task({ key: 'child' })).id
   const order = ({ parent }: { parent?: string } = {}) => Object.values(loadTitan({
-    hydraId: hydra.id,
+    titanId: titan.id,
   }).state.cards).filter(card => {
     const inParent = (card.parentId ?? null) === (parent ?? null)
 
@@ -1922,7 +1922,7 @@ async function placementFamily() {
     .map(card => card.key)
 
   return {
-    hydra,
+    titan,
     parent,
     child,
     order,
@@ -1933,12 +1933,12 @@ test(
   'detaching before a root records one change, retries once and undoes the complete sibling placement',
   async () => {
     const {
-      hydra,
+      titan,
       parent,
       child,
       order,
     } = await placementFamily()
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'arrange',
@@ -1950,7 +1950,7 @@ test(
       'sibling',
       'child',
     ])
-    const before = readEvents({ hydraId: hydra.id })
+    const before = readEvents({ titanId: titan.id })
     const args = [
       'task',
       'parent',
@@ -1961,25 +1961,25 @@ test(
       '--event-id',
       'parent-before-root',
     ]
-    const placed = await hydra.owner({ args })
-    expect((await hydra.task({ key: 'child' })).parent).toBe('none')
+    const placed = await titan.owner({ args })
+    expect((await titan.task({ key: 'child' })).parent).toBe('none')
     expect(order()).toEqual([
       'child',
       'first',
       'parent',
       'last',
     ])
-    const events = readEvents({ hydraId: hydra.id })
+    const events = readEvents({ titanId: titan.id })
     expect(events).toHaveLength(before.length + 1)
-    expect((await hydra.owner({ args })).duplicate).toBe('event id already applied; nothing appended')
-    expect(readEvents({ hydraId: hydra.id })).toHaveLength(events.length)
-    await hydra.owner({
+    expect((await titan.owner({ args })).duplicate).toBe('event id already applied; nothing appended')
+    expect(readEvents({ titanId: titan.id })).toHaveLength(events.length)
+    await titan.owner({
       args: [
         'undo',
         placed.event.id,
       ],
     })
-    expect((await hydra.task({ key: 'child' })).parent).toBe(parent)
+    expect((await titan.task({ key: 'child' })).parent).toBe(parent)
     expect(order({ parent })).toEqual(siblings)
     const event = events.at(-1)!
 
@@ -2018,11 +2018,11 @@ test(
   'detaching without a target places the child at the end of its project roots',
   async () => {
     const {
-      hydra,
+      titan,
       parent,
       order,
     } = await placementFamily()
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'parent',
@@ -2044,18 +2044,18 @@ test(
   'a refused root placement changes neither parent nor rank and raw pushes cannot supply rank',
   async () => {
     const {
-      hydra,
+      titan,
       child,
     } = await placementFamily()
-    const repository = hydra.folder({ name: 'Other-project' })
-    await hydra.owner({
+    const repository = titan.folder({ name: 'Other-project' })
+    await titan.owner({
       args: [
         'project',
         'add',
         repository,
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -2069,7 +2069,7 @@ test(
       ],
     })
     const snapshot = () => Object.values(loadTitan({
-      hydraId: hydra.id,
+      titanId: titan.id,
     }).state.cards).filter(card => card.id === child)
       .map(card => ({
         parent_id: card.parentId ?? null,
@@ -2082,7 +2082,7 @@ test(
       'sibling',
       'other',
     ]) {
-      expect((await hydra.ownerRefused({
+      expect((await titan.ownerRefused({
         args: [
           'task',
           'parent',
@@ -2095,7 +2095,7 @@ test(
       expect(snapshot()).toEqual(before)
     }
 
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'push',
         '--key',
@@ -2115,16 +2115,16 @@ test(
 test(
   'owner question presentation defaults carry notices, invalid choices stay invalid, and updates never ask for a decision',
   async () => {
-    const hydra = await othrys.hydra()
-    const { worker } = await hydra.startTask({
+    const titan = await othrys.titan()
+    const { worker } = await titan.startTask({
       key: 'questions',
       harness: 'codex',
     })
-    const session = await hydra.chat({ text: 'Decide export scope' })
-    const asTitan = hydra.as({ session })
-    const card = await hydra.task({ key: 'questions' })
+    const session = await titan.chat({ text: 'Decide export scope' })
+    const asTitan = titan.as({ session })
+    const card = await titan.task({ key: 'questions' })
     const context = `Archived invoices change totals. After the answer I will build the export. [Export \\[scope\\]](othrys-task:${card.id})`
-    const asWorker = hydra.as({ session: worker })
+    const asWorker = titan.as({ session: worker })
     const managed = await asTitan.run({
       args: [
         'task',
@@ -2151,7 +2151,7 @@ test(
       ],
     })
     expect(deferred.notices).toBeDefined()
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'show',
@@ -2193,7 +2193,7 @@ test(
       ],
     })
     expect(reopened.event).toBeDefined()
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'show',
@@ -2233,7 +2233,7 @@ test(
     const accepted = async ({ args }: { args: string[] }) => {
       const result = await asTitan.run({ args })
       expect(result.notices).toBeDefined()
-      expect((await hydra.task({ key: 'questions' })).notices).toBeDefined()
+      expect((await titan.task({ key: 'questions' })).notices).toBeDefined()
       await asTitan.run({
         args: [
           'task',
@@ -2334,11 +2334,11 @@ test(
     }
 
     await workerLine({
-      hydra,
+      titan,
       key: 'questions',
       line: 'needs-you: Ready for review',
     })
-    const beforeReminder = await hydra.owner({
+    const beforeReminder = await titan.owner({
       args: [
         'task',
         'show',
@@ -2349,7 +2349,7 @@ test(
     expect(beforeReminder.task.workerLog.status).toMatchObject({ code: 'needs-you' })
 
     const due = new Date(Date.now() + 60_000).toISOString()
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'remind',
@@ -2358,10 +2358,10 @@ test(
       ],
     })
     await fireReminders({
-      hydraId: hydra.id,
+      titanId: titan.id,
       at: new Date(Date.parse(due) + 1).toISOString(),
     })
-    const afterReminder = await hydra.owner({
+    const afterReminder = await titan.owner({
       args: [
         'task',
         'show',
@@ -2370,7 +2370,7 @@ test(
       ],
     })
     expect(afterReminder.task.workerLog).toEqual(beforeReminder.task.workerLog)
-    const updates = await hydra.owner({
+    const updates = await titan.owner({
       args: [
         'task',
         'updates',
@@ -2390,7 +2390,7 @@ test(
         'Accounting decision',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'answer',
@@ -2400,7 +2400,7 @@ test(
         '1',
       ],
     })
-    const workerAsk = await hydra.as({ session: worker }).run({
+    const workerAsk = await titan.as({ session: worker }).run({
       args: [
         'task',
         'ask',
@@ -2415,7 +2415,7 @@ test(
         '2',
       ],
     })
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'questions',
@@ -2423,9 +2423,9 @@ test(
     })).count).toBe(0)
     await until({
       what: 'the Titan summary to reflect no owner questions',
-      check: () => (othrys.home().hydras.find(summary => summary.id === hydra.id))?.asks === 0,
+      check: () => (othrys.home().titans.find(summary => summary.id === titan.id))?.asks === 0,
     })
-    expect((othrys.home().hydras.find(summary => summary.id === hydra.id))?.asks).toBe(0)
+    expect((othrys.home().titans.find(summary => summary.id === titan.id))?.asks).toBe(0)
     expect((await asTitan.run({
       args: [
         'task',
@@ -2461,7 +2461,7 @@ test(
         'Accounting decision',
       ],
     })
-    const escalated = await hydra.owner({
+    const escalated = await titan.owner({
       args: [
         'task',
         'show',
@@ -2481,16 +2481,16 @@ test(
 test(
   'related owner questions form one group, share choices safely and answer once',
   async () => {
-    const hydra = await othrys.hydra()
-    const project = hydra.folder({ name: 'exports' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const project = titan.folder({ name: 'exports' })
+    await titan.owner({
       args: [
         'project',
         'add',
         project,
       ],
     })
-    const parent = await hydra.owner({
+    const parent = await titan.owner({
       args: [
         'task',
         'create',
@@ -2504,7 +2504,7 @@ test(
       'invoices',
       'payments',
     ]) {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'create',
@@ -2521,8 +2521,8 @@ test(
       })
     }
 
-    const session = await hydra.chat({ text: 'Review the batch scope' })
-    const asTitan = hydra.as({ session })
+    const session = await titan.chat({ text: 'Review the batch scope' })
+    const asTitan = titan.as({ session })
 
     const ask = async ({
       key,
@@ -2534,7 +2534,7 @@ test(
       key: string
       options?: string[]
     }) => {
-      const card = await hydra.task({ key })
+      const card = await titan.task({ key })
 
       return asTitan.run({
         args: [
@@ -2561,7 +2561,7 @@ test(
 
     const first = await ask({ key: 'invoices' })
     const second = await ask({ key: 'payments' })
-    const grouped = await hydra.owner({
+    const grouped = await titan.owner({
       args: [
         'task',
         'questions',
@@ -2579,7 +2579,7 @@ test(
     const summary = await until({
       what: 'the grouped owner decision in the project summary',
       check: () => {
-        const summary = othrys.home().hydras.find(summary => summary.id === hydra.id)
+        const summary = othrys.home().titans.find(summary => summary.id === titan.id)
 
         if (summary?.projects.some(project => project.name === 'exports' && project.asks === 1)) {
           return summary
@@ -2613,12 +2613,12 @@ test(
       'not-a-question-key',
     ])
     const malformedAnswer = answer.map(value => value === snapshot ? malformedSnapshot : value)
-    expect((await hydra.ownerRefused({ args: malformedAnswer })).code).toBe('VALIDATION_ERROR')
+    expect((await titan.ownerRefused({ args: malformedAnswer })).code).toBe('VALIDATION_ERROR')
     const numericChoice = answer.map((
       value,
       index,
     ) => answer[index - 1] === '--choice' ? '1' : value)
-    expect((await hydra.ownerRefused({ args: numericChoice })).code).toBe('VALIDATION_ERROR')
+    expect((await titan.ownerRefused({ args: numericChoice })).code).toBe('VALIDATION_ERROR')
     const answered = await asTitan.run({ args: answer })
     expect(answered.notices).toBeDefined()
     const repeated = await asTitan.run({ args: answer })
@@ -2627,8 +2627,8 @@ test(
       value,
       index,
     ) => answer[index - 1] === '--choice' ? 'Include archived' : value)
-    expect((await hydra.ownerRefused({ args: differentRetry })).code).toBe('CONFLICT')
-    expect((await hydra.owner({
+    expect((await titan.ownerRefused({ args: differentRetry })).code).toBe('CONFLICT')
+    expect((await titan.owner({
       args: [
         'task',
         'questions',
@@ -2648,7 +2648,7 @@ test(
           second,
         ],
       ] as const) {
-      const card = await hydra.owner({
+      const card = await titan.owner({
         args: [
           'task',
           'show',
@@ -2660,7 +2660,7 @@ test(
     }
 
     const third = await ask({ key: 'invoices' })
-    const old = await hydra.owner({
+    const old = await titan.owner({
       args: [
         'task',
         'questions',
@@ -2680,7 +2680,7 @@ test(
     ])
     const oldKeys = old.groups[0].questions.map((question: { key: string }) => question.key)
     const stale = JSON.stringify(oldKeys)
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'answer-group',
@@ -2693,7 +2693,7 @@ test(
         'stale-batch',
       ],
     })).code).toBe('CONFLICT')
-    const different = await hydra.owner({
+    const different = await titan.owner({
       args: [
         'task',
         'questions',
@@ -2704,7 +2704,7 @@ test(
       (question: { key: string }) => question.key,
     )
     const current = JSON.stringify(currentKeys)
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'task',
         'answer-group',
@@ -2717,7 +2717,7 @@ test(
         'different-batch',
       ],
     })).code).toBe('VALIDATION_ERROR')
-    const unchanged = await hydra.owner({
+    const unchanged = await titan.owner({
       args: [
         'task',
         'show',
@@ -2733,8 +2733,8 @@ test(
 test(
   'group delivery stops when a new question arrives between worker sends',
   async () => {
-    const hydra = await othrys.hydra()
-    const parent = await hydra.owner({
+    const titan = await othrys.titan()
+    const parent = await titan.owner({
       args: [
         'task',
         'create',
@@ -2743,10 +2743,10 @@ test(
         'Export delivery batch',
       ],
     })
-    const session = await hydra.chat({ text: 'Coordinate worker decisions' })
-    const asTitan = hydra.as({ session })
-    const gate = hydra.folder({ name: 'delivery-gate' })
-    const bin = hydra.folder({ name: 'delivery-bin' })
+    const session = await titan.chat({ text: 'Coordinate worker decisions' })
+    const asTitan = titan.as({ session })
+    const gate = titan.folder({ name: 'delivery-gate' })
+    const bin = titan.folder({ name: 'delivery-bin' })
     const originalPath = process.env.PATH
     const tmux = join(
       bin,
@@ -2780,7 +2780,7 @@ test(
       'first',
       'second',
     ]) {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'create',
@@ -2793,7 +2793,7 @@ test(
           parent.card.id,
         ],
       })
-      await hydra.owner({
+      await titan.owner({
         args: [
           'push',
           '--key',
@@ -2815,8 +2815,8 @@ test(
           },
         }),
       })
-      const card = await hydra.task({ key })
-      const asked = await hydra.owner({
+      const card = await titan.task({ key })
+      const asked = await titan.owner({
         args: [
           'task',
           'ask',
@@ -2851,7 +2851,7 @@ test(
       })
     }
 
-    const grouped = await hydra.owner({
+    const grouped = await titan.owner({
       args: [
         'task',
         'questions',
@@ -2859,7 +2859,7 @@ test(
     })
     const questions = grouped.groups[0].questions as { key: string }[]
     const firstId = decodeURIComponent(questions[0].key.split('/')[0])
-    const firstKey = (await hydra.task({ key: 'first' })).id === firstId ? 'first' : 'second'
+    const firstKey = (await titan.task({ key: 'first' })).id === firstId ? 'first' : 'second'
     process.env.PATH = `${bin}:${originalPath}`
     const attempt = [
       'task',
@@ -2872,7 +2872,7 @@ test(
       '--event-id',
       'gated-delivery',
     ]
-    const answer = hydra.ownerRefused({ args: attempt }).then(
+    const answer = titan.ownerRefused({ args: attempt }).then(
       result => ({ result }),
       error => ({ error }),
     )
@@ -2930,7 +2930,7 @@ test(
       'first',
       'second',
     ]) {
-      const shown = await hydra.owner({
+      const shown = await titan.owner({
         args: [
           'task',
           'show',
@@ -2954,14 +2954,14 @@ test(
       }
     }
 
-    const remaining = await hydra.owner({
+    const remaining = await titan.owner({
       args: [
         'task',
         'questions',
       ],
     })
     expect(remaining.groups[0].count).toBe(2)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'answer',
@@ -2982,7 +2982,7 @@ test(
     process.env.PATH = `${bin}:${originalPath}`
 
     try {
-      const failed = await hydra.owner({ args: attempt })
+      const failed = await titan.owner({ args: attempt })
       expect(failed.answers).toMatchObject([
         { repeat: true },
         { state: 'failed' },
@@ -3004,7 +3004,7 @@ test(
 
         return flag === '--choice' ? 'Include archived' : value
       })
-      expect((await hydra.ownerRefused({ args: failedQuestionWithDifferentChoice })).code).toBe('CONFLICT')
+      expect((await titan.ownerRefused({ args: failedQuestionWithDifferentChoice })).code).toBe('CONFLICT')
       expect(readFileSync(
         join(
           gate,
@@ -3013,7 +3013,7 @@ test(
         'utf8',
       ).trim()
         .split('\n')).toHaveLength(1)
-      const recovered = await hydra.owner({ args: attempt })
+      const recovered = await titan.owner({ args: attempt })
       expect(recovered.answers).toMatchObject([
         { repeat: true },
         { state: 'delivered' },
@@ -3039,7 +3039,7 @@ test(
       'first',
       'second',
     ]) {
-      const shown = await hydra.owner({
+      const shown = await titan.owner({
         args: [
           'task',
           'show',
@@ -3052,7 +3052,7 @@ test(
       expect(shown.task.asks[0].choice).toBe('Open only')
     }
 
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'questions',
@@ -3064,8 +3064,8 @@ test(
 test(
   'a push updates task fields while observing an attached session',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -3076,7 +3076,7 @@ test(
         'Parent',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -3087,8 +3087,8 @@ test(
         'Before',
       ],
     })
-    const folder = hydra.folder({ name: 'observed' })
-    const firstObservation = await hydra.owner({
+    const folder = titan.folder({ name: 'observed' })
+    const firstObservation = await titan.owner({
       args: [
         'push',
         '--key',
@@ -3112,7 +3112,7 @@ test(
         activity: 'working',
       }),
     })
-    const retried = await hydra.owner({
+    const retried = await titan.owner({
       args: [
         'push',
         '--key',
@@ -3131,7 +3131,7 @@ test(
     })
     expect(retried.event).toEqual(firstObservation.event)
     expect(retried.duplicate).toContain('nothing appended')
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'push',
         '--key',
@@ -3143,7 +3143,7 @@ test(
       ],
       input: JSON.stringify({ title: 'Unrelated write' }),
     })).code).toBe('IDEMPOTENCY_CONFLICT')
-    const outside = await hydra.owner({
+    const outside = await titan.owner({
       args: [
         'push',
         '--key',
@@ -3160,7 +3160,7 @@ test(
         },
       }),
     })
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'push',
         '--key',
@@ -3177,7 +3177,7 @@ test(
         },
       }),
     })).event).toEqual(outside.event)
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'push',
         '--key',
@@ -3189,7 +3189,7 @@ test(
       ],
       input: JSON.stringify({ title: 'Unrelated write' }),
     })).code).toBe('IDEMPOTENCY_CONFLICT')
-    const result = await hydra.owner({
+    const result = await titan.owner({
       args: [
         'task',
         'show',
@@ -3199,14 +3199,14 @@ test(
     })
     expect(result.task).toMatchObject({
       title: 'After',
-      parentId: (await hydra.task({ key: 'parent' })).id,
+      parentId: (await titan.task({ key: 'parent' })).id,
       project: 'shop',
       workspace: 'work',
       tags: ['review'],
       folder,
       activity: 'working',
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -3224,7 +3224,7 @@ test(
         },
       }),
     })
-    const cleared = await hydra.owner({
+    const cleared = await titan.owner({
       args: [
         'task',
         'show',
@@ -3235,7 +3235,7 @@ test(
     expect(cleared.task.parentId).toBeUndefined()
     expect(cleared.task.project).toBeUndefined()
     expect(cleared.task.folder).toBeUndefined()
-    await hydra.owner({
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -3251,8 +3251,8 @@ test(
         },
       }),
     })
-    expect((await hydra.task({ key: 'observed' })).title).toBe('After')
-    const parent = (await hydra.owner({
+    expect((await titan.task({ key: 'observed' })).title).toBe('After')
+    const parent = (await titan.owner({
       args: [
         'task',
         'show',
@@ -3262,7 +3262,7 @@ test(
     })).task
     expect(parent.title).toBe('Parent updated')
     expect(parent.sessionIds ?? []).toEqual([])
-    const stillAssigned = (await hydra.owner({
+    const stillAssigned = (await titan.owner({
       args: [
         'task',
         'show',
@@ -3271,7 +3271,7 @@ test(
       ],
     })).task
     expect(stillAssigned.agent.sessionId).toBe('observed')
-    await hydra.owner({
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -3287,8 +3287,8 @@ test(
         activity: 'ended',
       }),
     })
-    expect((await hydra.task({ key: 'observed' })).status).toBe('running')
-    expect((await hydra.owner({
+    expect((await titan.task({ key: 'observed' })).status).toBe('running')
+    expect((await titan.owner({
       args: [
         'task',
         'sessions',
@@ -3297,7 +3297,7 @@ test(
       id: 'claude:unassigned-observation',
       task: 'none',
     }))
-    await hydra.owner({
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -3313,7 +3313,7 @@ test(
         },
       }),
     })
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'sessions',
@@ -3322,8 +3322,8 @@ test(
       id: 'claude:observed',
       title: 'none',
     }))
-    expect((await hydra.task({ key: 'observed' })).title).toBe('observed')
-    await hydra.owner({
+    expect((await titan.task({ key: 'observed' })).title).toBe('observed')
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -3342,15 +3342,15 @@ test(
         },
       }),
     })
-    expect((await hydra.task({ key: 'observed' })).title).toBe('Read the export settings')
+    expect((await titan.task({ key: 'observed' })).title).toBe('Read the export settings')
   },
 )
 
 test(
   'workers can manage task policies and receipts retain their notices on the card',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -3361,7 +3361,7 @@ test(
         'Policy defaults',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -3372,13 +3372,13 @@ test(
         'Prerequisite',
       ],
     })
-    const staying = await hydra.owner({
+    const staying = await titan.owner({
       args: [
         'task',
         'move',
         'policies',
-        '--to-hydra',
-        hydra.id,
+        '--to-titan',
+        titan.id,
       ],
     })
     expect(staying.state).toBe('unchanged')
@@ -3423,7 +3423,7 @@ test(
         'Keep the result visible',
       ],
     ]) {
-      const receipt = await hydra.owner({
+      const receipt = await titan.owner({
         args: [
           ...args,
           ...actor,
@@ -3440,8 +3440,8 @@ test(
         expect(notice.clear).not.toMatch(/\bothrys-axi\b/)
       }
 
-      expect((await hydra.task({ key: 'policies' })).notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.any(String) })]))
-      const saved = (await hydra.owner({
+      expect((await titan.task({ key: 'policies' })).notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.any(String) })]))
+      const saved = (await titan.owner({
         args: [
           'task',
           'show',
@@ -3451,7 +3451,7 @@ test(
       })).task
 
       if (args[1] === 'depend') {
-        expect(saved.prerequisites).toEqual([(await hydra.task({ key: 'prerequisite' })).id])
+        expect(saved.prerequisites).toEqual([(await titan.task({ key: 'prerequisite' })).id])
       }
 
       if (args[1] === 'hold') {
@@ -3466,7 +3466,7 @@ test(
       }
     }
 
-    const full = await hydra.owner({
+    const full = await titan.owner({
       args: [
         'task',
         'show',
@@ -3485,12 +3485,12 @@ test(
         '--file',
         '-',
         '--titan',
-        hydra.id,
+        titan.id,
       ],
       env: {
         ...process.env,
         OTHRYS_ACTOR: 'worker:policies',
-        OTHRYS_TITAN: hydra.id,
+        OTHRYS_TITAN: titan.id,
       },
       input: JSON.stringify({
         version: 1,
@@ -3512,7 +3512,7 @@ test(
       batch.status,
       batch.stdout,
     ).toBe(0)
-    const unrelated = (await hydra.owner({
+    const unrelated = (await titan.owner({
       args: [
         'task',
         'show',
@@ -3522,7 +3522,7 @@ test(
     })).task
     expect(unrelated.notices ?? []).not.toContainEqual(expect.objectContaining({ reason: 'Ask recorded without a saved owner message' }))
 
-    const released = await hydra.owner({
+    const released = await titan.owner({
       args: [
         'task',
         'release',
@@ -3533,8 +3533,8 @@ test(
       ],
     })
     expect(released.notices).toBeDefined()
-    expect((await hydra.task({ key: 'policies' })).hold).toBeUndefined()
-    await hydra.owner({
+    expect((await titan.task({ key: 'policies' })).hold).toBeUndefined()
+    await titan.owner({
       args: [
         'task',
         'brief',
@@ -3543,7 +3543,7 @@ test(
         'Policy notices reviewed',
       ],
     })
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'show',
@@ -3551,7 +3551,7 @@ test(
         '--full',
       ],
     })).task.notices).toEqual([])
-    const overdue = await hydra.owner({
+    const overdue = await titan.owner({
       args: [
         'task',
         'remind',
@@ -3560,7 +3560,7 @@ test(
       ],
     })
     expect(overdue.notices).toContainEqual(expect.objectContaining({ reason: 'Reminder time has passed; the reminder is due now' }))
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'remind',
@@ -3568,7 +3568,7 @@ test(
         'clear',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         'policies',
@@ -3577,7 +3577,7 @@ test(
         'Finished policy changes',
       ],
     })
-    const stoppedRecurrence = await hydra.owner({
+    const stoppedRecurrence = await titan.owner({
       args: [
         'task',
         'remind',
@@ -3590,7 +3590,7 @@ test(
       ],
     })
     expect(stoppedRecurrence.notices).toContainEqual(expect.objectContaining({ reason: 'Task is already done; its recurring reminder stops immediately' }))
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'show',

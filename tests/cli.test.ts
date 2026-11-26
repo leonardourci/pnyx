@@ -7,20 +7,20 @@ import { dirname, join } from 'node:path'
 import { CLI, parsed, othrys, startOthrys, until, type Titan, type Othrys } from './setup/othrys.ts'
 
 let app: Othrys
-let hydra: Titan
+let titan: Titan
 const env = () => ({ ...process.env })
 const run = ({ args }: { args: string[] }) => othrys({
   args: [
     ...args,
     '--titan',
-    hydra.id,
+    titan.id,
   ],
   env: env(),
 })
 
 beforeAll(async () => {
   app = await startOthrys()
-  hydra = await app.hydra()
+  titan = await app.titan()
 })
 
 describe(
@@ -31,7 +31,7 @@ describe(
       async () => {
         const unused = {
           ...env(),
-          OTHRYS_HOME: hydra.folder({ name: 'no-server' }),
+          OTHRYS_HOME: titan.folder({ name: 'no-server' }),
         }
         const help = await othrys({
           args: ['--help'],
@@ -55,11 +55,11 @@ describe(
     it(
       'creates and starts a task once, messages its worker and prints a plain Titan',
       async () => {
-        const folder = hydra.folder({ name: 'plain-cli-worker' })
+        const folder = titan.folder({ name: 'plain-cli-worker' })
         const args = [
           'task',
           '--titan',
-          hydra.id,
+          titan.id,
           'create',
           '--title',
           'Plain CLI task',
@@ -86,7 +86,7 @@ describe(
           task: expect.any(String),
         })
         expect(receipt).not.toHaveProperty('help')
-        const worker = await hydra.agent({ cwd: folder })
+        const worker = await titan.agent({ cwd: folder })
         expect(parsed(await othrys({
           args,
           env: env(),
@@ -147,7 +147,7 @@ describe(
             '--text',
             'Scoped worker message',
             '--titan',
-            hydra.id,
+            titan.id,
             '--json',
           ],
           env: {
@@ -176,7 +176,7 @@ describe(
                 '--file',
                 message,
                 '--titan',
-                hydra.id,
+                titan.id,
                 '--json',
               ],
               cwd: process.cwd(),
@@ -192,7 +192,7 @@ describe(
             receipt.task,
             '--file=-',
             '--titan',
-            hydra.id,
+            titan.id,
             '--json',
           ],
           input: 'Input from stdin',
@@ -228,7 +228,7 @@ describe(
             '--file',
             '-',
             '--titan',
-            hydra.id,
+            titan.id,
             '--json',
           ],
           input: 'x'.repeat(MAX_BODY + 1),
@@ -237,16 +237,16 @@ describe(
         expect(oversizedStdin.status).toBe(2)
         expect(JSON.parse(oversizedStdin.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
 
-        const board = await run({ args: ['board'] })
-        expect(board.status).toBe(0)
-        expect(board.stdout).toContain('Plain CLI task')
-        expect(board.stdout).not.toContain('help[')
+        const titanRead = await run({ args: ['titan'] })
+        expect(titanRead.status).toBe(0)
+        expect(titanRead.stdout).toContain('Plain CLI task')
+        expect(titanRead.stdout).not.toContain('help[')
         expect(parsed(await run({
           args: [
-            'board',
+            'titan',
             '--json',
           ],
-        })).hydraId).toBe(hydra.id)
+        })).titanId).toBe(titan.id)
 
         for (const args of [
           ['history'],
@@ -256,15 +256,15 @@ describe(
             'export',
           ],
           [
-            'hydra',
+            'titan',
             'check',
           ],
           [
-            'hydra',
+            'titan',
             'digest',
           ],
           [
-            'hydra',
+            'titan',
             'history',
           ],
           [
@@ -307,7 +307,7 @@ describe(
     it(
       'acknowledges exact file-read instruction IDs once across a lost receipt and restart, without crossing assignments',
       async () => {
-        const scope = await app.hydra()
+        const scope = await app.titan()
         const created = await scope.owner({
           args: [
             'task',
@@ -406,7 +406,7 @@ describe(
           }))
         const log = join(
           process.env.OTHRYS_HOME!,
-          'hydras',
+          'titans',
           scope.id,
           'tasks',
           id,
@@ -555,11 +555,11 @@ describe(
         expect(parsed(sent).message).toEqual(expect.any(String))
         await until({
           what: 'Titan to receive the CLI message',
-          check: () => app.claude.sessions.some(session => session.env.OTHRYS_TITAN === hydra.id
+          check: () => app.claude.sessions.some(session => session.env.OTHRYS_TITAN === titan.id
             && session.received.some(text => text.includes('Review these tasks'))),
         })
-        const { worker } = await hydra.startTask({ key: 'plain-question' })
-        const question = await hydra.as({ session: worker }).run({
+        const { worker } = await titan.startTask({ key: 'plain-question' })
+        const question = await titan.as({ session: worker }).run({
           args: [
             'task',
             'ask',
@@ -610,7 +610,7 @@ describe(
           {
             env: {
               ...env(),
-              OTHRYS_HOME: hydra.folder({ name: 'cli-serve-home' }),
+              OTHRYS_HOME: titan.folder({ name: 'cli-serve-home' }),
             },
           },
         )
@@ -653,7 +653,7 @@ describe(
     it(
       'rejects removed commands and unknown flags without hint output',
       async () => {
-        const beforeView = await hydra.owner({
+        const beforeView = await titan.owner({
           args: [
             'view',
             'show',
@@ -696,7 +696,7 @@ describe(
           ],
           ['toString'],
           [
-            'hydra',
+            'titan',
             'usage',
             'refresh',
           ],
@@ -707,7 +707,7 @@ describe(
             'This must stay out of Titan chat',
           ],
           [
-            'board',
+            'titan',
             '--json=false',
           ],
           [
@@ -718,7 +718,7 @@ describe(
             '1',
           ],
           [
-            'board',
+            'titan',
             '--full',
           ],
         ]) {
@@ -740,7 +740,7 @@ describe(
           expect(refused.stderr).not.toContain('help[')
         }
 
-        expect(await hydra.owner({
+        expect(await titan.owner({
           args: [
             'view',
             'show',

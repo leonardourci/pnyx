@@ -29,12 +29,12 @@ afterAll(async () => {
 
 export async function openTitan({
   port,
-  hydraId,
+  titanId,
   reducedMotion = false,
   beforeLoad,
 }: {
   port: number
-  hydraId: string
+  titanId: string
   reducedMotion?: boolean
   beforeLoad?({ page }: { page: Page }): Promise<void>
 }): Promise<Page> {
@@ -53,7 +53,7 @@ export async function openTitan({
   contexts.add(context)
   const page = await context.newPage()
   await beforeLoad?.({ page })
-  await page.goto(`http://127.0.0.1:${port}/hydra/${hydraId}/`)
+  await page.goto(`http://127.0.0.1:${port}/titan/${titanId}/`)
 
   return page
 }

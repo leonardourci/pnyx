@@ -153,7 +153,7 @@ test(
 )
 
 test(
-  'retrying Titan creation syncs the home even when its hydras directory already exists',
+  'retrying Titan creation syncs the home even when its titans directory already exists',
   async () => {
     const home = folder()
     const inode = statSync(home).ino
@@ -161,7 +161,7 @@ test(
     const syncs = await recordSyncs({ reject: ({ inode: current }) => outage && current === inode })
     const creating = {
       home,
-      hydra: 'a',
+      titan: 'a',
       entries: [
         {
           ...message({
@@ -177,7 +177,7 @@ test(
       expect(() => createTitanFiles(creating)).toThrow(/sync outage/)
       expect(existsSync(join(
         home,
-        'hydras',
+        'titans',
       ))).toBe(true)
       outage = false
       syncs.synced.clear()
@@ -461,7 +461,7 @@ test(
     const snapshot = {
       v: 1 as const,
       at: AT,
-      hydra: {
+      titan: {
         bytes: 100,
         n: 1,
       },

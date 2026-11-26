@@ -5,7 +5,7 @@ import { git } from './upgrade.ts'
 
 export function afterHandoffSync({
   home,
-  hydra,
+  titan,
   source,
   target,
   cwd,
@@ -14,7 +14,7 @@ export function afterHandoffSync({
   cut = 'both',
 }: {
   home: string
-  hydra: string
+  titan: string
   source: string
   target: string
   cwd: string
@@ -27,8 +27,8 @@ export function afterHandoffSync({
     target,
   ].map(task => join(
     home,
-    'hydras',
-    hydra,
+    'titans',
+    titan,
     'tasks',
     task,
     'task.log',

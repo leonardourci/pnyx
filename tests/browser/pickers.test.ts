@@ -14,7 +14,7 @@ beforeAll(async () => {
 
 const RELEASE_TASKS = 60
 
-const composerOf = ({ page }: { page: Page }) => page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+const composerOf = ({ page }: { page: Page }) => page.locator('[data-titan-workspace][data-active=true]').getByRole(
   'textbox',
   {
     name: 'Reply to Titan',
@@ -27,7 +27,7 @@ const mentionOptions = ({ page }: { page: Page }) => page.getByRole(
   { name: 'Mention' },
 ).getByRole('option')
 
-async function createTasks({ hydra }: { hydra: Titan }) {
+async function createTasks({ titan }: { titan: Titan }) {
   const releases = Array.from(
     { length: RELEASE_TASKS },
     (
@@ -39,7 +39,7 @@ async function createTasks({ hydra }: { hydra: Titan }) {
       title: `Release note ${index + 1}`,
     }),
   )
-  await hydra.owner({
+  await titan.owner({
     args: [
       'apply',
       '--file',
@@ -68,20 +68,20 @@ async function createTasks({ hydra }: { hydra: Titan }) {
 test(
   '@ matches every typed word ignoring case, accents and spaces, offers other Titans and reaches every row',
   async () => {
-    const hydra = await othrys.hydra()
-    const other = await othrys.hydra()
+    const titan = await othrys.titan()
+    const other = await othrys.titan()
     await other.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--name',
         'Atlas Prime',
       ],
     })
-    await createTasks({ hydra })
+    await createTasks({ titan })
     const page = await openTitan({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
     const composer = composerOf({ page })
     const options = mentionOptions({ page })
@@ -115,7 +115,7 @@ test(
     await options.first().evaluate(row => {
       row.dataset.seen = 'kept'
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'rename',
@@ -124,7 +124,7 @@ test(
         'Water the garden plants',
       ],
     })
-    await page.locator('[data-hydra-workspace][data-active=true]').getByText(
+    await page.locator('[data-titan-workspace][data-active=true]').getByText(
       'Water the garden plants',
       { exact: true },
     )
@@ -147,10 +147,10 @@ test(
 test(
   '/ matches commands only and shows descriptions without highlights',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const page = await openTitan({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
     const composer = composerOf({ page })
     await composer.fill('/addproj')
@@ -169,12 +169,12 @@ test(
 test(
   'the model step shows its list at once when reopened, and Reload changes only the rows that changed',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const page = await openTitan({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
-    const workspace = page.locator('[data-hydra-workspace][data-active=true]')
+    const workspace = page.locator('[data-titan-workspace][data-active=true]')
     await workspace.getByRole(
       'button',
       { name: /^Titan agent settings/ },
@@ -282,9 +282,9 @@ test(
 test(
   '@ offers project files, a typed path shows its folder\'s contents filtered as the name is typed, and the rows shown stay while the next folder loads',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const path = await createProject({
-      hydra,
+      titan,
       landing: 'branch',
     })
     mkdirSync(join(
@@ -301,7 +301,7 @@ test(
     )
     const page = await openTitan({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
     })
     const listings: string[] = []
     page.on(

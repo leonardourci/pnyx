@@ -91,7 +91,7 @@ interface TurnPlan {
 }
 
 interface Plan extends TurnPlan {
-  hydra?: string
+  titan?: string
   wait: Promise<void>
   release(): void
 }
@@ -101,17 +101,17 @@ function plans() {
 
   return {
     plan: ({
-      hydra,
+      titan,
       hold,
       ...turn
-    }: TurnPlan & { hydra?: string }) => {
+    }: TurnPlan & { titan?: string }) => {
       let release = () => {}
       const wait = new Promise<void>(resolve => {
         release = resolve
       })
       waiting.push({
         ...turn,
-        hydra,
+        titan,
         wait,
         release,
       })
@@ -129,7 +129,7 @@ function plans() {
       text: string
       env: NodeJS.ProcessEnv
     }) => {
-      const at = waiting.findIndex(plan => (!plan.hydra || plan.hydra === env.OTHRYS_TITAN)
+      const at = waiting.findIndex(plan => (!plan.titan || plan.titan === env.OTHRYS_TITAN)
         && (plan.match ? plan.match({ text }) : text.endsWith(plan.text ?? '')))
 
       return at === -1 ? undefined : waiting.splice(

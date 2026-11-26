@@ -66,12 +66,12 @@ export async function serverOperation({
       throw new Error(`No browser operation for ${name}`)
     }
 
-    const hydraIndex = rest.indexOf('--titan')
-    const hydraId = (hydraIndex < 0 ? env.OTHRYS_TITAN : rest[hydraIndex + 1]) ?? 'default'
+    const titanIndex = rest.indexOf('--titan')
+    const titanId = (titanIndex < 0 ? env.OTHRYS_TITAN : rest[titanIndex + 1]) ?? 'default'
     const forwarded = rest.filter((
       _,
       index,
-    ) => hydraIndex < 0 || (index !== hydraIndex && index !== hydraIndex + 1))
+    ) => titanIndex < 0 || (index !== titanIndex && index !== titanIndex + 1))
 
     if (!forwarded.includes('--actor')) {
       forwarded.push(
@@ -82,7 +82,7 @@ export async function serverOperation({
 
     const page = await openPage({
       port: server.port,
-      hydraId,
+      titanId,
     })
 
     try {
@@ -128,7 +128,7 @@ export async function serverOperation({
           })
         }
 
-        const output = name ? await handler!(rest) : await home({ hydraId: env.OTHRYS_TITAN })
+        const output = name ? await handler!(rest) : await home({ titanId: env.OTHRYS_TITAN })
 
         return {
           status: 0,

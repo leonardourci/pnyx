@@ -11,7 +11,7 @@ import { flushLogs } from '#app/diagnostics.ts'
 import { logFiles } from '#diagnostics/log-files.ts'
 import { spawn } from 'node:child_process'
 import { createServer, type Socket } from 'node:net'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { parsed, operation, startOthrys, until, type Othrys } from './setup/othrys.ts'
@@ -104,10 +104,10 @@ const hook = ({
 
 const sessionFacts = async ({
   session,
-  hydra = 'default',
+  titan = 'default',
 }: {
   session: string
-  hydra?: string
+  titan?: string
 }) => {
   const shown = await operation({
     args: [
@@ -115,7 +115,7 @@ const sessionFacts = async ({
       'sessions',
       '--full',
       '--titan',
-      hydra,
+      titan,
     ],
     env: process.env,
   })
@@ -131,8 +131,8 @@ const sessionFacts = async ({
 test(
   'outside hooks keep facts without an implicit card, and the assigned chat shows its typed prompt without a steering notice',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -216,9 +216,9 @@ test(
     })
     const sourceLog = join(
       process.env.OTHRYS_HOME!,
-      'hydras',
+      'titans',
       'default',
-      'hydra.log',
+      'titan.log',
     )
     const firstBinding = readFileSync(
       sourceLog,
@@ -259,7 +259,7 @@ test(
       },
     })
     await withWriter({
-      hydraId: 'default',
+      titanId: 'default',
       fn: ({ writer }) => applyDecision({
         writer,
         decision: {
@@ -296,7 +296,7 @@ test(
       settings: { fast: 'true' },
     })
     await withWriter({
-      hydraId: 'default',
+      titanId: 'default',
       fn: ({ writer }) => applyDecision({
         writer,
         decision: {
@@ -382,7 +382,7 @@ test(
       env: process.env,
     })
     expect(parsed(tasks).tasks).toEqual(beforeTasks)
-    const assignedTitan = await othrys.hydra({
+    const assignedTitan = await othrys.titan({
       id: 'default',
       create: false,
     })
@@ -533,7 +533,7 @@ test(
       .join('')
       .slice(onStart)
     expect(onLogs).not.toContain('card.observed')
-    await hydra.owner({
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -648,7 +648,7 @@ test(
     writeFileSync(
       join(
         process.env.OTHRYS_HOME!,
-        'hydras',
+        'titans',
         'default',
         'spool',
         'legacy-clock.json',
@@ -850,7 +850,7 @@ test(
 
     mkdirSync(join(
       process.env.OTHRYS_HOME!,
-      'hydras',
+      'titans',
       'default',
       'tasks',
       '.pending-task-XXXXXX',
@@ -858,7 +858,7 @@ test(
     mkdirSync(
       join(
         process.env.OTHRYS_HOME!,
-        'hydras',
+        'titans',
         'default',
         'tasks',
         'unpublished-task',
@@ -917,13 +917,13 @@ test(
         })
         const envelopes = readdirSync(join(
           process.env.OTHRYS_HOME!,
-          'hydras',
+          'titans',
           'default',
           'spool',
         )).map(file => JSON.parse(readFileSync(
           join(
             process.env.OTHRYS_HOME!,
-            'hydras',
+            'titans',
             'default',
             'spool',
             file,
@@ -955,7 +955,7 @@ test(
     )
     const dir = join(
       home,
-      'hydras',
+      'titans',
       'default',
     )
     mkdirSync(
@@ -1008,7 +1008,7 @@ test(
 test(
   'an outside session reporting with OTHRYS_TITAN set lands on that Titan, not the default one',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const cwd = join(
       process.env.TMPDIR!,
       'named',
@@ -1022,7 +1022,7 @@ test(
       },
       env: {
         ...process.env,
-        OTHRYS_TITAN: hydra.id,
+        OTHRYS_TITAN: titan.id,
       },
     })
     expect(run).toMatchObject({
@@ -1033,14 +1033,14 @@ test(
       what: 'the session facts on its own Titan',
       check: () => sessionFacts({
         session: 'named-1',
-        hydra: hydra.id,
+        titan: titan.id,
       }),
     })).title).toBe('Reported to a named Titan')
   },
 )
 
 test(
-  'with the server down a hook keeps its event in the spool of its Titan, in boards/ for one not yet moved, and drops an unknown Titan without making a folder',
+  'with the server down a hook keeps its event in the spool of its Titan and drops an unknown Titan without making a folder',
   async () => {
     const home = join(
       process.env.TMPDIR!,
@@ -1060,39 +1060,30 @@ test(
     mkdirSync(
       join(
         home,
-        'hydras',
+        'titans',
         'h1',
       ),
       { recursive: true },
     )
-    mkdirSync(
-      join(
-        home,
-        'boards',
-        'b1',
-      ),
-      { recursive: true },
-    )
 
-    for (const hydra of [
+    for (const titan of [
       'h1',
-      'b1',
       'never-created',
     ]) {
       expect(await hook({
         event: 'UserPromptSubmit',
         payload: {
-          session_id: `folders-${hydra}`,
+          session_id: `folders-${titan}`,
           cwd: join(
             process.env.TMPDIR!,
             'folders',
           ),
-          prompt: `Reported to ${hydra}`,
+          prompt: `Reported to ${titan}`,
         },
         env: {
           ...process.env,
           OTHRYS_HOME: home,
-          OTHRYS_TITAN: hydra,
+          OTHRYS_TITAN: titan,
         },
       })).toMatchObject({
         status: 0,
@@ -1100,38 +1091,27 @@ test(
       })
     }
 
-    expect(spool({ dir: 'hydras/h1' })).toHaveLength(1)
-    expect(spool({ dir: 'boards/b1' })).toHaveLength(1)
+    expect(spool({ dir: 'titans/h1' })).toHaveLength(1)
     expect(existsSync(join(
       home,
-      'hydras',
-      'b1',
+      'titans',
+      'never-created',
     ))).toBe(false)
-
-    for (const dir of [
-      'hydras/never-created',
-      'boards/never-created',
-    ]) {
-      expect(existsSync(join(
-        home,
-        dir,
-      ))).toBe(false)
-    }
   },
 )
 
 test(
   'subagent hooks keep session facts and wake Titan for a prompt on the attached task',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const first = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'Watch hook questions',
       hold: true,
     })
-    const supervisor = await hydra.chat({ text: 'Watch hook questions' })
-    const cwd = hydra.folder({ name: 'outside-agent' })
-    await hydra.owner({
+    const supervisor = await titan.chat({ text: 'Watch hook questions' })
+    const cwd = titan.folder({ name: 'outside-agent' })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1142,10 +1122,10 @@ test(
         'Assigned outside work',
       ],
     })
-    const assigned = await hydra.task({ key: 'attached' })
+    const assigned = await titan.task({ key: 'attached' })
     const env = {
       ...process.env,
-      OTHRYS_TITAN: hydra.id,
+      OTHRYS_TITAN: titan.id,
       OTHRYS_TASK: assigned.id,
     }
     const base = {
@@ -1164,7 +1144,7 @@ test(
       what: 'outside root session',
       check: () => sessionFacts({
         session: 'root-agent',
-        hydra: hydra.id,
+        titan: titan.id,
       }),
     })
     const child = {
@@ -1180,7 +1160,7 @@ test(
     await until({
       what: 'subagent session without a task card',
       check: async () => {
-        const shown = await hydra.owner({
+        const shown = await titan.owner({
           args: [
             'task',
             'sessions',
@@ -1191,19 +1171,19 @@ test(
         return shown.sessions.some((session: { agent: { agentId?: string } }) => session.agent.agentId === 'child-agent')
       },
     })
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'list',
       ],
     })).tasks).toHaveLength(1)
-    const settingsOnly = await hydra.owner({
+    const settingsOnly = await titan.owner({
       args: [
         'push',
         '--key',
         assigned.id,
         '--actor',
-        'pnyx',
+        'othrys',
         '--file',
         '-',
       ],
@@ -1227,9 +1207,9 @@ test(
     })
     await until({
       what: 'child prompt projected to the task',
-      check: async () => (await hydra.task({ key: 'attached' })).status === 'needs you',
+      check: async () => (await titan.task({ key: 'attached' })).status === 'needs you',
     })
-    const childFacts = await hydra.owner({
+    const childFacts = await titan.owner({
       args: [
         'task',
         'sessions',
@@ -1238,7 +1218,7 @@ test(
     })
     const childSession = childFacts.sessions.find((session: { agent: { agentId?: string } }) =>
       session.agent.agentId === 'child-agent')
-    await hydra.owner({
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -1258,10 +1238,10 @@ test(
         },
       }),
     })
-    expect((await hydra.task({ key: 'attached' })).status).toBe('needs you')
-    const stateAfterQuestion = loadTitan({ hydraId: hydra.id }).state
+    expect((await titan.task({ key: 'attached' })).status).toBe('needs you')
+    const stateAfterQuestion = loadTitan({ titanId: titan.id }).state
     const settingsEvent = readChanges({
-      hydraId: hydra.id,
+      titanId: titan.id,
       seqs: [settingsOnly.event.seq],
     })[0]!
     expect(eventReasons({
@@ -1269,7 +1249,7 @@ test(
       event: settingsEvent,
     })).toEqual([])
     const questionEvent = readChanges({
-      hydraId: hydra.id,
+      titanId: titan.id,
       after: settingsOnly.event.seq,
     })
       .find(event => event.type === 'session.observed'
@@ -1288,7 +1268,7 @@ test(
       what: 'Titan to hear the native question',
       check: () => supervisor.received.some(text => text.includes('asked:') && text.includes('inspect-package')),
     })
-    const history = await hydra.owner({
+    const history = await titan.owner({
       args: [
         'task',
         'history',
@@ -1306,7 +1286,7 @@ test(
     })
     await until({
       what: 'finished subagent prompt to clear',
-      check: async () => (await hydra.task({ key: 'attached' })).status === 'running',
+      check: async () => (await titan.task({ key: 'attached' })).status === 'running',
     })
   },
 )
@@ -1314,8 +1294,8 @@ test(
 test(
   'outside recovery resets rotated snapshots and ignores rebound transcript batches',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'recovery-races' })
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'recovery-races' })
     const rotated = join(
       folder,
       'rotated.jsonl',
@@ -1365,7 +1345,7 @@ test(
           rebound,
         ],
       ]) {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'push',
           '--key',
@@ -1418,7 +1398,7 @@ test(
 
       if (cursor.source === rebound && tail && reboundReads === 1 && cursor.pos === 0) {
         reboundWrite = withWriter({
-          hydraId: hydra.id,
+          titanId: titan.id,
           fn: ({ writer }) => {
             const session = writer.state.sessions!['claude:rebound-recovery']!
             applyDecision({
@@ -1434,7 +1414,7 @@ test(
                   activity: 'working',
                 },
                 meta: {
-                  actor: 'pnyx',
+                  actor: 'othrys',
                   at: startedAt,
                 },
               }),
@@ -1463,7 +1443,7 @@ test(
       },
     })
     await reboundWrite
-    const sessions = (await hydra.owner({
+    const sessions = (await titan.owner({
       args: [
         'task',
         'sessions',
@@ -1523,59 +1503,6 @@ test(
       ),
       'Keep my local skill',
     )
-    const legacy = join(
-      home,
-      '.agents',
-      'skills',
-      'pnyx-worker',
-    )
-    const foreign = join(
-      home,
-      '.agents',
-      'skills',
-      'pnyx-inscribe',
-    )
-
-    for (const [
-      name,
-      skill,
-      target,
-    ] of [
-        [
-          'pnyx',
-          'pnyx-worker',
-          legacy,
-        ],
-        [
-          'foreign',
-          'pnyx-inscribe',
-          foreign,
-        ],
-      ]) {
-      const source = join(
-        home,
-        `${name}-package`,
-        'skills',
-        skill,
-      )
-      mkdirSync(
-        source,
-        { recursive: true },
-      )
-      writeFileSync(
-        join(
-          home,
-          `${name}-package`,
-          'package.json',
-        ),
-        JSON.stringify({ name }),
-      )
-      symlinkSync(
-        source,
-        target,
-      )
-    }
-
     const preview = await operation({
       args: [
         'setup',
@@ -1585,8 +1512,6 @@ test(
       env,
     })
     expect(preview.status).toBe(0)
-    expect(lstatSync(legacy).isSymbolicLink()).toBe(true)
-    expect(lstatSync(foreign).isSymbolicLink()).toBe(true)
     const installed = await operation({
       args: [
         'setup',
@@ -1598,11 +1523,6 @@ test(
       installed.status,
       installed.stdout,
     ).toBe(0)
-    expect(lstatSync(
-      legacy,
-      { throwIfNoEntry: false },
-    )).toBeUndefined()
-    expect(lstatSync(foreign).isSymbolicLink()).toBe(true)
     expect(parsed(installed).notices).toContainEqual(expect.objectContaining({
       reason: expect.stringContaining(customSkill),
       clear: expect.stringContaining('othrys setup skills'),

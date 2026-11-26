@@ -97,20 +97,20 @@ beforeAll(async () => {
 test(
   'a page interest refresh during paced activity preserves the handshake, previews and receipt',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const cards = new Set<string>()
 
     for (let i = 0; i < PREVIEW_CARDS; i += 1) {
       const key = `paced-${i}`
       othrys.claude.plan({
-        hydra: hydra.id,
+        titan: titan.id,
         match: ({ text }) => text.includes(`Brief for ${key}`),
         reply: PREVIEW,
       })
-      await hydra.startTask({ key })
+      await titan.startTask({ key })
       const id = await until({
         what: 'the task to reach the home feed',
-        check: () => othrys.home().scopes[hydra.id]?.state.keys[key],
+        check: () => othrys.home().scopes[titan.id]?.state.keys[key],
       })
       cards.add(id)
     }
@@ -118,7 +118,7 @@ test(
     const warmed: Record<string, string> = {}
     const warm = await openPage({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
       receive({ message }) {
         if (message.type === 'latest') {
           for (const [
@@ -147,7 +147,7 @@ test(
     pressure.active = true
     const page = await openPage({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
       home: true,
       receive: ({ message }) => frames.push(message),
     })

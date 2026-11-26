@@ -138,9 +138,9 @@ const ownerEnv = () => {
     'OTHRYS_ACTOR',
     'OTHRYS_TASK',
     'OTHRYS_TITAN',
-    'PNYX_ACTOR',
-    'PNYX_TASK',
-    'PNYX_HYDRA',
+    'OTHRYS_ACTOR',
+    'OTHRYS_TASK',
+    'OTHRYS_TITAN',
   ]) {
     delete env[name]
   }
@@ -251,7 +251,7 @@ export async function startOthrys({
   const claude = fakeClaude()
   const codex = fakeCodex({ config: codexConfig })
   let server: RunningServer | undefined
-  let hydras = 0
+  let titans = 0
   let homePage: Awaited<ReturnType<typeof openHomePage>> | undefined
   // Kept across stops, so an open page reconnects to the server that replaces this one.
   let port: number | undefined
@@ -326,24 +326,24 @@ export async function startOthrys({
     start,
     stop,
     // A Titan of its own, created through the CLI and served once the server mounts it.
-    hydra: async ({
-      id = `h${++hydras}`,
+    titan: async ({
+      id = `h${++titans}`,
       create = true,
     }: {
       id?: string
       create?: boolean
     } = {}) => {
-      const hydra = hydraClient({
-        hydraId: id,
+      const titan = titanClient({
+        titanId: id,
         root,
         sessions,
         port: () => server!.port,
       })
 
       if (create) {
-        await hydra.owner({
+        await titan.owner({
           args: [
-            'hydra',
+            'titan',
             'create',
             id,
             '--helper',
@@ -354,20 +354,20 @@ export async function startOthrys({
 
       await server!.open({ id })
 
-      return hydra
+      return titan
     },
   }
 }
 
-export type Titan = ReturnType<typeof hydraClient>
+export type Titan = ReturnType<typeof titanClient>
 
-function hydraClient({
-  hydraId,
+function titanClient({
+  titanId,
   root,
   sessions,
   port,
 }: {
-  hydraId: string
+  titanId: string
   root: string
   sessions: () => AgentSession[]
   port: () => number
@@ -384,7 +384,7 @@ function hydraClient({
     args: [
       ...args,
       '--titan',
-      hydraId,
+      titanId,
     ],
     env,
     input,
@@ -445,20 +445,20 @@ function hydraClient({
 
   const agent = ({
     cwd,
-    hydra,
+    titan,
   }: {
     cwd?: string
-    hydra?: boolean
+    titan?: boolean
   }) => until({
-    what: cwd ? `an agent in ${cwd}` : `Titan ${hydraId}'s agent`,
-    check: () => sessions().findLast(s => s.env.OTHRYS_TITAN === hydraId
-      && (hydra ? s.env.OTHRYS_ACTOR === 'hydra' : s.cwd === cwd)),
+    what: cwd ? `an agent in ${cwd}` : `Titan ${titanId}'s agent`,
+    check: () => sessions().findLast(s => s.env.OTHRYS_TITAN === titanId
+      && (titan ? s.env.OTHRYS_ACTOR === 'titan' : s.cwd === cwd)),
   })
 
   const folder = ({ name }: { name: string }) => {
     const path = join(
       root,
-      hydraId,
+      titanId,
       name,
     )
     mkdirSync(
@@ -536,7 +536,7 @@ function hydraClient({
   }
 
   return {
-    id: hydraId,
+    id: titanId,
     folder,
     task,
     startTask,
@@ -595,7 +595,7 @@ function hydraClient({
           '--text',
           text,
           '--titan',
-          hydraId,
+          titanId,
           '--json',
         ],
         env: ownerEnv(),
@@ -607,14 +607,14 @@ function hydraClient({
 
       return until({
         what: `Titan to hear "${text}"`,
-        check: () => sessions().findLast(session => session.env.OTHRYS_TITAN === hydraId
-          && session.env.OTHRYS_ACTOR === 'hydra'
+        check: () => sessions().findLast(session => session.env.OTHRYS_TITAN === titanId
+          && session.env.OTHRYS_ACTOR === 'titan'
           && session.received.slice(before.get(session) ?? 0).some(heard => heard.endsWith(text) || heard.includes(`${text}\n<othrys-wake>`))),
       })
     },
     page: ({ cards }: { cards?: string[] } = {}) => openPage({
       port: port(),
-      hydraId,
+      titanId,
       cards,
     }),
   }

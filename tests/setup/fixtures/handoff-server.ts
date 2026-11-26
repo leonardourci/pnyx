@@ -6,9 +6,9 @@ import { fakeClaude, fakeCodex } from '../agents.ts'
 
 process.env.OTHRYS_HANDOFF_CRASH_PID = String(process.pid)
 const crashAfterCommit = process.env.OTHRYS_CRASH_AFTER_COMMIT
-const hydraId = process.env.OTHRYS_CRASH_TITAN
+const titanId = process.env.OTHRYS_CRASH_TITAN
 
-if (!hydraId) {
+if (!titanId) {
   throw new Error('OTHRYS_CRASH_TITAN is required')
 }
 
@@ -22,7 +22,7 @@ if (crashAfterCommit) {
 
   afterHandoffSync({
     home: process.env.OTHRYS_HOME,
-    hydra: hydraId,
+    titan: titanId,
     source,
     target,
     cwd: crashAfterCommit,
@@ -53,5 +53,5 @@ const server = await startServer({
   queueDelay: 100,
   recoveryPause: 100,
 })
-await server.open({ id: hydraId })
+await server.open({ id: titanId })
 process.send?.('ready')

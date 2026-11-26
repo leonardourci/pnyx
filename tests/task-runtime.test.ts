@@ -20,17 +20,17 @@ beforeAll(async () => {
 test(
   'a worker with a relative Othrys home writes reports from its own directory',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     onTestFinished(async () => {
-      await hydra.owner({
+      await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'remove',
-          hydra.id,
+          titan.id,
         ],
       })
     })
-    const { worker } = await hydra.startTask({ key: 'relative-home' })
+    const { worker } = await titan.startTask({ key: 'relative-home' })
     const report = spawnSync(
       process.execPath,
       [
@@ -52,7 +52,7 @@ test(
     })
     await until({
       what: 'the worker report reaches its task from the worker’s directory',
-      check: async () => (await hydra.task({ key: 'relative-home' })).latest === 'relative home report',
+      check: async () => (await titan.task({ key: 'relative-home' })).latest === 'relative home report',
     })
   },
 )
@@ -60,12 +60,12 @@ test(
 test(
   'a detached worker’s retained tools are recovered after restart and stopped on Titan removal',
   async () => {
-    const hydra = await othrys.hydra({
+    const titan = await othrys.titan({
       id: 'default',
       create: false,
     })
-    await hydra.startTask({ key: 'detached-tools' })
-    const task = await hydra.task({ key: 'detached-tools' })
+    await titan.startTask({ key: 'detached-tools' })
+    const task = await titan.task({ key: 'detached-tools' })
     const leader = spawn(
       process.execPath,
       [
@@ -111,7 +111,7 @@ test(
       check: () => output.includes('\n') && Number(output.trim()),
     })
     const children = taskChildren({
-      hydraId: hydra.id,
+      titanId: titan.id,
       task: task.id,
     })
     children.spawned({ child: leader })
@@ -119,7 +119,7 @@ test(
       pid: leader.pid!,
       task: task.id,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'detach',
@@ -140,14 +140,14 @@ test(
       check: () => {
         const { scopes } = othrys.home()
 
-        return Object.keys(scopes).length === 1 && Boolean(scopes[hydra.id])
+        return Object.keys(scopes).length === 1 && Boolean(scopes[titan.id])
       },
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'remove',
-        hydra.id,
+        titan.id,
       ],
     })
     await until({
@@ -160,13 +160,13 @@ test(
 test(
   'a moved silent compaction keeps its deadline and delivers its held input once through another move',
   async () => {
-    const source = await othrys.hydra()
-    const target = await othrys.hydra()
-    const final = await othrys.hydra()
+    const source = await othrys.titan()
+    const target = await othrys.titan()
+    const final = await othrys.titan()
     const { worker } = await source.startTask({ key: 'silent-compaction' })
     const task = await source.task({ key: 'silent-compaction' })
     othrys.claude.plan({
-      hydra: source.id,
+      titan: source.id,
       text: '/compact',
       compacting: true,
     })
@@ -190,7 +190,7 @@ test(
       })).task.compaction?.operations.some((operation: { state: string }) => operation.state === 'done'),
     })
     const held = othrys.claude.plan({
-      hydra: source.id,
+      titan: source.id,
       text: '/compact',
       compacting: true,
       hold: true,
@@ -218,7 +218,7 @@ test(
     const text = '/review Resume exactly once after the compaction deadline'
     const output = 'Completed in the final destination after compaction'
     othrys.claude.plan({
-      hydra: source.id,
+      titan: source.id,
       match: ({ text: prompt }) => prompt.includes(text),
       reply: output,
     })
@@ -246,13 +246,13 @@ test(
         'task',
         'move',
         task.id,
-        '--to-hydra',
+        '--to-titan',
         target.id,
       ],
     })
     await source.owner({
       args: [
-        'hydra',
+        'titan',
         'remove',
         source.id,
       ],
@@ -262,13 +262,13 @@ test(
         'task',
         'move',
         task.id,
-        '--to-hydra',
+        '--to-titan',
         final.id,
       ],
     })
     await target.owner({
       args: [
-        'hydra',
+        'titan',
         'remove',
         target.id,
       ],
@@ -388,7 +388,7 @@ test(
     expect(worker.closed).toBe(false)
     await final.owner({
       args: [
-        'hydra',
+        'titan',
         'remove',
         final.id,
       ],

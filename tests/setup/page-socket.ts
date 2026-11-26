@@ -6,7 +6,7 @@ import { until } from './until.ts'
 
 export async function openPage({
   port,
-  hydraId,
+  titanId,
   cards,
   token = localToken(),
   home = false,
@@ -14,7 +14,7 @@ export async function openPage({
   receive,
 }: {
   port: number
-  hydraId?: string
+  titanId?: string
   cards?: string[]
   token?: string
   home?: boolean
@@ -44,7 +44,7 @@ export async function openPage({
     )
   }
 
-  const path = hydraId ? `/hydra/${hydraId}/ws` : '/ws'
+  const path = titanId ? `/titan/${titanId}/ws` : '/ws'
   const socket = new WebSocket(`ws://127.0.0.1:${port}${path}?${params}`)
   const answers = new Map<string, ServerMessage>()
   socket.on(
@@ -96,7 +96,7 @@ export async function openPage({
         const answer = answers.get(id)
 
         if (!answer && socket.readyState === WebSocket.CLOSED) {
-          throw new Error(`Page connection to Titan ${hydraId ?? 'default'} closed while waiting for ${name} ${args.join(' ')}`)
+          throw new Error(`Page connection to Titan ${titanId ?? 'default'} closed while waiting for ${name} ${args.join(' ')}`)
         }
 
         return answer

@@ -159,7 +159,7 @@ test(
       { length: 11 },
       () => recordUIRender({
         surface: 'chat',
-        hydraId: 'sample',
+        titanId: 'sample',
         ms: 8,
       }),
     )
@@ -196,7 +196,7 @@ test(
       }),
       expect.objectContaining({
         operation: 'page.react-commit',
-        hydraId: 'sample',
+        titanId: 'sample',
         surface: 'chat',
         count: 11,
         samples: 2,

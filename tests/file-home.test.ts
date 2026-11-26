@@ -25,7 +25,7 @@ const configured = (): LogFact => ({
   at: AT,
   by: 'owner',
   t: 'config',
-  id: 'hydra-config',
+  id: 'titan-config',
   name: 'Titan',
 })
 
@@ -33,27 +33,27 @@ test(
   'task directory membership overrides old snapshots and new tasks are read from their first native line',
   () => {
     const home = homeFolder()
-    const hydra = createTitanFiles({
+    const titan = createTitanFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       entries: [configured()],
     })
     const task = createTaskFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       task: 'first',
       entries: [created({ id: 'native-first' })],
     })
     writeSnapshot({
       dir: join(
         home,
-        'hydras',
+        'titans',
         'a',
       ),
       snapshot: {
         v: 1,
         at: AT,
-        hydra,
+        titan,
         tasks: {
           first: {
             task,
@@ -74,7 +74,7 @@ test(
     })
     createTaskFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       task: 'second',
       entries: [created({ id: 'native-second' })],
     })
@@ -82,7 +82,7 @@ test(
       path: join(
         taskFiles({
           home,
-          hydra: 'a',
+          titan: 'a',
           task: 'first',
         }),
         'task.log',
@@ -100,7 +100,7 @@ test(
     })
     const files = readTitanFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
     })
     expect(Object.keys(files.tasks).sort()).toEqual([
       'first',
@@ -122,12 +122,12 @@ test(
       const home = homeFolder()
       createTitanFiles({
         home,
-        hydra: 'a',
+        titan: 'a',
         entries: [configured()],
       })
       createTitanFiles({
         home,
-        hydra: 'b',
+        titan: 'b',
         entries: [configured()],
       })
       const copy = join(
@@ -148,7 +148,7 @@ test(
       )
       const after = createTaskFiles({
         home,
-        hydra: 'a',
+        titan: 'a',
         task: 'moving',
         entries: [
           created({ id: 'native-created' }),
@@ -163,7 +163,7 @@ test(
       })
       const source = taskFiles({
         home,
-        hydra: 'a',
+        titan: 'a',
         task: 'moving',
       })
       writeFileSync(
@@ -211,18 +211,18 @@ test(
         expect(existsSync(source)).toBe(false)
         expect(existsSync(taskFiles({
           home,
-          hydra: 'b',
+          titan: 'b',
           task: 'moving',
         }))).toBe(true)
       }
 
       expect(readTitanFiles({
         home,
-        hydra: 'a',
+        titan: 'a',
       }).tasks).toEqual({})
       const destination = readTitanFiles({
         home,
-        hydra: 'b',
+        titan: 'b',
       }).tasks.moving!
       expect(destination.entries.map(entry => entry.id)).toEqual([
         'native-created',
@@ -241,7 +241,7 @@ test(
         join(
           taskFiles({
             home,
-            hydra: 'b',
+            titan: 'b',
             task: 'moving',
           }),
           'worker.log',
@@ -251,7 +251,7 @@ test(
       expect(existsSync(source)).toBe(false)
       expect(readTitanFiles({
         home,
-        hydra: 'b',
+        titan: 'b',
       }).tasks.moving?.position.n).toBe(3)
     }
   },
@@ -263,25 +263,25 @@ test(
     const home = homeFolder()
     createTitanFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       entries: [configured()],
     })
     createTaskFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       task: 'broken',
       entries: [created({ id: 'broken-first' })],
     })
     createTaskFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       task: 'healthy',
       entries: [created({ id: 'healthy-first' })],
     })
     const path = join(
       taskFiles({
         home,
-        hydra: 'a',
+        titan: 'a',
         task: 'broken',
       }),
       'task.log',
@@ -300,7 +300,7 @@ test(
     const before = readFileSync(path)
     const files = readTitanFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
     })
     expect(files.tasks.broken?.issue?.code).toBe('LOG_CORRUPT')
     expect(files.tasks.broken?.entries).toEqual([])
@@ -315,17 +315,17 @@ test(
     const home = homeFolder()
     createTitanFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       entries: [configured()],
     })
     createTitanFiles({
       home,
-      hydra: 'z',
+      titan: 'z',
       entries: [configured()],
     })
     const after = createTaskFiles({
       home,
-      hydra: 'z',
+      titan: 'z',
       task: 'moving',
       entries: [created({ id: 'native-created' })],
     })
@@ -333,7 +333,7 @@ test(
       path: join(
         taskFiles({
           home,
-          hydra: 'z',
+          titan: 'z',
           task: 'moving',
         }),
         'task.log',
@@ -365,30 +365,30 @@ test(
     const home = homeFolder()
     createTitanFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       entries: [configured()],
     })
     createTitanFiles({
       home,
-      hydra: 'b',
+      titan: 'b',
       entries: [configured()],
     })
     const after = createTaskFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       task: 'same',
       entries: [created({ id: 'source-created' })],
     })
     createTaskFiles({
       home,
-      hydra: 'b',
+      titan: 'b',
       task: 'same',
       entries: [created({ id: 'destination-created' })],
     })
     const source = join(
       taskFiles({
         home,
-        hydra: 'a',
+        titan: 'a',
         task: 'same',
       }),
       'task.log',
@@ -396,7 +396,7 @@ test(
     const destination = join(
       taskFiles({
         home,
-        hydra: 'b',
+        titan: 'b',
         task: 'same',
       }),
       'task.log',
@@ -431,7 +431,7 @@ test(
     const home = homeFolder()
     const legacy = join(
       home,
-      'hydras',
+      'titans',
       'legacy',
     )
     mkdirSync(
@@ -448,12 +448,12 @@ test(
     )
     createTitanFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       entries: [configured()],
     })
     const after = createTaskFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       task: 'healthy',
       entries: [created({ id: 'native-created' })],
     })
@@ -478,7 +478,7 @@ test(
     ))).toBe(false)
     mkdirSync(taskFiles({
       home,
-      hydra: 'a',
+      titan: 'a',
       task: 'empty',
     }))
     const loaded = readHomeFiles({ home })
@@ -493,14 +493,14 @@ test(
     const unexpected = homeFolder()
     createTitanFiles({
       home,
-      hydra: 'b',
+      titan: 'b',
       entries: [configured()],
     })
     symlinkSync(
       unexpected,
       join(
         home,
-        'hydras/b/tasks',
+        'titans/b/tasks',
       ),
     )
     expect(() => moveTaskFiles({

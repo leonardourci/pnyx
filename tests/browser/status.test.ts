@@ -11,17 +11,17 @@ beforeAll(async () => {
 })
 
 async function openChat({
-  hydraId,
+  titanId,
   taskId,
 }: {
-  hydraId: string
+  titanId: string
   taskId: string
 }) {
-  const selector = `[data-hydra="${hydraId}"] [data-task="${taskId}"]`
+  const selector = `[data-titan="${titanId}"] [data-task="${taskId}"]`
   await chrome({
     args: [
       'open',
-      `http://127.0.0.1:${othrys.port()}/hydra/${hydraId}/`,
+      `http://127.0.0.1:${othrys.port()}/titan/${titanId}/`,
     ],
   })
   await chrome({
@@ -63,7 +63,7 @@ async function recordBadges({ selectors }: { selectors: Record<string, string> }
       window.sendSocketMessage = WebSocket.prototype.send;
       WebSocket.prototype.send = function(message) {
         const command = JSON.parse(message);
-        if (command.type === 'command' && command.args?.[0] === 'send' && (command.name === 'hydra' || command.name === 'task')) {
+        if (command.type === 'command' && command.args?.[0] === 'send' && (command.name === 'titan' || command.name === 'task')) {
           window.heldSends.push({ socket: this, message });
         } else {
           window.sendSocketMessage.call(this, message);
@@ -75,7 +75,7 @@ async function recordBadges({ selectors }: { selectors: Record<string, string> }
         const button = event.target.closest?.('button');
         const send = button?.matches('[aria-label="Send reply"], [aria-label="Send to worker"]');
         if (!send) return;
-        const target = button.closest('.hydra-chat') ? 'hydra' : 'worker';
+        const target = button.closest('.titan-chat') ? 'titan' : 'worker';
         window.sendFrames[target] = window.badgeFrames.length;
         window.firstSentFrame = new Promise(resolve => requestAnimationFrame(() => resolve(readBadges())));
       }, true);
@@ -119,8 +119,8 @@ const turns = [
 test(
   'hook activity updates the card and chat without adding event history',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -131,7 +131,7 @@ test(
         'Quiet event history',
       ],
     })
-    const observe = async ({ activity }: { activity: string }) => hydra.owner({
+    const observe = async ({ activity }: { activity: string }) => titan.owner({
       args: [
         'push',
         '--key',
@@ -154,9 +154,9 @@ test(
       }),
     })
     await observe({ activity: 'finished' })
-    const task = await hydra.task({ key: 'event-diet' })
+    const task = await titan.task({ key: 'event-diet' })
     const selector = await openChat({
-      hydraId: hydra.id,
+      titanId: titan.id,
       taskId: task.id,
     })
     await status({
@@ -175,7 +175,7 @@ test(
     })
     await observe({ activity: 'finished' })
     const noise = readEvents({
-      hydraId: hydra.id,
+      titanId: titan.id,
       types: [
         'session.observed',
         'card.observed',
@@ -183,7 +183,7 @@ test(
     }).map(event => ({ type: event.type }))
     expect(noise).toEqual([])
     expect(readEvents({
-      hydraId: hydra.id,
+      titanId: titan.id,
       types: ['task.created'],
     }).map(event => ({ type: event.type }))).toEqual([{ type: 'task.created' }])
   },
@@ -192,16 +192,16 @@ test(
 test(
   'Titan first send shows Starting… on the first frame, then Thinking, Working and Idle',
   async () => {
-    const hydra = await othrys.hydra()
-    const hydraChat = `[data-hydra="${hydra.id}"] .hydra-chat`
-    const badge = `${hydraChat} [aria-label="Titan status"]`
+    const titan = await othrys.titan()
+    const titanChat = `[data-titan="${titan.id}"] .titan-chat`
+    const badge = `${titanChat} [aria-label="Titan status"]`
     await chrome({
       script: `
-      await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`)});
-      await page.wait('${hydraChat} [aria-label="Reply to Titan"]', 5000);
+      await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/titan/${titan.id}/`)});
+      await page.wait('${titanChat} [aria-label="Reply to Titan"]', 5000);
     `,
     })
-    await recordBadges({ selectors: { hydra: badge } })
+    await recordBadges({ selectors: { titan: badge } })
 
     for (const {
       text,
@@ -209,7 +209,7 @@ test(
       tool,
     } of turns) {
       const turn = othrys.claude.plan({
-        hydra: hydra.id,
+        titan: titan.id,
         text,
         tool,
         hold: true,
@@ -219,21 +219,21 @@ test(
         const started = await chrome({
           script: `
           await page.eval(() => { window.badgeFrames = []; });
-          await page.fill('${hydraChat} [aria-label="Reply to Titan"]', ${JSON.stringify(text)});
-          await page.wait('${hydraChat} [aria-label="Send reply"]:not(:disabled)', 5000);
-          await page.click('${hydraChat} [aria-label="Send reply"]');
+          await page.fill('${titanChat} [aria-label="Reply to Titan"]', ${JSON.stringify(text)});
+          await page.wait('${titanChat} [aria-label="Send reply"]:not(:disabled)', 5000);
+          await page.click('${titanChat} [aria-label="Send reply"]');
           console.log(JSON.stringify(await page.eval(() => window.firstSentFrame)));
         `,
         })
-        expect(JSON.parse(started)).toEqual({ hydra: 'Starting…' })
+        expect(JSON.parse(started)).toEqual({ titan: 'Starting…' })
         await releaseSends()
         const sampled = await chrome({
           script: `
           await page.wait('${badge}[data-status="${label}"]', 5000);
           await page.eval(() => new Promise(requestAnimationFrame));
           console.log(JSON.stringify(await page.eval(() => ({
-            active: window.badgeFrames.filter(frame => frame.hydra === ${JSON.stringify(label)}).length,
-            interrupted: window.badgeFrames.slice(window.sendFrames.hydra).filter(frame => !['Starting…', 'Thinking', 'Working'].includes(frame.hydra)),
+            active: window.badgeFrames.filter(frame => frame.titan === ${JSON.stringify(label)}).length,
+            interrupted: window.badgeFrames.slice(window.sendFrames.titan).filter(frame => !['Starting…', 'Thinking', 'Working'].includes(frame.titan)),
           }))));
         `,
         })
@@ -246,7 +246,7 @@ test(
       const dots = await chrome({
         script: `
         await page.wait('${badge}[data-status="Idle"]', 5000);
-        console.log(await page.eval(() => document.querySelectorAll('${hydraChat} .chat-running-status .working-dots').length));
+        console.log(await page.eval(() => document.querySelectorAll('${titanChat} .chat-running-status .working-dots').length));
       `,
       })
       expect(dots).toBe('0')
@@ -257,12 +257,12 @@ test(
 test(
   'a running worker moved to another Titan keeps its live badge and receives the destination composer message once',
   async () => {
-    const source = await othrys.hydra()
-    const target = await othrys.hydra()
+    const source = await othrys.titan()
+    const target = await othrys.titan()
     const { worker } = await source.startTask({ key: 'moving-live-worker' })
     const task = await source.task({ key: 'moving-live-worker' })
     const held = othrys.claude.plan({
-      hydra: source.id,
+      titan: source.id,
       match: ({ text }) => text.includes('Keep working during the move'),
       hold: true,
       folds: true,
@@ -283,7 +283,7 @@ test(
         ],
       })
       const original = await openChat({
-        hydraId: source.id,
+        titanId: source.id,
         taskId: task.id,
       })
       await status({
@@ -295,19 +295,19 @@ test(
           'task',
           'move',
           task.id,
-          '--to-hydra',
+          '--to-titan',
           target.id,
         ],
       })
       await source.owner({
         args: [
-          'hydra',
+          'titan',
           'remove',
           source.id,
         ],
       })
       const selector = await openChat({
-        hydraId: target.id,
+        titanId: target.id,
         taskId: task.id,
       })
       await status({
@@ -351,16 +351,16 @@ test(
 test(
   'worker first send shows Starting… before attachment, reports a refused start and follows later live turns',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'live-badges' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'live-badges' })
+    await titan.owner({
       args: [
         'project',
         'add',
         folder,
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -375,9 +375,9 @@ test(
         folder,
       ],
     })
-    const task = await hydra.task({ key: 'live-badges' })
+    const task = await titan.task({ key: 'live-badges' })
     const selector = await openChat({
-      hydraId: hydra.id,
+      titanId: titan.id,
       taskId: task.id,
     })
     await recordBadges({
@@ -399,14 +399,14 @@ test(
       pill: 'Starting…',
       task: 'Starting…',
     })
-    expect((await hydra.task({ key: 'live-badges' })).agent).toBeUndefined()
+    expect((await titan.task({ key: 'live-badges' })).agent).toBeUndefined()
     await releaseSends()
     await status({
       selector,
       label: 'Project live-badges is not a git repository',
     })
-    expect((await hydra.task({ key: 'live-badges' })).agent).toBeUndefined()
-    await hydra.owner({
+    expect((await titan.task({ key: 'live-badges' })).agent).toBeUndefined()
+    await titan.owner({
       args: [
         'task',
         'start',
@@ -418,7 +418,7 @@ test(
     })
     await until({
       what: 'the in-place worker start to end',
-      check: async () => (await hydra.task({ key: 'live-badges' })).status === 'idle',
+      check: async () => (await titan.task({ key: 'live-badges' })).status === 'idle',
     })
 
     for (const {
@@ -427,7 +427,7 @@ test(
       tool,
     } of turns) {
       const turn = othrys.claude.plan({
-        hydra: hydra.id,
+        titan: titan.id,
         match: ({ text: prompt }) => prompt.includes(text),
         tool,
         hold: true,
@@ -470,7 +470,7 @@ test(
         expect(JSON.parse(sampled).active).toBeGreaterThan(0)
         expect(JSON.parse(sampled).interrupted).toEqual([])
         expect(JSON.parse(sampled).disagreements).toEqual([])
-        expect((await hydra.task({ key: 'live-badges' })).status).toBe('running')
+        expect((await titan.task({ key: 'live-badges' })).status).toBe('running')
       } finally {
         turn.release()
       }
@@ -483,7 +483,7 @@ test(
         script: `console.log(await page.eval(() => document.querySelectorAll(${JSON.stringify(`${selector} .chat-running-status .working-dots`)}).length));`,
       })
       expect(dots).toBe('0')
-      expect((await hydra.task({ key: 'live-badges' })).status).toBe('idle')
+      expect((await titan.task({ key: 'live-badges' })).status).toBe('idle')
     }
   },
 )
@@ -491,41 +491,41 @@ test(
 test(
   'a refused turn replaces the pending Titan and worker badges with its error',
   async () => {
-    const hydra = await othrys.hydra()
-    const hydraChat = `[data-hydra="${hydra.id}"] .hydra-chat`
-    const owner = await hydra.page()
+    const titan = await othrys.titan()
+    const titanChat = `[data-titan="${titan.id}"] .titan-chat`
+    const owner = await titan.page()
     await owner.send({
-      name: 'hydra-agent',
+      name: 'titan-agent',
       args: [JSON.stringify({ harness: 'codex' })],
     })
     owner.close()
-    await hydra.startTask({
+    await titan.startTask({
       key: 'refused-badges',
       harness: 'codex',
     })
     await until({
       what: 'the initial worker turn to end',
-      check: async () => (await hydra.task({ key: 'refused-badges' })).status === 'idle',
+      check: async () => (await titan.task({ key: 'refused-badges' })).status === 'idle',
     })
-    const task = await hydra.task({ key: 'refused-badges' })
+    const task = await titan.task({ key: 'refused-badges' })
     const selector = await openChat({
-      hydraId: hydra.id,
+      titanId: titan.id,
       taskId: task.id,
     })
     othrys.codex.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'Refuse Titan badge turn',
       refuse: true,
     })
     othrys.codex.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('Refuse worker badge turn'),
       refuse: true,
     })
     await chrome({
       script: `
-      await page.fill('${hydraChat} [aria-label="Reply to Titan"]', 'Refuse Titan badge turn');
-      await page.click('${hydraChat} [aria-label="Send reply"]');
+      await page.fill('${titanChat} [aria-label="Reply to Titan"]', 'Refuse Titan badge turn');
+      await page.click('${titanChat} [aria-label="Send reply"]');
     `,
     })
     const result = await chrome({
@@ -533,22 +533,22 @@ test(
       await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, 'Refuse worker badge turn');
       await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
       await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
-      await page.wait('${hydraChat} [aria-label="Titan status"][data-status*="refused this turn"]', 5000);
+      await page.wait('${titanChat} [aria-label="Titan status"][data-status*="refused this turn"]', 5000);
       await page.wait(${JSON.stringify(`${selector} .agent-activity[aria-label*="refused this turn"]`)}, 5000);
       await page.wait(${JSON.stringify(`${selector} [aria-label="Worker status"][data-status*="refused this turn"]`)}, 5000);
-      console.log(await page.eval(() => document.querySelectorAll(${JSON.stringify(`${hydraChat} .chat-running-status .working-dots, ${selector} .chat-running-status .working-dots`)}).length));
+      console.log(await page.eval(() => document.querySelectorAll(${JSON.stringify(`${titanChat} .chat-running-status .working-dots, ${selector} .chat-running-status .working-dots`)}).length));
     `,
     })
     expect(result).toBe('0')
 
     const resumed = othrys.codex.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('Resume worker from CLI'),
       hold: true,
     })
 
     try {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'reply',
           'refused-badges',
@@ -569,7 +569,7 @@ test(
       label: 'Idle',
     })
     const recovery = othrys.codex.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'Recover Titan badge turn',
       hold: true,
     })
@@ -577,24 +577,24 @@ test(
     try {
       await chrome({
         script: `
-        await page.fill('${hydraChat} [aria-label="Reply to Titan"]', 'Recover Titan badge turn');
-        await page.click('${hydraChat} [aria-label="Send reply"]');
-        await page.wait('${hydraChat} [data-status="Thinking"]', 5000);
+        await page.fill('${titanChat} [aria-label="Reply to Titan"]', 'Recover Titan badge turn');
+        await page.click('${titanChat} [aria-label="Send reply"]');
+        await page.wait('${titanChat} [data-status="Thinking"]', 5000);
       `,
       })
     } finally {
       recovery.release()
     }
 
-    await chrome({ script: `await page.wait('${hydraChat} [data-status="Idle"]', 5000);` })
+    await chrome({ script: `await page.wait('${titanChat} [data-status="Idle"]', 5000);` })
   },
 )
 
 test(
   'an exited outside worker shows its delivery error on the pill and chat',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -605,7 +605,7 @@ test(
         'Exited outside session',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -628,7 +628,7 @@ test(
         },
       }),
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'attach',
@@ -637,9 +637,9 @@ test(
         'claude-code:exited-outside-session',
       ],
     })
-    const outside = await hydra.task({ key: 'outside-refusal' })
+    const outside = await titan.task({ key: 'outside-refusal' })
     const outsideSelector = await openChat({
-      hydraId: hydra.id,
+      titanId: titan.id,
       taskId: outside.id,
     })
     const outsideFailure = await chrome({
@@ -659,19 +659,19 @@ test(
 test(
   'Oracle preserves worker status with a retention deadline and failed outcomes keep owner questions visible in Titan chat',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.startTask({ key: 'blocked-in-done' })
+    const titan = await othrys.titan()
+    await titan.startTask({ key: 'blocked-in-done' })
     await until({
       what: 'the worker turn to end',
-      check: async () => (await hydra.task({ key: 'blocked-in-done' })).status === 'idle',
+      check: async () => (await titan.task({ key: 'blocked-in-done' })).status === 'idle',
     })
     await workerLine({
-      hydra,
+      titan,
       key: 'blocked-in-done',
       line: 'blocked: Waiting for a missing fixture',
     })
-    const task = await hydra.task({ key: 'blocked-in-done' })
-    await hydra.owner({
+    const task = await titan.task({ key: 'blocked-in-done' })
+    await titan.owner({
       args: [
         'outcome',
         task.id,
@@ -680,11 +680,11 @@ test(
         'Owner closed the work',
       ],
     })
-    expect(await hydra.task({ key: 'blocked-in-done' })).toMatchObject({
+    expect(await titan.task({ key: 'blocked-in-done' })).toMatchObject({
       status: 'blocked',
     })
     const selector = await openChat({
-      hydraId: hydra.id,
+      titanId: titan.id,
       taskId: task.id,
     })
     await status({
@@ -702,7 +702,7 @@ test(
     })
     expect(preview).toBe('Blocked')
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -713,15 +713,15 @@ test(
         'Recover the export',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'outcome',
         'failed-question',
         'failed',
       ],
     })
-    const session = await hydra.chat({ text: 'Watch for work that needs my answer' })
-    await hydra.as({ session }).run({
+    const session = await titan.chat({ text: 'Watch for work that needs my answer' })
+    await titan.as({ session }).run({
       args: [
         'task',
         'ask',
@@ -739,13 +739,13 @@ test(
     await chrome({
       args: [
         'open',
-        `http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`,
+        `http://127.0.0.1:${othrys.port()}/titan/${titan.id}/`,
       ],
     })
     const question = await chrome({
       script: `
-      await page.wait('.hydra-chat .chat-decision .ask', 5000);
-      console.log(await page.eval(() => document.querySelector('.hydra-chat .chat-decision')?.textContent));
+      await page.wait('.titan-chat .chat-decision .ask', 5000);
+      console.log(await page.eval(() => document.querySelector('.titan-chat .chat-decision')?.textContent));
     `,
     })
     expect(question).toContain('Blocker')

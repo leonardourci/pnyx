@@ -12,8 +12,8 @@ beforeAll(async () => {
 test(
   'copy allocation refuses linked roots and leaves linked slots untouched',
   async () => {
-    const hydra = await othrys.hydra()
-    const project = hydra.folder({ name: 'copy-root-project' })
+    const titan = await othrys.titan()
+    const project = titan.folder({ name: 'copy-root-project' })
     writeFileSync(
       join(
         project,
@@ -44,14 +44,14 @@ test(
       })
     }
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'project',
         'add',
         project,
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -68,7 +68,7 @@ test(
       process.env.OTHRYS_HOME!,
       'copies',
     )
-    const outside = hydra.folder({ name: 'outside-pool' })
+    const outside = titan.folder({ name: 'outside-pool' })
 
     if (existsSync(pool)) {
       rmdirSync(pool)
@@ -81,7 +81,7 @@ test(
     )
 
     try {
-      const refused = await hydra.ownerRefused({
+      const refused = await titan.ownerRefused({
         args: [
           'task',
           'start',
@@ -129,7 +129,7 @@ test(
       dangling,
       'dir',
     )
-    const started = await hydra.owner({
+    const started = await titan.owner({
       args: [
         'task',
         'start',
@@ -152,7 +152,7 @@ test(
       'stop',
       'detach',
     ]) {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           action,
@@ -173,7 +173,7 @@ test(
         pool,
         'dir',
       )
-      expect(await hydra.ownerRefused({
+      expect(await titan.ownerRefused({
         args: [
           'task',
           'start',

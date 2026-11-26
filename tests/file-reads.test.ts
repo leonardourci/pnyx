@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { readGrant, readCommand } from '#routine-helper/read-grant.ts'
 import { recordContext } from '#titan/file-context.ts'
-import { hydraFiles, taskFiles } from '#store/file-home.ts'
+import { titanFiles, taskFiles } from '#store/file-home.ts'
 
 test(
   'a read grant allows the supplied record and transcript files without repairing them or granting other tools',
@@ -20,22 +20,22 @@ test(
     onTestFinished(() => {
       vi.unstubAllEnvs()
     })
-    const dir = hydraFiles({
+    const dir = titanFiles({
       home,
-      hydra: 'file-reads',
+      titan: 'file-reads',
     })
     const task = taskFiles({
       home,
-      hydra: 'file-reads',
+      titan: 'file-reads',
       task: 'task-one',
     })
     mkdirSync(
       task,
       { recursive: true },
     )
-    const hydraLog = join(
+    const titanLog = join(
       dir,
-      'hydra.log',
+      'titan.log',
     )
     const taskLog = join(
       task,
@@ -51,7 +51,7 @@ test(
     )
     const content = '{"n":1,"at":"2026-11-22T00:00:00Z","by":"owner","t":"config","id":"config"}\n{"partial":'
     writeFileSync(
-      hydraLog,
+      titanLog,
       content,
     )
     writeFileSync(
@@ -67,12 +67,12 @@ test(
       '{"type":"assistant","message":{"content":"Recorded reply"}}\n',
     )
     const paths = [
-      hydraLog,
+      titanLog,
       taskLog,
       workerLog,
       transcript,
     ]
-    const command = readCommand({ path: hydraLog })
+    const command = readCommand({ path: titanLog })
     const allow = ({
       tool,
       input,
@@ -148,7 +148,7 @@ test(
     expect(allow({
       tool:'Write',
       input:{
-        file_path: hydraLog,
+        file_path: titanLog,
         content: '',
       },
     })).toBe('deny')
@@ -164,12 +164,12 @@ test(
       },
     })).toBe('deny')
     expect(readFileSync(
-      hydraLog,
+      titanLog,
       'utf8',
     )).toBe(content)
 
     const context = recordContext({
-      hydraId: 'file-reads',
+      titanId: 'file-reads',
       task: 'task-one',
     })
     expect(context).toContain(taskLog)

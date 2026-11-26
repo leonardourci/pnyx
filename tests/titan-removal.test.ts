@@ -1,9 +1,9 @@
 import { taskLease } from '#routine-helper/leases.ts'
 import { loadTitan } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
-import { hydraDir } from '#app/home-migration.ts'
+import { titanDir } from '#app/home-migration.ts'
 import { once } from 'node:events'
-import { hydraRemoval, infoPath, processStart } from '#app/server-state.ts'
+import { titanRemoval, infoPath, processStart } from '#app/server-state.ts'
 import { spawn } from 'node:child_process'
 import { stopOldHost, trackChildren } from '#workers/children.ts'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -20,13 +20,13 @@ beforeAll(async () => {
 })
 
 function projectFolder({
-  hydra,
+  titan,
   name,
 }: {
-  hydra: Titan
+  titan: Titan
   name: string
 }) {
-  const folder = hydra.folder({ name })
+  const folder = titan.folder({ name })
   git({
     cwd: folder,
     args: [
@@ -116,13 +116,13 @@ function landWork({
 test(
   'removal protects unlanded copies then runs directly, detaches its projects and keeps history searchable after restart',
   async () => {
-    const caller = await othrys.hydra()
-    const target = await othrys.hydra({
+    const caller = await othrys.titan()
+    const target = await othrys.titan({
       id: 'default',
       create: false,
     })
     const folder = projectFolder({
-      hydra: target,
+      titan: target,
       name: 'shared',
     })
 
@@ -217,7 +217,7 @@ test(
         'task',
         'move',
         'moved',
-        '--to-hydra',
+        '--to-titan',
         shared.id,
       ],
     })
@@ -358,7 +358,7 @@ test(
     const session = await caller.chat({ text: 'remove the other Titan' })
     const unsafe = await caller.as({ session }).refused({
       args: [
-        'hydra',
+        'titan',
         'remove',
         target.id,
       ],
@@ -367,7 +367,7 @@ test(
     expect(unsafe.error).toContain('unlanded')
     expect((await caller.ownerRefused({
       args: [
-        'hydra',
+        'titan',
         'remove',
         target.id,
       ],
@@ -385,7 +385,7 @@ test(
       process.env.TMPDIR!,
       'parked-foreign-copy',
     )
-    const normal = await othrys.hydra()
+    const normal = await othrys.titan()
     await normal.owner({
       args: [
         'project',
@@ -404,7 +404,7 @@ test(
     )
     await caller.owner({
       args: [
-        'hydra',
+        'titan',
         'remove',
         normal.id,
       ],
@@ -432,7 +432,7 @@ test(
     try {
       await caller.owner({
         args: [
-          'hydra',
+          'titan',
           'remove',
           target.id,
         ],
@@ -502,14 +502,14 @@ test(
     expect(new URL(advertised).pathname).toBe('/')
     const response = await fetch(advertised)
     expect(response.status).toBe(200)
-    expect(new URL(response.url).pathname).not.toBe(`/hydra/${target.id}/`)
+    expect(new URL(response.url).pathname).not.toBe(`/titan/${target.id}/`)
 
     expect((await caller.owner({
       args: [
-        'hydra',
+        'titan',
         'list',
       ],
-    })).hydras.some((hydra: { id: string }) => hydra.id === target.id)).toBe(false)
+    })).titans.some((titan: { id: string }) => titan.id === target.id)).toBe(false)
     expect((await shared.owner({
       args: [
         'project',
@@ -518,17 +518,17 @@ test(
       ],
     })).project).toBeDefined()
     expect(readEvents({
-      hydraId: target.id,
+      titanId: target.id,
       types: ['task.created'],
     })).toHaveLength(3)
-    expect(loadTitan({ hydraId: target.id }).state.config?.removed).toBe(true)
+    expect(loadTitan({ titanId: target.id }).state.config?.removed).toBe(true)
     await othrys.restart()
     expect((await caller.owner({
       args: [
-        'hydra',
+        'titan',
         'list',
       ],
-    })).hydras.some((hydra: { id: string }) => hydra.id === target.id)).toBe(false)
+    })).titans.some((titan: { id: string }) => titan.id === target.id)).toBe(false)
     expect((await target.owner({
       args: [
         'oracle',
@@ -550,11 +550,11 @@ test(
 test(
   'removal runs for the caller and page without confirmation',
   async () => {
-    const caller = await othrys.hydra()
-    const target = await othrys.hydra()
+    const caller = await othrys.titan()
+    const target = await othrys.titan()
     const page = await caller.page()
     const result = await page.send({
-      name: 'hydra',
+      name: 'titan',
       args: [
         'remove',
         target.id,
@@ -568,7 +568,7 @@ test(
     page.close()
     const own = await caller.owner({
       args: [
-        'hydra',
+        'titan',
         'remove',
         caller.id,
       ],
@@ -581,8 +581,8 @@ test(
 test(
   'permanent child cleanup stops worker processes and tools with no task assignment',
   async ({ onTestFinished }) => {
-    const hydra = await othrys.hydra()
-    const children = trackChildren({ hydraId: hydra.id })
+    const titan = await othrys.titan()
+    const children = trackChildren({ titanId: titan.id })
     const worker = spawn(
       process.execPath,
       [
@@ -627,7 +627,7 @@ test(
       task: 'worker',
     })
     children.spawned({ child: helper })
-    await trackChildren({ hydraId: hydra.id }).stopAll()
+    await trackChildren({ titanId: titan.id }).stopAll()
     await until({
       what: 'the task worker to exit',
       check: () => worker.exitCode !== null || worker.signalCode !== null,
@@ -698,10 +698,10 @@ test(
 test(
   'a partial removal fences writes and resumes after restart without recreating discarded copies',
   async () => {
-    const caller = await othrys.hydra()
-    const target = await othrys.hydra()
+    const caller = await othrys.titan()
+    const target = await othrys.titan()
     const folder = projectFolder({
-      hydra: target,
+      titan: target,
       name: 'recovery',
     })
     await target.owner({
@@ -773,7 +773,7 @@ test(
     })
     const failed = await caller.ownerRefused({
       args: [
-        'hydra',
+        'titan',
         'remove',
         target.id,
       ],
@@ -805,10 +805,10 @@ test(
     })).code).toBe('CONFLICT')
     expect((await caller.owner({
       args: [
-        'hydra',
+        'titan',
         'list',
       ],
-    })).hydras).toEqual(expect.arrayContaining([
+    })).titans).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: caller.id }),
       expect.objectContaining({ id: target.id }),
     ]))
@@ -835,7 +835,7 @@ test(
         rmSync(
           join(
             process.env.OTHRYS_HOME!,
-            'hydras',
+            'titans',
             legacy.id,
           ),
           {
@@ -856,20 +856,20 @@ test(
     })).not.toContain(locked)
     expect((await caller.owner({
       args: [
-        'hydra',
+        'titan',
         'list',
       ],
-    })).hydras.some((hydra: { id: string }) => hydra.id === target.id)).toBe(false)
+    })).titans.some((titan: { id: string }) => titan.id === target.id)).toBe(false)
   },
 )
 
 test(
   'new ignored work written during landing checks or while stopping tools keeps the copy until a direct retry',
   async ({ onTestFinished }) => {
-    const caller = await othrys.hydra()
-    const target = await othrys.hydra()
+    const caller = await othrys.titan()
+    const target = await othrys.titan()
     const folder = projectFolder({
-      hydra: target,
+      titan: target,
       name: 'changed-work',
     })
     await target.owner({
@@ -948,7 +948,7 @@ process.exit(result.status ?? 1)
     try {
       const duringCheck = await caller.ownerRefused({
         args: [
-          'hydra',
+          'titan',
           'remove',
           target.id,
         ],
@@ -972,7 +972,7 @@ process.exit(result.status ?? 1)
       ],
     })).task
     const releaseLease = taskLease({
-      hydraId: target.id,
+      titanId: target.id,
       task: currentTask.id,
       actor: 'helper:active',
     })
@@ -1040,7 +1040,7 @@ process.exit(result.status ?? 1)
     try {
       expect((await caller.ownerRefused({
         args: [
-          'hydra',
+          'titan',
           'remove',
           target.id,
         ],
@@ -1129,10 +1129,10 @@ process.exit(result.status ?? 1)
       tool,
       'message',
     )
-    trackChildren({ hydraId: target.id }).spawned({ child: tool })
+    trackChildren({ titanId: target.id }).spawned({ child: tool })
     const refused = await caller.ownerRefused({
       args: [
-        'hydra',
+        'titan',
         'remove',
         target.id,
       ],
@@ -1160,7 +1160,7 @@ process.exit(result.status ?? 1)
     })
     await caller.owner({
       args: [
-        'hydra',
+        'titan',
         'remove',
         target.id,
       ],
@@ -1172,13 +1172,13 @@ process.exit(result.status ?? 1)
 test(
   'command copies cannot contain another registered source project',
   async () => {
-    const target = await othrys.hydra()
+    const target = await othrys.titan()
     const folder = projectFolder({
-      hydra: target,
+      titan: target,
       name: 'command-project',
     })
     const nested = projectFolder({
-      hydra: target,
+      titan: target,
       name: 'copy-container/source',
     })
     const root = join(
@@ -1243,7 +1243,7 @@ test(
 test(
   'daemon shutdown joins a permanent close while its tools stop',
   async ({ onTestFinished }) => {
-    const target = await othrys.hydra()
+    const target = await othrys.titan()
     const child = spawn(
       process.execPath,
       [
@@ -1267,12 +1267,12 @@ test(
       child,
       'message',
     )
-    trackChildren({ hydraId: target.id }).spawned({ child })
+    trackChildren({ titanId: target.id }).spawned({ child })
     const stopping = once(
       child,
       'message',
     )
-    const permanent = hydraRemoval.close!({ hydraId: target.id })
+    const permanent = titanRemoval.close!({ titanId: target.id })
     await stopping
     await othrys.restart({
       whileStopped: () => {
@@ -1286,10 +1286,10 @@ test(
 test(
   'failed tool shutdown keeps copies and a retry stops persisted tools before deleting',
   async ({ onTestFinished }) => {
-    const caller = await othrys.hydra()
-    const target = await othrys.hydra()
+    const caller = await othrys.titan()
+    const target = await othrys.titan()
     const folder = projectFolder({
-      hydra: target,
+      titan: target,
       name: 'stop-retry',
     })
     await target.owner({
@@ -1335,9 +1335,9 @@ test(
     onTestFinished(() => {
       child.kill('SIGKILL')
     })
-    trackChildren({ hydraId: target.id }).spawned({ child })
+    trackChildren({ titanId: target.id }).spawned({ child })
     const path = join(
-      hydraDir({ hydraId: target.id }),
+      titanDir({ titanId: target.id }),
       'children.json',
     )
     const recorded = readFileSync(
@@ -1350,7 +1350,7 @@ test(
     )
     const refused = await caller.ownerRefused({
       args: [
-        'hydra',
+        'titan',
         'remove',
         target.id,
       ],
@@ -1375,7 +1375,7 @@ test(
     })
     await caller.owner({
       args: [
-        'hydra',
+        'titan',
         'remove',
         target.id,
       ],

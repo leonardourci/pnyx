@@ -50,16 +50,16 @@ const LONG_REPLY = `${'A long paragraph of the release notes. '.repeat(1500)}End
 test(
   'chat opens on its newest 20 entries, reading older pages reaches every message once, in order, with a long reply whole, and revealing an older message reads back only until it',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     let session
 
     for (let exchange = 1; exchange <= EXCHANGES; exchange++) {
       othrys.claude.plan({
-        hydra: hydra.id,
+        titan: titan.id,
         text: `question ${exchange}`,
         reply: exchange === 5 ? LONG_REPLY : `answer ${exchange}`,
       })
-      session = await hydra.chat({ text: `question ${exchange}` })
+      session = await titan.chat({ text: `question ${exchange}` })
       const answered = session
       await until({
         what: `answer ${exchange}`,
@@ -67,10 +67,10 @@ test(
       })
     }
 
-    const page = await hydra.page()
+    const page = await titan.page()
     const first = await page.send({
       name: 'thread',
-      args: ['$hydra'],
+      args: ['$titan'],
     }) as unknown as ThreadReceipt
     expect(first.thread.conversation.entries.map(entry => entry.text)).toEqual([
       'question 21',
@@ -102,14 +102,14 @@ test(
       throw new Error('The newest page has no saved reply')
     }
 
-    const state = loadTitan({ hydraId: hydra.id }).state
+    const state = loadTitan({ titanId: titan.id }).state
     const detachedCard = {
       ...state.cards[TITAN_CARD],
       agent: undefined,
       sessionIds: [],
     }
     const detachedHistory = readThread({
-      hydraId: hydra.id,
+      titanId: titan.id,
       card: detachedCard,
       state: {
         ...state,
@@ -149,17 +149,17 @@ test(
 
     // A message that arrives while the owner reads back must neither be lost nor shift what was already read.
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'question 31',
       reply: LONG_REPLY,
     })
-    const latest = await hydra.chat({ text: 'question 31' })
+    const latest = await titan.chat({ text: 'question 31' })
     await until({
       what: 'answer 31',
       check: () => latest.answered === EXCHANGES + 1,
     })
 
-    const newestTab = await hydra.page()
+    const newestTab = await titan.page()
     const newest = await newestTab.send({
       name: 'thread',
       args: [TITAN_CARD],
@@ -174,7 +174,7 @@ test(
       const older = await page.send({
         name: 'thread',
         args: [
-          '$hydra',
+          '$titan',
           loaded.older,
         ],
       }) as unknown as ThreadReceipt
@@ -199,13 +199,13 @@ test(
     ).flat())
 
     const commented = loaded.conversation.entries.find(entry => entry.text === 'question 15')
-    const freshTab = await hydra.page()
+    const freshTab = await titan.page()
 
     const readPage = async ({ args }: { args: string[] }) => {
       const receipt = await freshTab.send({
         name: 'thread',
         args: [
-          '$hydra',
+          '$titan',
           ...args,
         ],
       }) as unknown as { thread: ThreadPage }
@@ -234,9 +234,9 @@ test(
 test(
   'a task\'s older chat stays ordered through new replies and session changes, and Focus mode controls tool calls',
   async () => {
-    const hydra = await othrys.hydra()
-    const { worker } = await hydra.startTask({ key: 'notes' })
-    const focusMode = ({ on }: { on: boolean }) => hydra.owner({
+    const titan = await othrys.titan()
+    const { worker } = await titan.startTask({ key: 'notes' })
+    const focusMode = ({ on }: { on: boolean }) => titan.owner({
       args: [
         'settings',
         'set',
@@ -266,7 +266,7 @@ test(
       const threads = createThreadReceiver()
       const page = await openPage({
         port: othrys.port(),
-        hydraId: hydra.id,
+        titanId: titan.id,
         receive: ({ message }) => {
           threads.receive({ message })
         },
@@ -353,7 +353,7 @@ test(
       ]
       expect(notes()).toEqual(everyNote)
 
-      const reconnected = await hydra.page()
+      const reconnected = await titan.page()
       const restored = await reconnected.send({
         name: 'thread',
         args: [
@@ -381,14 +381,14 @@ test(
 
       const reference = loaded().find(entry => entry.text === 'note after reading back')?.reference
       expect(reference).toBeDefined()
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'detach',
           'notes',
         ],
       })
-      const lookedUp = await hydra.owner({
+      const lookedUp = await titan.owner({
         args: [
           'task',
           'messages',
@@ -410,8 +410,8 @@ test(
 test(
   'Activity reads a card\'s updates newest first a page at a time, an update made while reading shifts nothing, and a bad page is refused',
   async () => {
-    const hydra = await othrys.hydra()
-    const { card } = await hydra.owner({
+    const titan = await othrys.titan()
+    const { card } = await titan.owner({
       args: [
         'task',
         'create',
@@ -424,7 +424,7 @@ test(
     })
 
     for (let edit = 1; edit <= 12; edit++) {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'brief',
@@ -435,7 +435,7 @@ test(
       })
     }
 
-    const page = await hydra.page()
+    const page = await titan.page()
 
     const read = async ({ before }: { before?: number }) => {
       const args = [
@@ -467,7 +467,7 @@ test(
       'brief 8',
     ])
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'brief',
@@ -496,7 +496,7 @@ test(
     const fresh = await read({})
     expect(fresh.events[0]?.data.after).toBe('brief 13')
 
-    const cli = await hydra.owner({
+    const cli = await titan.owner({
       args: [
         'task',
         'updates',
@@ -522,7 +522,7 @@ test(
         'yesterday',
       ],
     ]) {
-      const refused = await hydra.ownerRefused({
+      const refused = await titan.ownerRefused({
         args: [
           'task',
           'updates',
@@ -546,14 +546,14 @@ test(
 )
 
 // What the chat holds for a Titan: its saved compactions, oldest first.
-const compactions = ({ hydra }: { hydra: Titan }) => (loadTitan({
-  hydraId: hydra.id,
+const compactions = ({ titan }: { titan: Titan }) => (loadTitan({
+  titanId: titan.id,
 }).state.cards[TITAN_CARD]).compaction?.operations ?? []
 
 test(
   'a chat page shows only the compactions that happened within its messages, and compactions with no message between them fold into one run',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     let answered = 0
     let compacted = 0
 
@@ -561,11 +561,11 @@ test(
       answered += 1
       const number = answered
       othrys.claude.plan({
-        hydra: hydra.id,
+        titan: titan.id,
         text: `question ${number}`,
         reply: `answer ${number}`,
       })
-      const session = await hydra.chat({ text: `question ${number}` })
+      const session = await titan.chat({ text: `question ${number}` })
       await until({
         what: `answer ${number}`,
         check: () => session.answered >= number + compacted,
@@ -573,15 +573,15 @@ test(
     }
 
     const compact = async () => {
-      const before = compactions({ hydra }).length
+      const before = compactions({ titan }).length
       othrys.claude.plan({
-        hydra: hydra.id,
+        titan: titan.id,
         text: '/compact',
         compacting: true,
       })
-      await hydra.owner({
+      await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'send',
           '--text',
           '/compact',
@@ -589,8 +589,8 @@ test(
       })
       await until({
         what: 'the compaction to finish and Titan to resume accepting messages',
-        check: () => compactions({ hydra }).filter(operation => operation.state === 'done').length > before
-          && !loadTitan({ hydraId: hydra.id }).state.hydraOperation,
+        check: () => compactions({ titan }).filter(operation => operation.state === 'done').length > before
+          && !loadTitan({ titanId: titan.id }).state.titanOperation,
       })
       compacted += 1
     }
@@ -610,13 +610,13 @@ test(
     await compact()
     await exchange()
 
-    const page = await hydra.page()
+    const page = await titan.page()
     const newest = (await page.send({
       name: 'thread',
-      args: ['$hydra'],
+      args: ['$titan'],
     }) as unknown as ThreadReceipt).thread
     expect(newest.older).toBeTruthy()
-    const operations = compactions({ hydra })
+    const operations = compactions({ titan })
     expect(operations).toHaveLength(3)
 
     const shown = ({ thread }: { thread: ThreadReceipt['thread'] }) => noticesInTimeline({
@@ -633,7 +633,7 @@ test(
       thread = (await page.send({
         name: 'thread',
         args: [
-          '$hydra',
+          '$titan',
           thread.older,
         ],
       }) as unknown as ThreadReceipt).thread

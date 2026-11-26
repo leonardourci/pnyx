@@ -3,27 +3,27 @@ import { randomUUID } from 'node:crypto'
 import { loadTitan } from '#app/store.ts'
 import { applyDecision } from '#app/decision.ts'
 import { findTitanTurnToResume } from '#titan/wakes.ts'
-import { hydraSend } from '#titan/send-cli.ts'
+import { titanSend } from '#titan/send-cli.ts'
 import { failTitanInput } from '#titan/received.ts'
 import { createTitanOperations, operationEvent } from '#titan/operations.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
-import { hydraConversation } from '#titan/conversation.ts'
+import { titanConversation } from '#titan/conversation.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { withWriter } from '#app/writer.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { createDigestContext } from '#titan/digest-context.ts'
 import { startReviewTimer } from '#titan/review-timer.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
-import { boardReview } from '#titan/review.ts'
+import { titanReview } from '#titan/review.ts'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { TITAN_CARD } from '#titan/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { TITAN_SKILLS, MANAGE_WORKERS_SKILL, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { parse } from 'yaml'
-import { hydraMessages } from '#titan/chat-messages.ts'
+import { titanMessages } from '#titan/chat-messages.ts'
 import { splitEntry } from '#titan/transcripts-read.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
 import { openPage, startOthrys, until, type Titan, type Othrys } from './setup/othrys.ts'
@@ -38,9 +38,9 @@ beforeAll(async () => {
   othrys = await startOthrys()
 })
 
-const queueBox = ({ hydraId }: { hydraId: string }) => othrys.home().scopes[hydraId]?.queue
+const queueBox = ({ titanId }: { titanId: string }) => othrys.home().scopes[titanId]?.queue
 
-const queue = ({ hydraId }: { hydraId: string }) => queueBox({ hydraId })?.chat
+const queue = ({ titanId }: { titanId: string }) => queueBox({ titanId })?.chat
 
 const heard = ({
   received,
@@ -53,18 +53,18 @@ const heard = ({
 test(
   'messages the owner sends while Titan works reach it once each, in order and under their own ids, and the queue shows Titan working until its turn ends',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const turn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'plan the release',
       reply: 'Release plan ready.',
       partial: 'Release',
       hold: true,
     })
-    const session = await hydra.chat({ text: 'plan the release' })
-    await hydra.owner({
+    const session = await titan.chat({ text: 'plan the release' })
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'also check the docs',
@@ -72,9 +72,9 @@ test(
         DOCS_MESSAGE,
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'and the changelog',
@@ -90,7 +90,7 @@ test(
     turn.release()
     await until({
       what: 'the queue to show Titan idle',
-      check: () => queue({ hydraId: hydra.id })?.working === false,
+      check: () => queue({ titanId: titan.id })?.working === false,
     })
 
     expect(session.received.map(message => message.split('\n').at(-1))).toEqual([
@@ -102,18 +102,18 @@ test(
       DOCS_MESSAGE,
       CHANGELOG_MESSAGE,
     ])
-    expect(othrys.claude.sessions.filter(s => s.env.OTHRYS_TITAN === hydra.id)).toHaveLength(1)
+    expect(othrys.claude.sessions.filter(s => s.env.OTHRYS_TITAN === titan.id)).toHaveLength(1)
     expect(Object.values(loadTitan({
-      hydraId: hydra.id,
+      titanId: titan.id,
     }).state.cards).map(card => ({ key: card.key }))
       .sort((
         a,
         b,
-      ) => a.key.localeCompare(b.key))).toEqual([{ key: '$hydra' }])
+      ) => a.key.localeCompare(b.key))).toEqual([{ key: '$titan' }])
 
-    const { messages } = await hydra.owner({
+    const { messages } = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'messages',
       ],
     })
@@ -128,40 +128,40 @@ test(
 test(
   'Stop ends Titan\'s running turn without its reply, Titan takes the next message in the same session, and Stop while idle stops nothing',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'write the long report',
       reply: 'The long report, finished.',
       partial: 'The long',
       hold: true,
     })
-    const session = await hydra.chat({ text: 'write the long report' })
+    const session = await titan.chat({ text: 'write the long report' })
 
-    const stopped = await hydra.owner({
+    const stopped = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'stop',
       ],
     })
-    expect(stopped.stopped).toBe('hydra')
+    expect(stopped.stopped).toBe('titan')
     await until({
       what: 'the stopped turn to end',
       check: () => session.answered === 1,
     })
     await until({
       what: 'the queue to show Titan idle after Stop',
-      check: () => queue({ hydraId: hydra.id })?.working === false,
+      check: () => queue({ titanId: titan.id })?.working === false,
     })
 
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'just the summary',
       reply: 'Summary only.',
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'just the summary',
@@ -172,7 +172,7 @@ test(
       check: () => session.answered === 2,
     })
 
-    expect(othrys.claude.sessions.filter(s => s.env.OTHRYS_TITAN === hydra.id)).toEqual([session])
+    expect(othrys.claude.sessions.filter(s => s.env.OTHRYS_TITAN === titan.id)).toEqual([session])
     expect(heard({
       received: session.received,
       text: 'write the long report',
@@ -182,10 +182,10 @@ test(
       text: 'just the summary',
     })).toBe(1)
 
-    const page = await hydra.page()
+    const page = await titan.page()
     const { thread } = await page.send({
       name: 'thread',
-      args: ['$hydra'],
+      args: ['$titan'],
     }) as {
       thread: {
         conversation: {
@@ -201,23 +201,23 @@ test(
     expect(replies).not.toContain('The long report, finished.')
     page.close()
 
-    const idle = await hydra.owner({
+    const idle = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'stop',
       ],
     })
     expect(idle.stopped).toMatch(/^none:/)
-    const configured = structuredClone(loadTitan({ hydraId: hydra.id }).state.cards[TITAN_CARD]!)
-    await hydra.owner({
+    const configured = structuredClone(loadTitan({ titanId: titan.id }).state.cards[TITAN_CARD]!)
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--identity',
-        'replacement-hydra',
+        'replacement-titan',
       ],
     })
-    const detached = loadTitan({ hydraId: hydra.id }).state.cards[TITAN_CARD]!
+    const detached = loadTitan({ titanId: titan.id }).state.cards[TITAN_CARD]!
     expect(detached.agent).toBeUndefined()
     expect(detached.terminal).toBeUndefined()
     expect(detached.activity).toBeUndefined()
@@ -232,13 +232,13 @@ test(
 test(
   'after a restart Titan resumes its own session with its conversation, and the next message reaches it once',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'remember the codename',
       reply: 'Noted: Bluebird.',
     })
-    const before = await hydra.chat({ text: 'remember the codename' })
+    const before = await titan.chat({ text: 'remember the codename' })
     await until({
       what: 'the first answer',
       check: () => before.answered === 1,
@@ -247,11 +247,11 @@ test(
     await othrys.restart()
 
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'what was it?',
       reply: 'Bluebird.',
     })
-    const after = await hydra.chat({ text: 'what was it?' })
+    const after = await titan.chat({ text: 'what was it?' })
     await until({
       what: 'the answer after the restart',
       check: () => after.answered === 1,
@@ -271,10 +271,10 @@ test(
       text: 'what was it?',
     })).toBe(1)
 
-    const page = await hydra.page()
+    const page = await titan.page()
     const { thread } = await page.send({
       name: 'thread',
-      args: ['$hydra'],
+      args: ['$titan'],
     }) as {
       thread: {
         conversation: {
@@ -313,9 +313,9 @@ test(
 test(
   'worker reports wait for one wake and survive an interrupted turn while note lines stay quiet',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'export' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'export' })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -329,29 +329,29 @@ test(
       ],
     })
     const turn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'review the roadmap',
       reply: 'Roadmap reviewed.',
       partial: 'Roadmap',
       hold: true,
     })
-    const session = await hydra.chat({ text: 'review the roadmap' })
-    await hydra.owner({
+    const session = await titan.chat({ text: 'review the roadmap' })
+    await titan.owner({
       args: [
         'task',
         'start',
         'export',
       ],
     })
-    const worker = await hydra.agent({ cwd: folder })
+    const worker = await titan.agent({ cwd: folder })
     await until({
       what: 'the worker\'s first turn',
       check: () => worker.answered === 1,
     })
 
-    expect((await hydra.as({ session: worker }).refused({
+    expect((await titan.as({ session: worker }).refused({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--task',
         'export',
@@ -363,13 +363,13 @@ test(
     })).code).toBe('VALIDATION_ERROR')
 
     await workerLine({
-      hydra,
+      titan,
       key: 'export',
       line: 'note: Upload started',
     })
-    await hydra.as({ session: worker }).run({
+    await titan.as({ session: worker }).run({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--task',
         'export',
@@ -378,16 +378,16 @@ test(
       ],
     })
     await workerLine({
-      hydra,
+      titan,
       key: 'export',
       line: 'note: Quiet latest line',
     })
     await workerLine({
-      hydra,
+      titan,
       key: 'export',
       line: 'blocked: Need the SFTP password',
     })
-    const taskHistory = await hydra.owner({
+    const taskHistory = await titan.owner({
       args: [
         'task',
         'history',
@@ -403,7 +403,7 @@ test(
     const waiting = await until({
       what: 'the report and the status to wait for Titan',
       check: () => {
-        const updates = queueBox({ hydraId: hydra.id })?.waiting
+        const updates = queueBox({ titanId: titan.id })?.waiting
 
         const processed = updates?.some(update => update.seq === statusEvent.seq)
 
@@ -416,14 +416,14 @@ test(
     expect(session.received).toHaveLength(1)
 
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('Export works; ready for review'),
       hold: true,
     })
     turn.release()
     await until({
       what: 'Titan to read the report wake',
-      check: () => session.received.length === 2 && queue({ hydraId: hydra.id })?.working === true,
+      check: () => session.received.length === 2 && queue({ titanId: titan.id })?.working === true,
     })
     const wake = session.received[1]!
     expect(wake.split('Export works; ready for review')).toHaveLength(2)
@@ -432,16 +432,16 @@ test(
     expect(wake).toContain('Need the SFTP password')
     const blockedId = wake.match(/record ("[^"\n]+") \S+ \[unhandled\]: blocked: Need the SFTP password/)?.[1]
     expect(blockedId).toBeDefined()
-    const task = await hydra.task({ key: 'export' })
+    const task = await titan.task({ key: 'export' })
     const root = join(
       process.env.OTHRYS_HOME!,
-      'hydras',
-      hydra.id,
+      'titans',
+      titan.id,
     )
     const facts = [
       join(
         root,
-        'hydra.log',
+        'titan.log',
       ),
       join(
         root,
@@ -461,17 +461,17 @@ test(
       code: 'blocked',
       text: 'Need the SFTP password',
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'stop',
       ],
     })
     await until({
       what: 'the interrupted report turn to stop',
-      check: () => queue({ hydraId: hydra.id })?.working === false,
+      check: () => queue({ titanId: titan.id })?.working === false,
     })
-    await hydra.chat({ text: 'Review the interrupted worker reports' })
+    await titan.chat({ text: 'Review the interrupted worker reports' })
     await until({
       what: 'the report to be delivered after interruption',
       check: () => session.received.length >= 3,
@@ -482,9 +482,9 @@ test(
     expect(reportId).toBeDefined()
     await until({
       what: 'the retried report turn to finish',
-      check: () => queue({ hydraId: hydra.id })?.working === false,
+      check: () => queue({ titanId: titan.id })?.working === false,
     })
-    await hydra.chat({ text: 'Continue after reading the worker reports' })
+    await titan.chat({ text: 'Continue after reading the worker reports' })
     const following = session.received.find(text => text.endsWith('Continue after reading the worker reports'))!
     expect(following).not.toContain('[unhandled]: Export works; ready for review')
   },
@@ -493,28 +493,28 @@ test(
 test(
   '300 queued worker reports stay bounded, preserve owner messages and remain readable in files after interruption',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const reportIds = ({ text }: { text: string }) => [...text.matchAll(/^- record ("[^"\n]+").*\[unhandled\]/gm)]
       .map(match => JSON.parse(match[1]!))
     const turn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'Hold the report burst',
       hold: true,
     })
-    const session = await hydra.chat({ text: 'Hold the report burst' })
-    const page = await hydra.page()
+    const session = await titan.chat({ text: 'Hold the report burst' })
+    const page = await titan.page()
     const wakeTurn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('Why you are woken') && text.includes('more worker reports'),
       hold: true,
     })
     const replacementTurn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'Resume after the interrupted read',
       hold: true,
     })
     const overflowTurn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'Read the remaining reports',
       hold: true,
     })
@@ -524,7 +524,7 @@ test(
         const body = index === 0 ? '<'.repeat(500) : 'Long report body '.repeat(100)
 
         await page.send({
-          name: 'hydra',
+          name: 'titan',
           args: [
             'send',
             '--actor',
@@ -535,7 +535,7 @@ test(
         })
       }
 
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'create',
@@ -545,8 +545,8 @@ test(
           'budget-decision',
         ],
       })
-      const decisionTask = await hydra.task({ key: 'budget-decision' })
-      await hydra.as({ session }).run({
+      const decisionTask = await titan.task({ key: 'budget-decision' })
+      await titan.as({ session }).run({
         args: [
           'task',
           'ask',
@@ -568,17 +568,17 @@ test(
         ],
       })
       await withWriter({
-        hydraId: hydra.id,
+        titanId: titan.id,
         fn: ({ writer }) => {
-          const decision = hydraEvent({
+          const decision = titanEvent({
             state: writer.state,
             meta: {
-              actor: 'pnyx',
+              actor: 'othrys',
               at: new Date().toISOString(),
             },
             cardId: TITAN_CARD,
             change: {
-              type: 'hydra.review',
+              type: 'titan.review',
               data: {
                 block: `Timed review:\n${'Timed review evidence. '.repeat(1000)}End of timed review evidence`,
                 reminders: [],
@@ -595,11 +595,11 @@ test(
       })
       await until({
         what: 'the timed review to join the report wake',
-        check: () => queueBox({ hydraId: hydra.id })?.waiting.some(update => update.kind === 'timed review'),
+        check: () => queueBox({ titanId: titan.id })?.waiting.some(update => update.kind === 'timed review'),
       })
-      await hydra.owner({
+      await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'send',
           '--text',
           'Keep the owner message intact under the report cap',
@@ -609,7 +609,7 @@ test(
       await until({
         what: 'owner and bounded wake delivered',
         check: () => session.received.some(text => text.includes('Why you are woken') && text.includes('more worker reports'))
-          && queue({ hydraId: hydra.id })?.working === true,
+          && queue({ titanId: titan.id })?.working === true,
       })
       expect(session.received.some(text => text.endsWith('Keep the owner message intact under the report cap'))).toBe(true)
       const wake = session.received.find(text => text.includes('Why you are woken') && text.includes('more worker reports'))!
@@ -623,13 +623,13 @@ test(
       expect(wake).not.toContain('Long report body '.repeat(30))
       expect(wake).toContain('Which export format?')
 
-      expect(wake).toContain('hydra.log')
+      expect(wake).toContain('titan.log')
       expect(wake).toContain('task.log')
       const path = join(
         process.env.OTHRYS_HOME!,
-        'hydras',
-        hydra.id,
-        'hydra.log',
+        'titans',
+        titan.id,
+        'titan.log',
       )
       const facts = readFileSync(
         path,
@@ -637,7 +637,7 @@ test(
       ).trimEnd()
         .split('\n')
         .map(line => JSON.parse(line))
-      const reports = facts.filter(fact => fact.event?.type === 'hydra.message' && /^worker:burst-/.test(fact.event.actor))
+      const reports = facts.filter(fact => fact.event?.type === 'titan.message' && /^worker:burst-/.test(fact.event.actor))
       const pendingLine = wake.split('\n').find(line => line.startsWith('Pending reports: '))
       const pending: {
         id: string
@@ -647,7 +647,7 @@ test(
       const reportIdsInTitanLog = new Set(reports.map(report => report.id))
       const advertised = pending.filter(report => reportIdsInTitanLog.has(report.id))
       expect(advertised.length).toBeGreaterThan(0)
-      expect(advertised.every(report => report.file === 'hydra.log' && report.status === 'unhandled')).toBe(true)
+      expect(advertised.every(report => report.file === 'titan.log' && report.status === 'unhandled')).toBe(true)
       expect(reports.map(fact => fact.event.data.text)).toEqual(Array.from(
         { length: 300 },
         (
@@ -656,21 +656,21 @@ test(
         ) =>
           `Report ${index}: ${index === 0 ? '<'.repeat(500) : 'Long report body '.repeat(100)}`,
       ))
-      const timedReview = facts.find(fact => fact.event?.type === 'hydra.review'
+      const timedReview = facts.find(fact => fact.event?.type === 'titan.review'
         && fact.event.data.block.includes('End of timed review evidence'))
       expect(timedReview).toBeDefined()
       expect(wake).toContain(JSON.stringify(timedReview.id))
-      await hydra.owner({
+      await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'stop',
         ],
       })
       await until({
         what: 'the interrupted report turn to stop',
-        check: () => queue({ hydraId: hydra.id })?.working === false,
+        check: () => queue({ titanId: titan.id })?.working === false,
       })
-      await hydra.chat({ text: 'Resume after the interrupted read' })
+      await titan.chat({ text: 'Resume after the interrupted read' })
       await until({
         what: 'the replacement turn to receive pending reports',
         check: () => session.received.some(text => text.endsWith('Resume after the interrupted read')),
@@ -683,7 +683,7 @@ test(
       replacementTurn.release()
       await until({
         what: 'the replacement report turn to finish',
-        check: () => queue({ hydraId: hydra.id })?.working === false,
+        check: () => queue({ titanId: titan.id })?.working === false,
       })
       const submitted = reports.map(report => report.id)
       const wakeIndex = session.received.indexOf(wake)
@@ -701,7 +701,7 @@ test(
 
       for (let pass = 0; pass < 300 && remaining.length; pass++) {
         const text = pass === 0 ? 'Read the remaining reports' : `Continue reading remaining reports ${pass}`
-        await hydra.chat({ text })
+        await titan.chat({ text })
         const next = session.received.find(message => message.endsWith(text))!
         const nextIds = reportIds({ text: next })
         expect(nextIds.length).toBeGreaterThan(0)
@@ -711,7 +711,7 @@ test(
         overflowTurn.release()
         await until({
           what: 'the bounded report turn to finish',
-          check: () => queue({ hydraId: hydra.id })?.working === false,
+          check: () => queue({ titanId: titan.id })?.working === false,
         })
       }
 
@@ -734,20 +734,20 @@ test(
 test(
   'reports in an owner turn reserve their tasks while the helper takes other work',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const first = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'Hold reservation setup',
       hold: true,
     })
-    const main = await hydra.chat({ text: 'Hold reservation setup' })
-    const reserved = await hydra.startTask({ key: 'reserved-report' })
-    await hydra.startTask({ key: 'available-report' })
-    const reservedTask = await hydra.task({ key: 'reserved-report' })
-    const availableTask = await hydra.task({ key: 'available-report' })
-    await hydra.as({ session: reserved.worker }).run({
+    const main = await titan.chat({ text: 'Hold reservation setup' })
+    const reserved = await titan.startTask({ key: 'reserved-report' })
+    await titan.startTask({ key: 'available-report' })
+    const reservedTask = await titan.task({ key: 'reserved-report' })
+    const availableTask = await titan.task({ key: 'available-report' })
+    await titan.as({ session: reserved.worker }).run({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--task',
         reservedTask.id,
@@ -755,20 +755,20 @@ test(
         'Reserved owner-turn report',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'stop',
       ],
     })
     first.release()
     const ownerTurn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'Review reserved owner report',
       hold: true,
     })
     const helperTurn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('Granted tasks:'),
       hold: true,
       reply: JSON.stringify({
@@ -783,28 +783,28 @@ test(
     })
 
     try {
-      await hydra.chat({ text: 'Review reserved owner report' })
+      await titan.chat({ text: 'Review reserved owner report' })
       await until({
         what: 'main to read the owner-turn report',
         check: () => main.received.some(text => text.includes('Reserved owner-turn report')),
       })
-      await hydra.owner({
+      await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'set',
           '--helper',
           'auto',
         ],
       })
       await workerLine({
-        hydra,
+        titan,
         key: 'available-report',
         line: 'blocked: Available helper report',
       })
       const granted = await until({
         what: 'helper to take available work',
         check: () => {
-          const helper = loadTitan({ hydraId: hydra.id }).state.helper
+          const helper = loadTitan({ titanId: titan.id }).state.helper
 
           return Object.values(helper?.runs ?? {}).at(-1)?.tasks
         },
@@ -812,7 +812,7 @@ test(
       expect(granted).toEqual([availableTask.id])
       const helperSession = await until({
         what: 'the helper to receive its bounded file grant',
-        check: () => othrys.claude.sessions.find(session => session.env.OTHRYS_TITAN === hydra.id
+        check: () => othrys.claude.sessions.find(session => session.env.OTHRYS_TITAN === titan.id
           && session.env.OTHRYS_ACTOR?.startsWith('helper:') && session.received.length > 0),
       })
       expect(helperSession.received.at(-1)).toContain('Only handle the granted tasks and selected updates')
@@ -824,14 +824,14 @@ test(
       expect(withinGrant).toBe(true)
       const root = join(
         process.env.OTHRYS_HOME!,
-        'hydras',
-        hydra.id,
+        'titans',
+        titan.id,
       )
 
       for (const path of [
         join(
           root,
-          'hydra.log',
+          'titan.log',
         ),
         join(
           root,
@@ -877,9 +877,9 @@ test(
       }))
         .toMatchObject({ behavior: 'deny' })
     } finally {
-      await hydra.owner({
+      await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'set',
           '--helper',
           'off',
@@ -933,22 +933,22 @@ test.each([
     result,
     link,
   }) => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--helper',
         'auto',
       ],
     })
-    const main = await hydra.chat({ text: 'Check whether the shop is used and has production errors' })
+    const main = await titan.chat({ text: 'Check whether the shop is used and has production errors' })
     await until({
       what: 'Titan to accept the investigation',
       check: () => main.answered === 1,
     })
-    const folder = hydra.folder({ name: 'shop' })
-    const asTitan = hydra.as({ session: main })
+    const folder = titan.folder({ name: 'shop' })
+    const asTitan = titan.as({ session: main })
     await asTitan.run({
       args: [
         'task',
@@ -962,11 +962,11 @@ test.each([
         folder,
       ],
     })
-    const { id } = await hydra.task({ key: 'shop' })
+    const { id } = await titan.task({ key: 'shop' })
     const workerReport = `${code}: ${report} ${link}`
     const summary = `${result} ${link}`
     const helperTurn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('Granted tasks:') && text.includes(`${code}:`),
       hold: true,
       reply: JSON.stringify({
@@ -986,20 +986,20 @@ test.each([
         'shop',
       ],
     })
-    await hydra.agent({ cwd: folder })
+    await titan.agent({ cwd: folder })
     await workerLine({
-      hydra,
+      titan,
       key: 'shop',
       line: workerReport,
     })
     await until({
       what: 'the helper to read the worker result',
-      check: () => othrys.claude.sessions.some(session => session.env.OTHRYS_TITAN === hydra.id
+      check: () => othrys.claude.sessions.some(session => session.env.OTHRYS_TITAN === titan.id
         && session.env.OTHRYS_ACTOR?.startsWith('helper:')
         && session.received.some(text => text.includes(workerReport))),
     })
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes(summary),
       reply: summary,
     })
@@ -1007,14 +1007,14 @@ test.each([
     await until({
       what: 'Titan to relay the helper outcome',
       check: () => main.received.some(text => text.includes(summary))
-        && queue({ hydraId: hydra.id })?.working === false,
+        && queue({ titanId: titan.id })?.working === false,
     })
-    const page = await hydra.page()
+    const page = await titan.page()
 
     try {
       const { thread } = await page.send({
         name: 'thread',
-        args: ['$hydra'],
+        args: ['$titan'],
       }) as {
         thread: {
           conversation: {
@@ -1032,16 +1032,16 @@ test.each([
           text: summary,
         }),
       ])
-      const messages = await hydra.owner({
+      const messages = await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'messages',
           '--limit',
           '100',
         ],
       })
       expect(messages.messages).not.toContainEqual(expect.objectContaining({
-        actor: 'pnyx',
+        actor: 'othrys',
         text: expect.stringContaining(summary),
       }))
     } finally {
@@ -1053,23 +1053,23 @@ test.each([
 test(
   'while the routine helper handles a worker\'s update, what the worker\'s transcript records still reaches its card',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--helper',
         'auto',
       ],
     })
     // Updates wake only a Titan that Othrys runs.
-    const main = await hydra.chat({ text: 'Watch the invoices' })
+    const main = await titan.chat({ text: 'Watch the invoices' })
     await until({
       what: 'Titan\'s first turn',
       check: () => main.answered === 1,
     })
-    const folder = hydra.folder({ name: 'invoices' })
-    await hydra.owner({
+    const folder = titan.folder({ name: 'invoices' })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1082,10 +1082,10 @@ test(
         folder,
       ],
     })
-    const { id } = await hydra.task({ key: 'invoices' })
+    const { id } = await titan.task({ key: 'invoices' })
     // Planned before the worker starts: when its first turn ends, the helper batch gets this held reply and keeps the task leased until release().
     const helperTurn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('Granted tasks:'),
       reply: JSON.stringify({
         outcomes: [
@@ -1098,27 +1098,27 @@ test(
       }),
       hold: true,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'start',
         'invoices',
       ],
     })
-    await hydra.agent({ cwd: folder })
+    await titan.agent({ cwd: folder })
     await workerLine({
-      hydra,
+      titan,
       key: 'invoices',
       line: 'blocked: Retry the export',
     })
     const helper = await until({
       what: 'the routine helper to take the worker\'s update',
-      check: () => othrys.claude.sessions.find(session => session.env.OTHRYS_TITAN === hydra.id
+      check: () => othrys.claude.sessions.find(session => session.env.OTHRYS_TITAN === titan.id
         && session.env.OTHRYS_ACTOR?.startsWith('helper:') && session.received.length > 0),
     })
 
     // Othrys harvests the Claude Code version on a transcript record into the card's settings.
-    const { sessions } = await hydra.owner({
+    const { sessions } = await titan.owner({
       args: [
         'task',
         'history',
@@ -1142,7 +1142,7 @@ test(
         },
       })}\n`,
     )
-    await hydra.owner({
+    await titan.owner({
       args: [
         'reply',
         'invoices',
@@ -1152,7 +1152,7 @@ test(
     })
     await until({
       what: 'the transcript\'s version to reach the card while the helper still works',
-      check: async () => (await hydra.owner({
+      check: async () => (await titan.owner({
         args: [
           'task',
           'show',
@@ -1162,7 +1162,7 @@ test(
       })).task.settings?.version === '9.9.9',
     })
     expect(helper.answered).toBe(0)
-    const mainEdit = await hydra.owner({
+    const mainEdit = await titan.owner({
       args: [
         'task',
         'brief',
@@ -1172,7 +1172,7 @@ test(
       ],
     })
     expect(mainEdit.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('leased') }))
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'task',
         'show',
@@ -1180,7 +1180,7 @@ test(
         '--full',
       ],
     })).task.brief).toBe('Retry the export without losing its rows')
-    const ungranted = await hydra.owner({
+    const ungranted = await titan.owner({
       args: [
         'task',
         'create',
@@ -1191,7 +1191,7 @@ test(
         'Check the import log',
       ],
     })
-    const helperEdit = await hydra.as({ session: helper }).run({
+    const helperEdit = await titan.as({ session: helper }).run({
       args: [
         'task',
         'hold',
@@ -1199,10 +1199,10 @@ test(
       ],
     })
     expect(helperEdit.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('default') }))
-    expect((await hydra.task({ key: ungranted.card.id })).hold).toBeDefined()
+    expect((await titan.task({ key: ungranted.card.id })).hold).toBeDefined()
 
     const reportHelperTurn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('Granted tasks:') && text.includes('Invoice checks rerun under existing instructions'),
       hold: true,
       reply: JSON.stringify({
@@ -1215,9 +1215,9 @@ test(
         ],
       }),
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--task',
         'invoices',
@@ -1234,43 +1234,43 @@ test(
         && session.received.some(text => text.includes('End of invoice evidence'))),
     })
     await workerLine({
-      hydra,
+      titan,
       key: 'invoices',
       line: 'note: New invoice progress during the helper lease',
     })
-    await hydra.chat({ text: 'Check the invoice report while the helper works' })
+    await titan.chat({ text: 'Check the invoice report while the helper works' })
     await until({
       what: 'main to finish reading the leased report',
       check: () => main.received.some(text => text.includes('Check the invoice report while the helper works'))
-        && queue({ hydraId: hydra.id })?.working === false,
+        && queue({ titanId: titan.id })?.working === false,
     })
     expect(main.received.find(text => text.includes('Check the invoice report while the helper works')))
       .toContain('latest: New invoice progress during the helper lease')
     reportHelperTurn.release()
     await until({
       what: 'helper to finish the worker report',
-      check: () => (loadTitan({ hydraId: hydra.id }).state.helper?.usage?.batches ?? 0) >= 2,
+      check: () => (loadTitan({ titanId: titan.id }).state.helper?.usage?.batches ?? 0) >= 2,
     })
     expect(main.received).toHaveLength(2)
-    const routineMessages = await hydra.owner({
+    const routineMessages = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'messages',
         '--limit',
         '100',
       ],
     })
     expect(routineMessages.messages).not.toContainEqual(expect.objectContaining({
-      actor: 'pnyx',
+      actor: 'othrys',
       text: expect.stringContaining('Reran invoice checks.'),
     }))
-    const pendingNotes = loadTitan({ hydraId: hydra.id }).state.contextNotes ?? []
+    const pendingNotes = loadTitan({ titanId: titan.id }).state.contextNotes ?? []
     expect(pendingNotes).toContainEqual(expect.objectContaining({
       text: expect.stringContaining('Invoice checks rerun under existing instructions'),
       handled: true,
     }))
     const scopeTurn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('Granted tasks:') && text.includes('Invoice scope needs a decision'),
       hold: true,
       reply: JSON.stringify({
@@ -1283,9 +1283,9 @@ test(
         ],
       }),
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--task',
         'invoices',
@@ -1302,7 +1302,7 @@ test(
     })
 
     try {
-      await hydra.chat({ text: 'Summarize the invoice status' })
+      await titan.chat({ text: 'Summarize the invoice status' })
       await until({
         what: 'main to read the handled report',
         check: () => main.received.some(text => text.includes('Summarize the invoice status')),
@@ -1364,20 +1364,20 @@ test(
 test(
   'owner messages sent while Titan works survive a restart that cuts its turn: Titan resumes once, is pointed at what it did not answer, and the messages stay in order',
   async () => {
-    const hydra = await othrys.hydra()
-    const answered = await hydra.chat({ text: 'Check the completed inventory' })
+    const titan = await othrys.titan()
+    const answered = await titan.chat({ text: 'Check the completed inventory' })
     await until({
       what: 'the inventory reply to finish',
-      check: () => answered.answered === 1 && queue({ hydraId: hydra.id })?.working === false,
+      check: () => answered.answered === 1 && queue({ titanId: titan.id })?.working === false,
     })
-    const inventoryAgent = loadTitan({ hydraId: hydra.id }).state.cards[TITAN_CARD]!.agent
-    await hydra.owner({
+    const inventoryAgent = loadTitan({ titanId: titan.id }).state.cards[TITAN_CARD]!.agent
+    await titan.owner({
       args: [
         'push',
         '--key',
         TITAN_CARD,
         '--actor',
-        'pnyx',
+        'othrys',
         '--file',
         '-',
       ],
@@ -1388,16 +1388,16 @@ test(
       }),
     })
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'plan the migration',
       reply: 'Migration planned.',
       partial: 'Migration',
       hold: true,
     })
-    await hydra.chat({ text: 'plan the migration' })
+    await titan.chat({ text: 'plan the migration' })
 
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'and the backups',
       partial: 'Checking backups',
       hold: true,
@@ -1407,9 +1407,9 @@ test(
       'also check the indexes',
       'and the backups',
     ]) {
-      await hydra.owner({
+      await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'send',
           '--text',
           text,
@@ -1417,7 +1417,7 @@ test(
       })
     }
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1427,10 +1427,10 @@ test(
         'restart-report',
       ],
     })
-    const restartTask = await hydra.task({ key: 'restart-report' })
-    await hydra.owner({
+    const restartTask = await titan.task({ key: 'restart-report' })
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--task',
         restartTask.id,
@@ -1441,9 +1441,9 @@ test(
       ],
     })
 
-    const withoutCache = structuredClone(loadTitan({ hydraId: hydra.id }).state)
-    const activeSession = withoutCache.sessions![withoutCache.config!.hydra.session!]!
-    delete activeSession.hydraTurn
+    const withoutCache = structuredClone(loadTitan({ titanId: titan.id }).state)
+    const activeSession = withoutCache.sessions![withoutCache.config!.titan.session!]!
+    delete activeSession.titanTurn
     const scan = eventLog.scanChanges
     const evicted = vi.spyOn(
       eventLog,
@@ -1455,7 +1455,7 @@ test(
 
     try {
       recovery = findTitanTurnToResume({
-        hydraId: hydra.id,
+        titanId: titan.id,
         state: withoutCache,
         agent: activeSession.agent,
       })
@@ -1463,9 +1463,9 @@ test(
       evicted.mockRestore()
     }
 
-    const savedMessages = (await hydra.owner({
+    const savedMessages = (await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'messages',
       ],
     })).messages
@@ -1477,7 +1477,7 @@ test(
     await othrys.restart()
     const resumed = await until({
       what: 'Titan to resume its session after the restart',
-      check: () => othrys.claude.sessions.find(s => s.env.OTHRYS_TITAN === hydra.id && s.resumed),
+      check: () => othrys.claude.sessions.find(s => s.env.OTHRYS_TITAN === titan.id && s.resumed),
     })
     await until({
       what: 'the resumed Titan to hear of the cut turn',
@@ -1491,30 +1491,30 @@ test(
 
     const recoveredReport = resumed.received.find(text => text.includes('Worker report awaiting restart'))!
     expect(recoveredReport).toMatch(/record "[^"\n]+" \S+ \[unhandled\]: Worker report awaiting restart/)
-    expect(recoveredReport).toContain('hydra.log')
+    expect(recoveredReport).toContain('titan.log')
     expect(recoveredReport).toContain('Open decisions')
     const facts = readFileSync(
       join(
         process.env.OTHRYS_HOME!,
-        'hydras',
-        hydra.id,
-        'hydra.log',
+        'titans',
+        titan.id,
+        'titan.log',
       ),
       'utf8',
     ).trimEnd()
       .split('\n')
       .map(line => JSON.parse(line))
     const recoveredOwnerMessages = Array.from(
-      recoveredReport.matchAll(/Read owner message "([^"]+)" in hydra.log in full/g),
+      recoveredReport.matchAll(/Read owner message "([^"]+)" in titan.log in full/g),
       match =>
         facts.find(fact => fact.id === match[1])?.event.data.text,
     )
 
     expect(recoveredOwnerMessages).toEqual(['and the backups'])
 
-    const { messages } = await hydra.owner({
+    const { messages } = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'messages',
       ],
     })
@@ -1532,8 +1532,8 @@ test(
 test(
   'Titan\'s folder holds the shipped skills as written and every reference its contract links before its first turn, and loses a reference the skills dropped by its next',
   async () => {
-    const hydra = await othrys.hydra()
-    const session = await hydra.chat({ text: 'hello' })
+    const titan = await othrys.titan()
+    const session = await titan.chat({ text: 'hello' })
     const shipped = join(
       import.meta.dirname,
       '..',
@@ -1624,35 +1624,7 @@ test(
       )
     }
 
-    const retiredSkills = [
-      'pnyx-firstmate-as-hydra',
-      'pnyx-hydra-firstmate',
-    ].map(name => join(
-      session.cwd,
-      '.agents',
-      'skills',
-      name,
-    ))
-
-    for (const folder of retiredSkills) {
-      mkdirSync(
-        folder,
-        { recursive: true },
-      )
-      writeFileSync(
-        join(
-          folder,
-          'SKILL.md',
-        ),
-        'Retired Firstmate integration',
-      )
-    }
-
-    await hydra.chat({ text: 'hello again' })
-
-    for (const folder of retiredSkills) {
-      expect(existsSync(folder)).toBe(false)
-    }
+    await titan.chat({ text: 'hello again' })
 
     for (const folder of [
       withReferences,
@@ -1672,16 +1644,16 @@ test(
 test(
   'cancelling compaction delivers held input once',
   async () => {
-    const hydra = await othrys.hydra()
-    const { worker } = await hydra.startTask({ key: 'compactable' })
-    const { id } = await hydra.task({ key: 'compactable' })
+    const titan = await othrys.titan()
+    const { worker } = await titan.startTask({ key: 'compactable' })
+    const { id } = await titan.task({ key: 'compactable' })
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: '/compact',
       compacting: true,
       hold: true,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'reply',
         'compactable',
@@ -1689,7 +1661,7 @@ test(
         '/compact',
       ],
     })
-    const held = await hydra.owner({
+    const held = await titan.owner({
       args: [
         'reply',
         'compactable',
@@ -1702,12 +1674,12 @@ test(
     await until({
       what: 'the message to wait behind the running compaction',
       check: () => (loadTitan({
-        hydraId: hydra.id,
+        titanId: titan.id,
       }).state.cards[id]).compaction?.inputs.some(input => input.id === held.reply.reply),
     })
     expect(heard()).toBe(0)
 
-    const page = await hydra.page()
+    const page = await titan.page()
     expect(await page.send({
       name: 'compact',
       args: [id],
@@ -1724,16 +1696,16 @@ test(
 
 // A message of the owner's as the page shows it in Titan's chat.
 const chatEntry = async ({
-  hydra,
+  titan,
   text,
 }: {
-  hydra: Titan
+  titan: Titan
   text: string
 }) => {
-  const page = await hydra.page()
+  const page = await titan.page()
   const { thread } = await page.send({
     name: 'thread',
-    args: ['$hydra'],
+    args: ['$titan'],
   }) as {
     thread: {
       conversation: {
@@ -1754,25 +1726,25 @@ const chatEntry = async ({
 test(
   'Stop cancels the message Titan had not taken as not delivered, and the same text sent again reaches Titan once',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: '/compact',
       compacting: true,
       hold: true,
     })
-    const session = await hydra.chat({ text: '/compact' })
-    await hydra.owner({
+    const session = await titan.chat({ text: '/compact' })
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'also list the risks',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'stop',
       ],
     })
@@ -1784,12 +1756,12 @@ test(
     await until({
       what: 'the unread message to read as stopped',
       check: async () => (await chatEntry({
-        hydra,
+        titan,
         text: 'also list the risks',
       }))?.receipt === 'failed',
     })
     expect(await chatEntry({
-      hydra,
+      titan,
       text: 'also list the risks',
     })).toMatchObject({ waiting: 'stopped' })
     expect(heard({
@@ -1797,9 +1769,9 @@ test(
       text: 'also list the risks',
     })).toBe(0)
 
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'also list the risks',
@@ -1818,25 +1790,25 @@ test(
 test(
   'a stopped message does not take the copy of the same words sent again later, so it shows at its own time and not above the newer rows of the page that holds that copy',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: '/compact',
       compacting: true,
       hold: true,
     })
-    const session = await hydra.chat({ text: '/compact' })
-    await hydra.owner({
+    const session = await titan.chat({ text: '/compact' })
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         '/inscribe',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'stop',
       ],
     })
@@ -1851,13 +1823,13 @@ test(
       tools: 50,
     })
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: '/inscribe',
       reply: 'inscribed',
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         '/inscribe',
@@ -1886,10 +1858,10 @@ test(
         }
       }
     }
-    const page = await hydra.page()
+    const page = await titan.page()
     const latest = await page.send({
       name: 'thread',
-      args: ['$hydra'],
+      args: ['$titan'],
     }) as Page
     const oldest = latest.thread.entries[0]!.at
 
@@ -1905,7 +1877,7 @@ test(
       const older = await page.send({
         name: 'thread',
         args: [
-          '$hydra',
+          '$titan',
           cursor,
         ],
       }) as Page
@@ -1928,18 +1900,18 @@ test(
 test(
   'Stop leaves the message Titan had already taken as received, even though its confirmation arrives after Stop',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'check the build',
       partial: 'Checking',
       hold: true,
       folds: true,
     })
-    const session = await hydra.chat({ text: 'check the build' })
-    await hydra.owner({
+    const session = await titan.chat({ text: 'check the build' })
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'and the lint run',
@@ -1952,9 +1924,9 @@ test(
         text: 'and the lint run',
       }) === 1,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'stop',
       ],
     })
@@ -1966,7 +1938,7 @@ test(
     await until({
       what: 'the taken message to read as received',
       check: async () => (await chatEntry({
-        hydra,
+        titan,
         text: 'and the lint run',
       }))?.receipt === 'delivered',
     })
@@ -1976,26 +1948,26 @@ test(
 test(
   'Remove cancels one message held behind a compaction, Stop on it cancels the rest and leaves Titan waiting for the owner instead of waking it with a recap',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'warm up',
       reply: 'Ready.',
     })
-    const session = await hydra.chat({ text: 'warm up' })
+    const session = await titan.chat({ text: 'warm up' })
     await until({
       what: 'the warm-up answer',
       check: () => session.answered === 1,
     })
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: '/compact',
       compacting: true,
       hold: true,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         '/compact',
@@ -2005,17 +1977,17 @@ test(
       what: 'the compaction to run',
       check: () => session.received.includes('/compact'),
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'held behind the compaction',
       ],
     })
-    const removed = await hydra.owner({
+    const removed = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'removed from the queue',
@@ -2023,11 +1995,11 @@ test(
     })
     await until({
       what: 'both messages to wait behind the compaction',
-      check: () => queue({ hydraId: hydra.id })?.compactInputs.length === 2,
+      check: () => queue({ titanId: titan.id })?.compactInputs.length === 2,
     })
-    const page = await hydra.page()
+    const page = await titan.page()
     expect(await page.send({
-      name: 'hydra',
+      name: 'titan',
       args: [
         'cancel',
         removed.message,
@@ -2036,35 +2008,35 @@ test(
     page.close()
     await until({
       what: 'the queued messages to leave out the removed one',
-      check: () => queue({ hydraId: hydra.id })?.compactInputs.map(input => input.text)
+      check: () => queue({ titanId: titan.id })?.compactInputs.map(input => input.text)
         .join() === 'held behind the compaction',
     })
     expect((await chatEntry({
-      hydra,
+      titan,
       text: 'removed from the queue',
     }))?.receipt).toBe('failed')
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'stop',
       ],
     })).stopped).toBe('compaction')
     await until({
       what: 'the held message to read as stopped',
       check: async () => (await chatEntry({
-        hydra,
+        titan,
         text: 'held behind the compaction',
       }))?.receipt === 'failed',
     })
 
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'carry on',
       reply: 'Carrying on.',
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'carry on',
@@ -2087,40 +2059,40 @@ test(
 )
 
 // The texts Titan's own compaction holds as its inputs, as its card saves them.
-const compactionInputs = ({ hydraId }: { hydraId: string }) => (loadTitan({
-  hydraId,
-}).state.cards['$hydra']).compaction?.inputs.map(input => input.text)
+const compactionInputs = ({ titanId }: { titanId: string }) => (loadTitan({
+  titanId,
+}).state.cards['$titan']).compaction?.inputs.map(input => input.text)
 
 test(
   'a message removed from the queue never reaches Titan once its compaction ends, whether the compaction held it as its input or behind its stop, and the kept ones reach it once',
   async () => {
-    const hydra = await othrys.hydra()
-    const send = ({ text }: { text: string }) => hydra.owner({
+    const titan = await othrys.titan()
+    const send = ({ text }: { text: string }) => titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         text,
       ],
     })
-    const cancel = ({ id }: { id: string }) => hydra.owner({
+    const cancel = ({ id }: { id: string }) => titan.owner({
       args: [
-        'hydra',
+        'titan',
         'cancel',
         id,
       ],
     })
-    const queued = () => queue({ hydraId: hydra.id })?.compactInputs.map(input => input.text).join()
+    const queued = () => queue({ titanId: titan.id })?.compactInputs.map(input => input.text).join()
     const working = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'long task',
       reply: 'Done.',
       partial: 'Working',
       hold: true,
     })
-    const session = await hydra.chat({ text: 'long task' })
+    const session = await titan.chat({ text: 'long task' })
     const first = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: '/compact',
       compacting: true,
       hold: true,
@@ -2132,7 +2104,7 @@ test(
     working.release()
     await until({
       what: 'the compaction to hold both messages as its inputs',
-      check: () => compactionInputs({ hydraId: hydra.id })?.length === 2,
+      check: () => compactionInputs({ titanId: titan.id })?.length === 2,
     })
     expect(await cancel({ id: removedInput.message })).toMatchObject({
       cancelled: removedInput.message,
@@ -2151,7 +2123,7 @@ test(
     })
 
     const second = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: '/compact',
       compacting: true,
       hold: true,
@@ -2185,7 +2157,7 @@ test(
 type Page = Awaited<ReturnType<Titan['page']>>
 
 // The agent Titan last ran with, as the page's Last used mark reads it.
-const lastRan = ({ hydraId }: { hydraId: string }) => (loadTitan({ hydraId }).state.hydraAgent)
+const lastRan = ({ titanId }: { titanId: string }) => (loadTitan({ titanId }).state.titanAgent)
 
 // Claude's catalog runs "opus" at "high" effort when Titan names neither.
 const chooseAgent = async ({
@@ -2196,7 +2168,7 @@ const chooseAgent = async ({
   agent: Record<string, string>
 }) => {
   expect((await page.send({
-    name: 'hydra-agent',
+    name: 'titan-agent',
     args: [
       JSON.stringify({
         harness: 'claude',
@@ -2207,14 +2179,14 @@ const chooseAgent = async ({
 }
 
 const sendToTitan = ({
-  hydra,
+  titan,
   text,
 }: {
-  hydra: Titan
+  titan: Titan
   text: string
-}) => hydra.owner({
+}) => titan.owner({
   args: [
-    'hydra',
+    'titan',
     'send',
     '--text',
     text,
@@ -2224,9 +2196,9 @@ const sendToTitan = ({
 test(
   'choosing the model and effort Titan already runs with keeps its session, and a changed effort applies to the next messages in order',
   async () => {
-    const hydra = await othrys.hydra()
-    const page = await hydra.page()
-    const session = await hydra.chat({ text: 'first message' })
+    const titan = await othrys.titan()
+    const page = await titan.page()
+    const session = await titan.chat({ text: 'first message' })
 
     await chooseAgent({
       page,
@@ -2253,9 +2225,9 @@ test(
         effort: 'high',
       },
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'send',
         '--text',
         'unchanged agent',
@@ -2273,14 +2245,14 @@ test(
       agent: { effort: 'low' },
     })
     await sendToTitan({
-      hydra,
+      titan,
       text: 'first after the change',
     })
     await sendToTitan({
-      hydra,
+      titan,
       text: 'second after the change',
     })
-    const received = () => othrys.claude.sessions.filter(s => s.env.OTHRYS_TITAN === hydra.id)
+    const received = () => othrys.claude.sessions.filter(s => s.env.OTHRYS_TITAN === titan.id)
       .flatMap(s => s.received.map(message => message.split('\n').at(-1)))
     await until({
       what: 'Titan to hear both messages sent after the effort change',
@@ -2292,7 +2264,7 @@ test(
       'first after the change',
       'second after the change',
     ])
-    expect(lastRan({ hydraId: hydra.id })).toMatchObject({ effort: 'low' })
+    expect(lastRan({ titanId: titan.id })).toMatchObject({ effort: 'low' })
     page.close()
   },
 )
@@ -2300,7 +2272,7 @@ test(
 test(
   'a queued operation recap waits for a later operation and keeps the first stop boundary',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     let now = Date.now()
     const firstSince = new Date(now).toISOString()
     const recaps: {
@@ -2308,16 +2280,16 @@ test(
       text: string
     }[] = []
     const operations = createTitanOperations({
-      hydraId: hydra.id,
+      titanId: titan.id,
       queuedTitan: new Set(),
       at: () => new Date(now).toISOString(),
       note: ({ fn }) => withWriter({
-        hydraId: hydra.id,
+        titanId: titan.id,
         fn,
       }),
       armWake: () => {},
       host: () => ({
-        hydra: async ({
+        titan: async ({
           id,
           text,
         }) => {
@@ -2365,14 +2337,14 @@ test(
 test(
   'timed reviews wake for changed work and include overdue task and Titan questions',
   async () => {
-    const hydra = await othrys.hydra()
-    const previous = (await hydra.owner({
+    const titan = await othrys.titan()
+    const previous = (await titan.owner({
       args: [
         'settings',
         'show',
       ],
     })).settings.reviewMinutes
-    await hydra.owner({
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -2380,7 +2352,7 @@ test(
         '{"reviewMinutes":1}',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -2391,7 +2363,7 @@ test(
         '--no-start',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -2408,17 +2380,17 @@ test(
         activity: 'working',
       }),
     })
-    const task = await hydra.task({ key: 'heartbeat-worker' })
+    const task = await titan.task({ key: 'heartbeat-worker' })
     await workerLine({
-      hydra,
+      titan,
       key: 'heartbeat-worker',
       line: 'note: Worker started preparing the change',
     })
-    expect((await hydra.task({ key: 'heartbeat-worker' })).status).toBe('running')
+    expect((await titan.task({ key: 'heartbeat-worker' })).status).toBe('running')
     let now = Date.now()
     let wakes = 0
     const timer = startReviewTimer({
-      hydraId: hydra.id,
+      titanId: titan.id,
       now: () => now,
       wake: () => {
         wakes++
@@ -2433,11 +2405,11 @@ test(
       now += 60 * 60_000
       await timer.check()
       expect(wakes).toBe(1)
-      const review = await hydra.owner({
+      const review = await titan.owner({
         args: [
           'history',
           '--kind',
-          'hydra.review',
+          'titan.review',
           '--limit',
           '1',
           '--full',
@@ -2448,7 +2420,7 @@ test(
       await timer.check()
       expect(wakes).toBe(1)
       await withWriter({
-        hydraId: hydra.id,
+        titanId: titan.id,
         fn: ({ writer }) => {
           writer.append({
             event: {
@@ -2456,7 +2428,7 @@ test(
               seq: writer.state.seq + 1,
               id: 'heartbeat-green-pr',
               cardId: task.id,
-              actor: 'pnyx',
+              actor: 'othrys',
               at: new Date(now).toISOString(),
               type: 'card.linked',
               data: {
@@ -2478,11 +2450,11 @@ test(
       now += 60_000
       await timer.check()
       expect(wakes).toBe(2)
-      const green = await hydra.owner({
+      const green = await titan.owner({
         args: [
           'history',
           '--kind',
-          'hydra.review',
+          'titan.review',
           '--limit',
           '1',
           '--full',
@@ -2493,7 +2465,7 @@ test(
       now += 60_000
       await timer.check()
       expect(wakes).toBe(2)
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'ask',
@@ -2511,12 +2483,12 @@ test(
           '--recommend',
           '1',
           '--actor',
-          'hydra',
+          'titan',
         ],
       })
       now += 4 * 60 * 60_000
-      const overdue = boardReview({
-        state: loadTitan({ hydraId: hydra.id }).state,
+      const overdue = titanReview({
+        state: loadTitan({ titanId: titan.id }).state,
         now,
       })
       expect(overdue.flags).toContainEqual(expect.objectContaining({
@@ -2526,27 +2498,27 @@ test(
       expect(overdue.block).toContain('Which account?')
       const remindedAt = new Date(now).toISOString()
       expect(await fireReminders({
-        hydraId: hydra.id,
+        titanId: titan.id,
         at: remindedAt,
       })).toBe(1)
-      const reminders = loadTitan({ hydraId: hydra.id }).state.hydraMessages
+      const reminders = loadTitan({ titanId: titan.id }).state.titanMessages
         ?.filter(message => message.at === remindedAt && message.reminderQuestions?.length)
       expect(reminders).toHaveLength(1)
       expect(reminders?.[0]?.text).toContain('1 question waiting on you')
       await withWriter({
-        hydraId: hydra.id,
+        titanId: titan.id,
         fn: ({ writer }) => {
           writer.append({
             event: {
               v: writer.state.v,
               seq: writer.state.seq + 1,
-              id: 'heartbeat-hydra-question',
+              id: 'heartbeat-titan-question',
               cardId: TITAN_CARD,
-              actor: 'hydra',
+              actor: 'titan',
               at: new Date(now).toISOString(),
               type: 'task.asked',
               data: {
-                id: 'hydra-account',
+                id: 'titan-account',
                 audience: 'owner',
                 question: 'Can Titan use the team account?',
               },
@@ -2555,8 +2527,8 @@ test(
         },
       })
       now += 4 * 60 * 60_000
-      const ownQuestion = boardReview({
-        state: loadTitan({ hydraId: hydra.id }).state,
+      const ownQuestion = titanReview({
+        state: loadTitan({ titanId: titan.id }).state,
         now,
       })
       expect(ownQuestion.flags).toContainEqual(expect.objectContaining({
@@ -2566,7 +2538,7 @@ test(
       expect(ownQuestion.block).toContain('Can Titan use the team account?')
     } finally {
       timer.close()
-      await hydra.owner({
+      await titan.owner({
         args: [
           'settings',
           'set',
@@ -2584,14 +2556,14 @@ test.each([
 ])(
   'each Titan turn receives changed task cards with worker links and skips unchanged cards ($harness)',
   async ({ harness }) => {
-    const hydra = await othrys.hydra()
-    const page = await hydra.page()
+    const titan = await othrys.titan()
+    const page = await titan.page()
     await chooseAgent({
       page,
       agent: { harness },
     })
-    const { worker: reviewWorker } = await hydra.startTask({ key: 'review-page' })
-    await hydra.startTask({ key: 'unchanged-card' })
+    const { worker: reviewWorker } = await titan.startTask({ key: 'review-page' })
+    await titan.startTask({ key: 'unchanged-card' })
 
     for (let index = 0; index < 41; index++) {
       expect((await page.send({
@@ -2607,23 +2579,23 @@ test.each([
       })).type).toBe('receipt')
     }
 
-    const session = await hydra.chat({ text: 'Read the initial cards' })
+    const session = await titan.chat({ text: 'Read the initial cards' })
     expect(session.received[0]).toContain('Snapshot card 40')
     await until({
       what: 'the initial turn to finish',
-      check: () => !queue({ hydraId: hydra.id })?.working,
+      check: () => !queue({ titanId: titan.id })?.working,
     })
     await workerLine({
-      hydra,
+      titan,
       key: 'review-page',
       line: 'link: https://example.com/lavish Design review',
     })
     await workerLine({
-      hydra,
+      titan,
       key: 'review-page',
       line: 'link: https://example.com/preview App preview',
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'send',
@@ -2640,19 +2612,19 @@ test.each([
     })
     await until({
       what: 'the worker to finish its reply',
-      check: async () => (await hydra.task({ key: 'review-page' })).status === 'idle',
+      check: async () => (await titan.task({ key: 'review-page' })).status === 'idle',
     })
     await workerLine({
-      hydra,
+      titan,
       key: 'review-page',
       line: 'note: Review page is in progress',
     })
     await workerLine({
-      hydra,
+      titan,
       key: 'review-page',
       line: 'note: Review page is ready',
     })
-    await hydra.chat({ text: 'Read the changed cards' })
+    await titan.chat({ text: 'Read the changed cards' })
     const changed = session.received.find(text => text.endsWith('Read the changed cards'))!
     const digest = changed.slice(
       0,
@@ -2668,9 +2640,9 @@ test.each([
     expect(digest).toContain('Open cards: 2 idle, 41 not started, no reason given')
     await until({
       what: 'the changed turn to finish',
-      check: () => !queue({ hydraId: hydra.id })?.working,
+      check: () => !queue({ titanId: titan.id })?.working,
     })
-    await hydra.chat({ text: 'Read the unchanged cards' })
+    await titan.chat({ text: 'Read the unchanged cards' })
     const unchanged = session.received.find(text => text.endsWith('Read the unchanged cards'))!
     const nextDigest = unchanged.slice(
       0,
@@ -2683,7 +2655,7 @@ test.each([
     expect(nextDigest).toContain('Open cards: 2 idle, 41 not started, no reason given')
     await until({
       what: 'the unchanged turn to finish',
-      check: () => !queue({ hydraId: hydra.id })?.working,
+      check: () => !queue({ titanId: titan.id })?.working,
     })
 
     for (let index = 0; index < 41; index++) {
@@ -2698,7 +2670,7 @@ test.each([
       })).type).toBe('receipt')
     }
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -2709,8 +2681,8 @@ test.each([
         '--no-start',
       ],
     })
-    const overflowCard = await hydra.task({ key: 'new-overflow-card' })
-    await hydra.chat({ text: 'Read the capped changes' })
+    const overflowCard = await titan.task({ key: 'new-overflow-card' })
+    await titan.chat({ text: 'Read the capped changes' })
     const capped = session.received.find(text => text.endsWith('Read the capped changes'))!
     expect(capped).toContain('2 more changed cards')
     expect(capped).toContain('task.log')
@@ -2718,71 +2690,71 @@ test.each([
     expect(capped).not.toContain('Changed snapshot card 40')
     await until({
       what: 'the capped turn to finish',
-      check: () => !queue({ hydraId: hydra.id })?.working,
+      check: () => !queue({ titanId: titan.id })?.working,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'hide',
         'new-overflow-card',
       ],
     })
-    await hydra.chat({ text: 'Read the remaining change' })
+    await titan.chat({ text: 'Read the remaining change' })
     const remainder = session.received.find(text => text.endsWith('Read the remaining change'))!
     expect(remainder).toContain('Changed snapshot card 40')
     expect(remainder).not.toContain('Changed snapshot card 39')
     expect(remainder).toContain(`${overflowCard.id} is no longer listed`)
     await until({
       what: 'the remaining-change turn to finish',
-      check: () => !queue({ hydraId: hydra.id })?.working,
+      check: () => !queue({ titanId: titan.id })?.working,
     })
     await workerLine({
-      hydra,
+      titan,
       key: 'review-page',
       line: 'link: https://example.com/active-review Active review',
     })
-    await hydra.chat({ text: 'Read the first review update' })
+    await titan.chat({ text: 'Read the first review update' })
     const firstUpdate = session.received.find(text => text.endsWith('Read the first review update'))!
     expect(firstUpdate).toContain('https://example.com/active-review')
     await until({
       what: 'the first review update turn to finish',
-      check: () => !queue({ hydraId: hydra.id })?.working,
+      check: () => !queue({ titanId: titan.id })?.working,
     })
 
     await workerLine({
-      hydra,
+      titan,
       key: 'review-page',
       line: 'link: https://example.com/second-review Second review',
     })
     await workerLine({
-      hydra,
+      titan,
       key: 'review-page',
       line: 'note: Review page was updated after the first turn',
     })
-    await hydra.chat({ text: 'Read the second review update' })
+    await titan.chat({ text: 'Read the second review update' })
     const secondUpdate = session.received.find(text => text.endsWith('Read the second review update'))!
     expect(secondUpdate).toContain('https://example.com/second-review')
     expect(secondUpdate).toContain('Review page was updated after the first turn')
     await until({
       what: 'the second review update turn to finish',
-      check: () => !queue({ hydraId: hydra.id })?.working,
+      check: () => !queue({ titanId: titan.id })?.working,
     })
 
     const provider = harness === 'claude' ? othrys.claude : othrys.codex
     provider.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'Compact task context',
       compacting: true,
       compactTo: 500,
     })
     const answers = session.answered
-    const previousCompactions = new Set(queue({ hydraId: hydra.id })?.compactOperations
+    const previousCompactions = new Set(queue({ titanId: titan.id })?.compactOperations
       .map(operation => operation.id))
-    await hydra.chat({ text: 'Compact task context' })
+    await titan.chat({ text: 'Compact task context' })
     await until({
       what: 'the compacted turn to finish',
       check: () => {
-        const current = queue({ hydraId: hydra.id })
+        const current = queue({ titanId: titan.id })
         const completed = current?.compactOperations.some(operation =>
           !previousCompactions.has(operation.id) && operation.state === 'done')
 
@@ -2790,7 +2762,7 @@ test.each([
           && current?.holding === false
       },
     })
-    await hydra.chat({ text: 'Read the full snapshot after compaction' })
+    await titan.chat({ text: 'Read the full snapshot after compaction' })
     const afterCompact = session.received.find(text => text.endsWith('Read the full snapshot after compaction'))!
     const snapshot = harness === 'claude' ? session.contexts?.at(-1) : afterCompact
     expect(snapshot).toContain('Task cards (all open cards):')
@@ -2800,7 +2772,7 @@ test.each([
     expect(snapshot).toContain('https://example.com/active-review')
     await until({
       what: 'the post-compaction turn to finish',
-      check: () => !queue({ hydraId: hydra.id })?.working,
+      check: () => !queue({ titanId: titan.id })?.working,
     })
 
     for (let index = 0; index < 41; index++) {
@@ -2813,29 +2785,29 @@ test.each([
       })).type).toBe('receipt')
     }
 
-    await hydra.chat({ text: 'Read the hidden-card changes' })
+    await titan.chat({ text: 'Read the hidden-card changes' })
     const hidden = session.received.find(text => text.endsWith('Read the hidden-card changes'))!
     expect(hidden.match(/is no longer listed/g)).toHaveLength(40)
     expect(hidden).toContain('1 more changed cards')
     await until({
       what: 'the hidden-card turn to finish',
-      check: () => !queue({ hydraId: hydra.id })?.working,
+      check: () => !queue({ titanId: titan.id })?.working,
     })
-    await hydra.chat({ text: 'Read the last hidden-card change' })
+    await titan.chat({ text: 'Read the last hidden-card change' })
     const lastHidden = session.received.find(text => text.endsWith('Read the last hidden-card change'))!
     expect(lastHidden.match(/is no longer listed/g)).toHaveLength(1)
     await until({
       what: 'the last hidden-card turn to finish',
-      check: () => !queue({ hydraId: hydra.id })?.working,
+      check: () => !queue({ titanId: titan.id })?.working,
     })
     page.close()
 
-    expect(lastHidden).toContain('hydra.log')
+    expect(lastHidden).toContain('titan.log')
     const logPath = join(
       process.env.OTHRYS_HOME!,
-      'hydras',
-      hydra.id,
-      'hydra.log',
+      'titans',
+      titan.id,
+      'titan.log',
     )
     expect(readFileSync(
       logPath,
@@ -2907,12 +2879,12 @@ test(
 test(
   'clearing task threads stops every task stream while Titan and another tab keep following',
   async () => {
-    const hydra = await othrys.hydra()
-    const first = await hydra.startTask({ key: 'first-thread' })
-    const second = await hydra.startTask({ key: 'second-thread' })
+    const titan = await othrys.titan()
+    const first = await titan.startTask({ key: 'first-thread' })
+    const second = await titan.startTask({ key: 'second-thread' })
     const ids = [
-      (await hydra.task({ key: 'first-thread' })).id,
-      (await hydra.task({ key: 'second-thread' })).id,
+      (await titan.task({ key: 'first-thread' })).id,
+      (await titan.task({ key: 'second-thread' })).id,
     ]
     const received = new Set<string>()
     const watched = new Set<string>()
@@ -2929,12 +2901,12 @@ test(
 
     const page = await openPage({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
       receive: observe({ cards: received }),
     })
     const other = await openPage({
       port: othrys.port(),
-      hydraId: hydra.id,
+      titanId: titan.id,
       receive: observe({ cards: watched }),
     })
 
@@ -2964,7 +2936,7 @@ test(
       watched.clear()
 
       for (const id of ids) {
-        await hydra.owner({
+        await titan.owner({
           args: [
             'reply',
             id,
@@ -2979,7 +2951,7 @@ test(
         check: () => first.worker.answered === 2 && second.worker.answered === 2
           && ids.every(id => watched.has(id)),
       })
-      const session = await hydra.chat({ text: 'The Titan conversation stays subscribed' })
+      const session = await titan.chat({ text: 'The Titan conversation stays subscribed' })
       await until({
         what: 'the cleared tab still receives Titan live replies',
         check: () => session.answered > 0 && received.has(TITAN_CARD),
@@ -2999,7 +2971,7 @@ test(
       id: '6f1c2a4e-0b7d-4c55-9a3e-1d2b3c4d5e6f',
       action: 'send' as const,
       actor: 'web',
-      hydra: 'h',
+      titan: 'h',
       text: 'yes',
       at: '2026-11-20T10:00:00.000Z',
     }
@@ -3020,7 +2992,7 @@ test(
       text: 'Ship the release notes. '.repeat(60),
       at: '2026-11-20T10:00:05.000Z',
     }
-    const rows = hydraMessages({
+    const rows = titanMessages({
       messages: [
         first,
         second,
@@ -3097,17 +3069,17 @@ test(
 test(
   'a failed Titan input remains retryable while its host is down and concurrent retries deliver once',
   async () => {
-    const hydra = await othrys.hydra()
-    const page = await hydra.page()
+    const titan = await othrys.titan()
+    const page = await titan.page()
     await page.send({
-      name: 'hydra-agent',
+      name: 'titan-agent',
       args: [JSON.stringify({ harness: 'codex' })],
     })
     page.close()
     const text = 'retry this saved input'
     const id = randomUUID()
     const args = [
-      'hydra',
+      'titan',
       'send',
       '--text',
       text,
@@ -3115,16 +3087,16 @@ test(
       id,
     ]
     othrys.codex.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text,
       refuse: true,
     })
-    await hydra.owner({ args })
+    await titan.owner({ args })
 
     const message = () => {
-      const state = loadTitan({ hydraId: hydra.id }).state
+      const state = loadTitan({ titanId: titan.id }).state
 
-      return state.hydraMessages!.find(input => input.id === id)!
+      return state.titanMessages!.find(input => input.id === id)!
     }
 
     await until({
@@ -3135,8 +3107,8 @@ test(
     let stoppedMessage: ReturnType<typeof message> | undefined
     await othrys.restart({
       whileStopped: async () => {
-        await hydraSend({
-          hydraId: hydra.id,
+        await titanSend({
+          titanId: titan.id,
           values: {
             text,
             'event-id': id,
@@ -3148,14 +3120,14 @@ test(
     expect(stoppedMessage?.failure).toBe(failure)
     expect(stoppedMessage?.attempt).toBeUndefined()
     const turn = othrys.codex.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text,
       hold: true,
     })
     onTestFinished(() => turn.release())
     await Promise.all([
-      hydra.owner({ args }),
-      hydra.owner({ args }),
+      titan.owner({ args }),
+      titan.owner({ args }),
     ])
     await until({
       what: 'the retry to be taken',
@@ -3171,23 +3143,23 @@ test(
 test(
   'a refused recovery recap fails every owner message it carries',
   async () => {
-    const hydra = await othrys.hydra()
-    const page = await hydra.page()
+    const titan = await othrys.titan()
+    const page = await titan.page()
     await page.send({
-      name: 'hydra-agent',
+      name: 'titan-agent',
       args: [JSON.stringify({ harness: 'codex' })],
     })
     page.close()
     const messages: string[] = []
     othrys.codex.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('first held request') && text.includes('second held request'),
       refuse: true,
     })
     await othrys.restart({
       whileStopped: async () => {
         await withWriter({
-          hydraId: hydra.id,
+          titanId: titan.id,
           fn: ({ writer }) => applyDecision({
             writer,
             decision: operationEvent({
@@ -3198,7 +3170,7 @@ test(
                 state: 'started',
               },
               meta: {
-                actor: 'pnyx',
+                actor: 'othrys',
                 at: new Date().toISOString(),
               },
             }),
@@ -3211,8 +3183,8 @@ test(
         ]) {
           const id = randomUUID()
           messages.push(id)
-          await hydraSend({
-            hydraId: hydra.id,
+          await titanSend({
+            titanId: titan.id,
             values: {
               text,
               'event-id': id,
@@ -3224,7 +3196,7 @@ test(
     await until({
       what: 'both carried messages to show the refusal',
       check: () => {
-        const saved = loadTitan({ hydraId: hydra.id }).state.hydraMessages!
+        const saved = loadTitan({ titanId: titan.id }).state.titanMessages!
 
         return messages.every(id => saved.find(message => message.id === id)?.failure?.includes('refused'))
       },
@@ -3235,7 +3207,7 @@ test(
       'second held request',
     ]) {
       expect(await chatEntry({
-        hydra,
+        titan,
         text,
       })).toMatchObject({ receipt: 'failed' })
     }
@@ -3245,8 +3217,8 @@ test(
 test(
   'recovery drains a retried compaction input and the input after it exactly once',
   async () => {
-    const hydra = await othrys.hydra()
-    const session = await hydra.chat({ text: 'prepare compaction recovery' })
+    const titan = await othrys.titan()
+    const session = await titan.chat({ text: 'prepare compaction recovery' })
     await until({
       what: 'the preparation to finish',
       check: () => session.answered === 1,
@@ -3259,15 +3231,15 @@ test(
       whileStopped: async () => {
         for (const text of texts) {
           const id = randomUUID()
-          await hydraSend({
-            hydraId: hydra.id,
+          await titanSend({
+            titanId: titan.id,
             values: {
               text,
               'event-id': id,
             },
           })
           await withWriter({
-            hydraId: hydra.id,
+            titanId: titan.id,
             fn: ({ writer }) => {
               const at = new Date().toISOString()
 
@@ -3280,7 +3252,7 @@ test(
                 })
                 applyDecision({
                   writer,
-                  decision: hydraEvent({
+                  decision: titanEvent({
                     state: writer.state,
                     cardId: TITAN_CARD,
                     meta: {
@@ -3288,7 +3260,7 @@ test(
                       at,
                     },
                     change: {
-                      type: 'hydra.input',
+                      type: 'titan.input',
                       data: {
                         message: id,
                         state: 'retrying',
@@ -3308,7 +3280,7 @@ test(
                     id,
                     text,
                     actor: 'web',
-                    route: 'hydra',
+                    route: 'titan',
                     accepted: true,
                     at,
                   },
@@ -3321,14 +3293,14 @@ test(
     })
     await until({
       what: 'both compaction inputs to drain',
-      check: () => compactionInputs({ hydraId: hydra.id })?.length === 0,
+      check: () => compactionInputs({ titanId: titan.id })?.length === 0,
     })
 
     for (const text of texts) {
       await until({
         what: 'the drained input to be confirmed',
         check: async () => (await chatEntry({
-          hydra,
+          titan,
           text,
         }))?.receipt === 'delivered',
       })
@@ -3364,7 +3336,7 @@ test(
       ...message,
       action: 'send' as const,
       actor: 'web',
-      hydra: 'hydra',
+      titan: 'titan',
     }))
     const before = {
       id: 'before',
@@ -3388,7 +3360,7 @@ test(
       final: true,
       at: at({ second: 5 }),
     }
-    const conversation = hydraConversation({
+    const conversation = titanConversation({
       messages,
       transcript: [
         before,

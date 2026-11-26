@@ -14,9 +14,9 @@ beforeAll(async () => {
 test(
   'a card send starts one worker directly and retries preserve its receipt',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'quick-worker' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'quick-worker' })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -29,7 +29,7 @@ test(
         folder,
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'hide',
@@ -47,22 +47,22 @@ test(
       '--event-id',
       'direct-start',
     ]
-    const sent = await hydra.owner({ args })
+    const sent = await titan.owner({ args })
     expect(sent).toMatchObject({ state: 'queued' })
     expect(sent.notices).toContainEqual(expect.objectContaining({
-      task: (await hydra.task({ key: 'quick' })).id,
+      task: (await titan.task({ key: 'quick' })).id,
       reason: expect.stringContaining('hidden'),
     }))
-    const worker = await hydra.agent({ cwd: folder })
+    const worker = await titan.agent({ cwd: folder })
     await until({
       what: 'direct start reaches the worker',
       check: () => worker.answered === 1,
     })
     expect(worker.received[0]).toContain('Fix the missing export')
     expect(othrys.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
-    expect(await hydra.owner({ args })).toMatchObject({ state: 'delivered' })
+    expect(await titan.owner({ args })).toMatchObject({ state: 'delivered' })
     expect(worker.received).toHaveLength(1)
-    const page = await hydra.page()
+    const page = await titan.page()
 
     try {
       expect(await page.send({
@@ -70,13 +70,13 @@ test(
         args: ['quick'],
       })).toMatchObject({
         type: 'receipt',
-        thread: { card: (await hydra.task({ key: 'quick' })).id },
+        thread: { card: (await titan.task({ key: 'quick' })).id },
       })
     } finally {
       page.close()
     }
 
-    const { thread } = await hydra.owner({
+    const { thread } = await titan.owner({
       args: [
         'task',
         'chat',
@@ -87,9 +87,9 @@ test(
       text: 'Fix the missing export',
       receipt: 'delivered',
     }))
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'messages',
       ],
     })).messages).toBe('none: no messages after seq 0')
@@ -99,19 +99,19 @@ test(
 test(
   'a harness switch interrupts the live turn and carries its recorded conversation',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const {
       folder,
       worker,
-    } = await hydra.startTask({ key: 'switch' })
+    } = await titan.startTask({ key: 'switch' })
     const held = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       hold: true,
       partial: 'Finishing the current change',
       reply: 'The parser now rejects an empty input',
     })
     onTestFinished(() => held.release())
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'send',
@@ -126,7 +126,7 @@ test(
       what: 'the current turn is held',
       check: () => worker.received.length === 2,
     })
-    const task = await hydra.task({ key: 'switch' })
+    const task = await titan.task({ key: 'switch' })
     const args = [
       'task',
       'send',
@@ -138,21 +138,21 @@ test(
       '--event-id',
       'switch-next',
     ]
-    await hydra.owner({ args })
+    await titan.owner({ args })
     await until({
       what: 'the next harness starts without releasing the old turn',
       check: () => othrys.codex.sessions.some(session =>
         session.cwd === folder && session.answered === 1),
     })
     const next = othrys.codex.sessions.find(session => session.cwd === folder)!
-    const previous = loadTitan({ hydraId: hydra.id }).state.sessions?.[`claude-code:${worker.id}`]
+    const previous = loadTitan({ titanId: titan.id }).state.sessions?.[`claude-code:${worker.id}`]
     expect(next.received[0]).toContain(`Read the previous session "claude-code:${worker.id}" completely before continuing.`)
     expect(previous?.agent.transcriptPath).toEqual(expect.any(String))
     expect(next.received[0]).toContain(`Its recorded transcript is ${JSON.stringify(previous?.agent.transcriptPath)}.`)
     expect(next.received[0]).toContain('task.log')
     expect(next.received[0]).not.toContain('othrys task chat')
     expect(next.received[0]).toContain('Continue with the regression fix')
-    const currentThread = await hydra.owner({
+    const currentThread = await titan.owner({
       args: [
         'task',
         'chat',
@@ -163,7 +163,7 @@ test(
       text: 'Recorded reply.',
     }))
 
-    const selected = await hydra.owner({
+    const selected = await titan.owner({
       args: [
         'task',
         'chat',
@@ -183,7 +183,7 @@ test(
     expect(next.cwd).toBe(folder)
     expect(worker.closed).toBe(true)
     expect(next.id).not.toBe(worker.id)
-    expect((await hydra.as({ session: worker }).refused({
+    expect((await titan.as({ session: worker }).refused({
       args: [
         'task',
         'inbox',
@@ -191,7 +191,7 @@ test(
         task.id,
       ],
     })).code).toBe('STALE_CLAIM')
-    expect((await hydra.as({ session: next }).run({
+    expect((await titan.as({ session: next }).run({
       args: [
         'task',
         'inbox',
@@ -199,9 +199,9 @@ test(
         task.id,
       ],
     })).pending).toBe(0)
-    expect(await hydra.owner({ args })).toMatchObject({ state: 'delivered' })
+    expect(await titan.owner({ args })).toMatchObject({ state: 'delivered' })
     expect(othrys.codex.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'send',
@@ -226,17 +226,17 @@ test(
 test(
   'same-harness model changes interrupt the turn and keep the session, and the card send reaches it under the owner\'s id',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const {
       folder,
       worker,
-    } = await hydra.startTask({ key: 'model' })
+    } = await titan.startTask({ key: 'model' })
     const held = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       hold: true,
     })
     onTestFinished(() => held.release())
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'send',
@@ -251,7 +251,7 @@ test(
       what: 'the current turn is held',
       check: () => worker.received.length === 2,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'send',
@@ -276,7 +276,7 @@ test(
     expect(worker.received[2]).toContain('Check the new model')
     expect(worker.uuids[2]).toBe(MODEL_SEND)
     expect(othrys.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'send',
@@ -301,8 +301,8 @@ test(
 test(
   'creating and sending a project task makes its normal repository copy once',
   async () => {
-    const hydra = await othrys.hydra()
-    const repository = hydra.folder({ name: 'direct-project' })
+    const titan = await othrys.titan()
+    const repository = titan.folder({ name: 'direct-project' })
     git({
       cwd: repository,
       args: [
@@ -322,7 +322,7 @@ test(
         'Initial project',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'project',
         'add',
@@ -346,14 +346,14 @@ test(
       '--event-id',
       'create-and-send',
     ]
-    const created = await hydra.owner({ args })
+    const created = await titan.owner({ args })
     const worker = await until({
       what: 'the task has its own worker',
       check: () => othrys.claude.sessions.find(session =>
         session.env.OTHRYS_ACTOR === `worker:${created.card.id}`
         && session.answered === 1),
     })
-    const { task: current } = await hydra.owner({
+    const { task: current } = await titan.owner({
       args: [
         'task',
         'show',
@@ -364,7 +364,7 @@ test(
     expect(worker).toBeDefined()
     expect(worker!.cwd).not.toBe(repository)
     expect(worker!.received[0]).toContain('Find the parser failure')
-    const repeated = await hydra.owner({ args })
+    const repeated = await titan.owner({ args })
     expect(repeated.card.id).toBe(created.card.id)
     expect(current.project).toBe(repository)
     expect(othrys.claude.sessions.filter(session => session.cwd === worker!.cwd)).toHaveLength(1)
@@ -374,17 +374,17 @@ test(
 test(
   'a Send after Stop changes harness immediately',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const {
       folder,
       worker,
-    } = await hydra.startTask({ key: 'stop-switch' })
+    } = await titan.startTask({ key: 'stop-switch' })
     const held = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       hold: true,
     })
     onTestFinished(() => held.release())
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'send',
@@ -399,7 +399,7 @@ test(
       what: 'a live turn before Stop',
       check: () => worker.received.length === 2,
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'stop',
@@ -407,7 +407,7 @@ test(
       ],
     })
     expect(othrys.codex.sessions.filter(session => session.cwd === folder)).toHaveLength(0)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'send',
@@ -431,10 +431,10 @@ test(
 test(
   'a refused direct start retries once after its account is configured',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'retry-start' })
-    const login = hydra.folder({ name: 'later-login' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'retry-start' })
+    const login = titan.folder({ name: 'later-login' })
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -460,10 +460,10 @@ test(
       '--event-id',
       'retry-start',
     ]
-    await hydra.owner({ args })
+    await titan.owner({ args })
     await until({
       what: 'the missing account refuses the start',
-      check: async () => (await hydra.owner({
+      check: async () => (await titan.owner({
         args: [
           'task',
           'chat',
@@ -472,7 +472,7 @@ test(
       })).thread.entries.some((entry: { receipt?: string }) => entry.receipt === 'failed'),
     })
     expect(othrys.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(0)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'account',
         'set',
@@ -483,14 +483,14 @@ test(
         login,
       ],
     })
-    await hydra.owner({ args })
-    const worker = await hydra.agent({ cwd: folder })
+    await titan.owner({ args })
+    const worker = await titan.agent({ cwd: folder })
     await until({
       what: 'the same message starts after the account is configured',
       check: () => worker.answered === 1,
     })
     expect(worker.received[0]).toContain('Start when this login is configured')
-    expect(await hydra.owner({ args })).toMatchObject({ state: 'delivered' })
+    expect(await titan.owner({ args })).toMatchObject({ state: 'delivered' })
     expect(othrys.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
   },
 )
@@ -498,17 +498,17 @@ test(
 test(
   'a delivered harness switch survives an Othrys restart without a second launch',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const {
       folder,
       worker,
-    } = await hydra.startTask({ key: 'restart-switch' })
+    } = await titan.startTask({ key: 'restart-switch' })
     const held = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       hold: true,
     })
     onTestFinished(() => held.release())
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'send',
@@ -534,7 +534,7 @@ test(
       '--event-id',
       'restart-switch',
     ]
-    await hydra.owner({ args })
+    await titan.owner({ args })
     await until({
       what: 'the switch to finish before restart',
       check: () => othrys.codex.sessions.some(session =>
@@ -546,7 +546,7 @@ test(
       check: () => othrys.codex.sessions.some(session =>
         session.cwd === folder && session.answered === 1),
     })
-    expect(await hydra.owner({ args })).toMatchObject({ state: 'delivered' })
+    expect(await titan.owner({ args })).toMatchObject({ state: 'delivered' })
     expect(othrys.codex.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
   },
 )

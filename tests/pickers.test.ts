@@ -23,8 +23,8 @@ const values = ({ answer }: { answer: unknown }) => ((answer as ModelsAnswer).mo
 test(
   'models --refresh asks the harness again and keeps the list it had when that fails',
   async () => {
-    const hydra = await othrys.hydra()
-    const page = await hydra.page()
+    const titan = await othrys.titan()
+    const page = await titan.page()
     const recorded = othrys.claude.models.list
 
     try {
@@ -177,9 +177,9 @@ interface FilesAnswer {
 test(
   'files lists each attached project\'s files without ignored ones or nested repositories, and again after a file appears',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const path = await createProject({
-      hydra,
+      titan,
       landing: 'branch',
     })
     writeFileSync(
@@ -217,7 +217,7 @@ test(
       ),
       '',
     )
-    const page = await hydra.page()
+    const page = await titan.page()
 
     const files = async () => {
       const answer = await page.send({
@@ -262,8 +262,8 @@ test(
 test(
   'a folder listing with files names every entry, hidden ones included',
   async () => {
-    const hydra = await othrys.hydra()
-    const folder = hydra.folder({ name: 'loose' })
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'loose' })
     mkdirSync(join(
       folder,
       'src',
@@ -290,7 +290,7 @@ test(
         )
       }
 
-      const response = await fetch(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/folders?${query}`)
+      const response = await fetch(`http://127.0.0.1:${othrys.port()}/titan/${titan.id}/folders?${query}`)
 
       return await response.json() as {
         folders: { name: string }[]

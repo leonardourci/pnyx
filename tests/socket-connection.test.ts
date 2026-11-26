@@ -1,7 +1,7 @@
 import { beforeAll, expect, test, vi } from 'vitest'
 import { WebSocket } from 'ws'
 import type { ServerMessage } from '#app/server-transport.ts'
-import { hydraIdentity, localToken } from '#app/server-state.ts'
+import { titanIdentity, localToken } from '#app/server-state.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { createTitanConnection } from '../web/src/app/connection-store.ts'
 import { startOthrys, until, type Othrys } from './setup/othrys.ts'
@@ -25,8 +25,8 @@ beforeAll(async () => {
 test(
   'a client resumes an unchanged home with only ready and retains every Titan state',
   async () => {
-    const primary = await othrys.hydra()
-    const background = await othrys.hydra()
+    const primary = await othrys.titan()
+    const background = await othrys.titan()
     await background.owner({
       args: [
         'task',
@@ -70,8 +70,8 @@ test(
         // eslint-disable-next-line othrys/object-params -- Document owns the selector signature.
         querySelector: (selector: string) => {
           const content = {
-            'meta[name=othrys-installation]': hydraIdentity({ hydraId: '' }),
-            'meta[name=othrys-hydra]': primary.id,
+            'meta[name=othrys-installation]': titanIdentity({ titanId: '' }),
+            'meta[name=othrys-titan]': primary.id,
             'meta[name=othrys-token]': localToken(),
           }[selector]
 
@@ -100,7 +100,7 @@ test(
     )
     vi.stubGlobal(
       'location',
-      new URL(`http://127.0.0.1:${othrys.port()}/hydra/${primary.id}/`),
+      new URL(`http://127.0.0.1:${othrys.port()}/titan/${primary.id}/`),
     )
     vi.stubGlobal(
       'WebSocket',
@@ -112,9 +112,9 @@ test(
       primary.id,
       background.id,
     ].every(id => client.workspaces()
-      .some(workspace => workspace.navigation.hydraId === id && workspace.connected))
+      .some(workspace => workspace.navigation.titanId === id && workspace.connected))
     const taskCards = () => client.workspaces().map(workspace => ({
-      hydra: workspace.navigation.hydraId,
+      titan: workspace.navigation.titanId,
       cards: Object.values(workspace.state.cards).filter(card => card.id !== TITAN_CARD)
         .map(card => ({
           id: card.id,
@@ -136,7 +136,7 @@ test(
       }
 
       const saved = client.workspaces().find(
-        workspace => workspace.navigation.hydraId === background.id,
+        workspace => workspace.navigation.titanId === background.id,
       )!
       const state = saved.state
       const cards = taskCards()
@@ -151,7 +151,7 @@ test(
       expect(JSON.parse(resumed.url.searchParams.get('cursor')!)).toEqual(ready.cursor)
       expect(resumed.frames.filter(frame => frame.type.startsWith('home.'))).toEqual([ready])
       const current = client.workspaces().find(
-        workspace => workspace.navigation.hydraId === background.id,
+        workspace => workspace.navigation.titanId === background.id,
       )!
       expect(current.state.seq).toBe(state.seq)
       expect(taskCards()).toEqual(cards)

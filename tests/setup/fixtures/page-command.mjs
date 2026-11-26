@@ -4,13 +4,13 @@ import { join } from 'node:path'
 
 const TIMEOUT_MS = 20_000
 const [
-  hydra,
+  titan,
   name,
   ...args
 ] = process.argv.slice(2)
 const home = process.env.OTHRYS_HOME
 
-if (!home || !hydra || !name) {
+if (!home || !titan || !name) {
   throw new Error('A page command needs a scratch home, Titan and command')
 }
 
@@ -29,7 +29,7 @@ const token = readFileSync(
   'utf8',
 ).trim()
 const id = 'checkout-hook'
-const socket = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydra}/ws?token=${token}`)
+const socket = new WebSocket(`ws://127.0.0.1:${port}/titan/${titan}/ws?token=${token}`)
 const result = await new Promise((
   resolve,
   reject,

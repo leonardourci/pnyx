@@ -7,27 +7,16 @@ import { until } from './setup/until.ts'
 afterEach(() => vi.unstubAllEnvs())
 
 test(
-  'command workers do not inherit either spelling of their parent actor or hosted authority',
+  'command workers do not inherit their parent actor or hosted authority',
   async () => {
-    for (const name of [
+    vi.stubEnv(
       'OTHRYS_ACTOR',
-      'PNYX_ACTOR',
-    ]) {
-      vi.stubEnv(
-        name,
-        'hydra',
-      )
-    }
-
-    for (const name of [
+      'titan',
+    )
+    vi.stubEnv(
       'OTHRYS_HOSTED',
-      'PNYX_HOSTED',
-    ]) {
-      vi.stubEnv(
-        name,
-        '1',
-      )
-    }
+      '1',
+    )
 
     const cwd = mkdtempSync(join(
       process.env.TMPDIR!,
@@ -52,6 +41,6 @@ test(
         'utf8',
       ),
     })
-    expect(inherited).not.toMatch(/^(?:PNYX|OTHRYS)_(?:ACTOR|HOSTED)=/m)
+    expect(inherited).not.toMatch(/^OTHRYS_(?:ACTOR|HOSTED)=/m)
   },
 )

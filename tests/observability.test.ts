@@ -1,5 +1,5 @@
 import { logPageLines } from '#diagnostics/page-lines.ts'
-import { hydraDir } from '#app/home-migration.ts'
+import { titanDir } from '#app/home-migration.ts'
 import { spoolDir } from '#store/storage.ts'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
 import { scanEvents } from '#app/event-log.ts'
@@ -38,8 +38,8 @@ function lines() {
 test(
   'commands, HTTP, history and resource samples leave bounded measurements without message text',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -55,14 +55,14 @@ test(
     const onStart = lines().length
     expect((await othrysCommand({
       args: [
-        'board',
+        'titan',
         '--titan',
-        hydra.id,
+        titan.id,
         '--json',
       ],
       env: process.env,
     })).status).toBe(0)
-    const spool = spoolDir({ dir: hydraDir({ hydraId: hydra.id }) })
+    const spool = spoolDir({ dir: titanDir({ titanId: titan.id }) })
     mkdirSync(
       spool,
       { recursive: true },
@@ -94,7 +94,7 @@ test(
         at: '2026-01-01T00:00:01.000Z',
       }),
     )
-    expect((await ingestSpool({ hydraId: hydra.id })).ingested).toBe(2)
+    expect((await ingestSpool({ titanId: titan.id })).ingested).toBe(2)
     await fetch(`http://127.0.0.1:${othrys.port()}/health`)
     await flushLogs()
     const onLines = lines().slice(onStart)
@@ -103,7 +103,7 @@ test(
     expect(onLines.some(line => line.operation === 'hook.push')).toBe(false)
     expect(onLines.some(line => line.operation === 'card.observed')).toBe(false)
     expect(onLines.some(line => line.operation === 'command.cli')).toBe(true)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -117,14 +117,14 @@ test(
     })
     expect((await othrysCommand({
       args: [
-        'board',
+        'titan',
         '--titan',
-        hydra.id,
+        titan.id,
         '--json',
       ],
       env: process.env,
     })).status).toBe(0)
-    await hydra.owner({
+    await titan.owner({
       args: ['history'],
     })
     await fetch(`http://127.0.0.1:${othrys.port()}/health?token=private-request-value`)
@@ -139,7 +139,7 @@ test(
     )
     watchAgent({
       child: cache,
-      ids: { hydraId: hydra.id },
+      ids: { titanId: titan.id },
     })
     const sample = startProcessLines({ every: 20 })
 
@@ -253,7 +253,7 @@ test(
     const scan = await withLogRequest({
       requestId: 'scan-probe',
       run: async () => {
-        const events = [...scanEvents({ hydraId: hydra.id })]
+        const events = [...scanEvents({ titanId: titan.id })]
         await flushLogs()
 
         return {
@@ -271,7 +271,7 @@ test(
       }),
     ])
     const command = recorded.filter(line => line.operation === 'command.cli'
-      && line.name === 'board' && line.hydraId === hydra.id).at(-1)
+      && line.name === 'titan' && line.titanId === titan.id).at(-1)
     expect(command.requestId).toEqual(expect.any(String))
     expect(recorded).toContainEqual(expect.objectContaining({
       operation: 'http.request',
@@ -379,8 +379,8 @@ test(
       correlationId: 'message-id',
     }))
     expect(lines().find(line => line.operation === 'request.later').requestId).toBeUndefined()
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -399,18 +399,18 @@ test(
         '--key',
         'request-scope',
         '--folder',
-        hydra.folder({ name: 'request-scope' }),
+        titan.folder({ name: 'request-scope' }),
         '--harness',
         'claude',
         '--titan',
-        hydra.id,
+        titan.id,
         '--json',
       ],
       env: process.env,
     })
     expect(created.status).toBe(0)
-    const worker = await hydra.agent({ cwd: hydra.folder({ name: 'request-scope' }) })
-    await hydra.owner({
+    const worker = await titan.agent({ cwd: titan.folder({ name: 'request-scope' }) })
+    await titan.owner({
       args: [
         'reply',
         'request-scope',
@@ -424,8 +424,8 @@ test(
     })
     await flushLogs()
     const recorded = lines()
-    const start = recorded.find(line => line.operation === 'command.cli' && line.name === 'task create' && line.hydraId === hydra.id)
-    const turns = recorded.filter(line => line.operation === 'turn.start' && line.hydraId === hydra.id)
+    const start = recorded.find(line => line.operation === 'command.cli' && line.name === 'task create' && line.titanId === titan.id)
+    const turns = recorded.filter(line => line.operation === 'turn.start' && line.titanId === titan.id)
     expect(start.requestId).toEqual(expect.any(String))
     expect(turns.length).toBeGreaterThanOrEqual(2)
     expect(turns.at(-1).requestId).not.toBe(start.requestId)
@@ -435,8 +435,8 @@ test(
 test(
   'On mode suppresses successful git lookups and counts repeated failures per interval',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -450,7 +450,7 @@ test(
     })
     await flushLogs()
     const start = lines().length
-    const gitFolder = hydra.folder({ name: 'git-probe' })
+    const gitFolder = titan.folder({ name: 'git-probe' })
     await runProcess({
       command: 'git',
       args: ['init'],
@@ -462,7 +462,7 @@ test(
         'rev-parse',
         '--git-dir',
       ],
-      cwd: hydra.folder({ name: 'git-probe' }),
+      cwd: titan.folder({ name: 'git-probe' }),
     })
     await runProcess({
       command: 'git',
@@ -470,12 +470,12 @@ test(
         'symbolic-ref',
         'HEAD',
       ],
-      cwd: hydra.folder({ name: 'git-probe' }),
+      cwd: titan.folder({ name: 'git-probe' }),
     })
     await runProcess({
       command: 'git',
       args: ['remote'],
-      cwd: hydra.folder({ name: 'git-probe' }),
+      cwd: titan.folder({ name: 'git-probe' }),
     })
     await runProcess({
       command: 'git',
@@ -533,7 +533,7 @@ test(
       operation: 'agent.memory',
       agents: [
         {
-          hydraId: 'synthetic',
+          titanId: 'synthetic',
           rss: 2097152,
         },
       ],
@@ -583,8 +583,8 @@ test(
 test(
   'resource sampling preserves unopened logs and ignores an in-flight listing after stop',
   async () => {
-    const hydra = await othrys.hydra()
-    const home = hydra.folder({ name: 'stopped-sampler' })
+    const titan = await othrys.titan()
+    const home = titan.folder({ name: 'stopped-sampler' })
     const result = await runProcess({
       command: process.execPath,
       args: [
@@ -615,18 +615,18 @@ test(
       // Import after installing the external process gate, before promisify captures execFile.
       const { startProcessLines } = await import('#diagnostics/process-line.ts');
       const { watchAgent } = await import('#workers/agent-memory.ts');
-      const unserved = join(process.env.OTHRYS_HOME, 'hydras', 'unserved');
+      const unserved = join(process.env.OTHRYS_HOME, 'titans', 'unserved');
       mkdirSync(unserved, { recursive: true });
-      writeFileSync(join(unserved, 'hydra.log'), '{"n":1');
+      writeFileSync(join(unserved, 'titan.log'), '{"n":1');
       openLogs();
-      watchAgent({ child: process, ids: { hydraId: 'synthetic' } });
+      watchAgent({ child: process, ids: { titanId: 'synthetic' } });
       const sampler = startProcessLines({ every: 1 });
       const LISTING_WAIT_MS = 10000;
       const timeout = setTimeout(() => { throw new Error('process listing did not start'); }, LISTING_WAIT_MS);
       await listingStarted;
       clearTimeout(timeout);
       sampler.stop();
-      log({ operation: 'agent.memory', agents: [{ hydraId: 'synthetic', rss: 2097152 }] });
+      log({ operation: 'agent.memory', agents: [{ titanId: 'synthetic', rss: 2097152 }] });
       await flushLogs();
       complete();
       await setImmediate();
@@ -649,9 +649,9 @@ test(
     expect(readFileSync(
       join(
         home,
-        'hydras',
+        'titans',
         'unserved',
-        'hydra.log',
+        'titan.log',
       ),
       'utf8',
     )).toBe('{"n":1')
@@ -659,7 +659,7 @@ test(
       expect.objectContaining({
         agents: [
           {
-            hydraId: 'synthetic',
+            titanId: 'synthetic',
             rss: 2097152,
           },
         ],
@@ -671,8 +671,8 @@ test(
 test(
   'a UTC rollover charges buffered earlier files before the next cleanup',
   async () => {
-    const hydra = await othrys.hydra()
-    const home = hydra.folder({ name: 'rollover-logs' })
+    const titan = await othrys.titan()
+    const home = titan.folder({ name: 'rollover-logs' })
     const module = new URL(
       '../src/app/diagnostics.ts',
       import.meta.url,
@@ -722,10 +722,10 @@ test(
 )
 
 test(
-  'a command naming its Titan with the legacy --hydra flag is logged under that Titan',
+  'a command naming its Titan with the legacy --titan flag is logged under that Titan',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'settings',
         'set',
@@ -743,9 +743,9 @@ test(
     delete env.OTHRYS_TASK
     const run = await othrysCommand({
       args: [
-        'board',
-        '--hydra',
-        hydra.id,
+        'titan',
+        '--titan',
+        titan.id,
         '--json',
       ],
       env,
@@ -756,7 +756,7 @@ test(
       check: async () => {
         await flushLogs()
 
-        return lines().some(line => line.operation === 'command.cli' && line.name === 'board' && line.hydraId === hydra.id)
+        return lines().some(line => line.operation === 'command.cli' && line.name === 'titan' && line.titanId === titan.id)
       },
     })
   },

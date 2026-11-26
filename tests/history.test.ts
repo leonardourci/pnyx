@@ -30,7 +30,7 @@ const GAP = {
 const BASE = Date.parse('2099-01-01T00:00:00.000Z')
 
 interface Fixture {
-  hydra: Titan
+  titan: Titan
   // The log position before the first bulk event.
   last: number
   through: number
@@ -48,11 +48,11 @@ const inGap = ({ k }: { k: number }) => k >= GAP.from && k < GAP.to
 
 // Events a second apart from 2099-01-01, a task brief every BRIEF_EVERY of them.
 async function insertEvents({
-  hydraId,
+  titanId,
   card,
   count,
 }: {
-  hydraId: string
+  titanId: string
   first: number
   card: string
   count: number
@@ -71,7 +71,7 @@ async function insertEvents({
       const brief = n % BRIEF_EVERY === 0
       const event = {
         v: 1,
-        boardId: hydraId,
+        titanId: titanId,
         actor: 'hook:claude',
         cardId: card,
         type: brief ? 'task.brief' : 'task.visibility',
@@ -91,36 +91,36 @@ async function insertEvents({
         event,
       })
       home.position({
-        hydra: hydraId,
+        titan: titanId,
         scope: card,
         id,
       })
     }
 
     await home.files.changeTask({
-      hydra: hydraId,
+      titan: titanId,
       task: card,
       decide: () => facts,
     })
   }
 
-  home.reload({ hydra: hydraId })
+  home.reload({ titan: titanId })
 }
 
 // A Titan that has answered once, with a task to hang bulk events on and the path of its transcript.
 async function seededTitan({ id }: { id: string }) {
-  const hydra = await othrys.hydra({ id })
+  const titan = await othrys.titan({ id })
   othrys.claude.plan({
-    hydra: hydra.id,
+    titan: titan.id,
     text: 'hello',
     reply: 'Hi.',
   })
-  const session = await hydra.chat({ text: 'hello' })
+  const session = await titan.chat({ text: 'hello' })
   await until({
     what: 'the first answer',
     check: () => session.answered === 1,
   })
-  const busy = (await hydra.owner({
+  const busy = (await titan.owner({
     args: [
       'task',
       'create',
@@ -137,10 +137,10 @@ async function seededTitan({ id }: { id: string }) {
     folder: session.env.CLAUDE_CONFIG_DIR,
   })
 
-  const first = loadTitan({ hydraId: hydra.id }).state.seq
+  const first = loadTitan({ titanId: titan.id }).state.seq
 
   return {
-    hydra,
+    titan,
     busy,
     transcript,
     first,
@@ -153,7 +153,7 @@ async function longTitan(): Promise<Fixture> {
   }
 
   const {
-    hydra,
+    titan,
     busy,
     transcript,
     first,
@@ -162,7 +162,7 @@ async function longTitan(): Promise<Fixture> {
   await othrys.restart({
     whileStopped: async () => {
       await insertEvents({
-        hydraId: hydra.id,
+        titanId: titan.id,
         first,
         card: busy,
         count: EVENTS,
@@ -225,15 +225,15 @@ async function longTitan(): Promise<Fixture> {
   ) => a.position - b.position).map(item => item.word)
 
   fixture = {
-    hydra,
+    titan,
     get last() {
-      return loadTitan({ hydraId: hydra.id }).state.eventIds.bulk1! - 1
+      return loadTitan({ titanId: titan.id }).state.eventIds.bulk1! - 1
     },
     get through() {
-      return loadTitan({ hydraId: hydra.id }).state.seq
+      return loadTitan({ titanId: titan.id }).state.seq
     },
     order,
-    replySeq: ({ k }) => loadTitan({ hydraId: hydra.id }).state.eventIds[`bulk${replyAfter({ k }) + 1}`]!,
+    replySeq: ({ k }) => loadTitan({ titanId: titan.id }).state.eventIds[`bulk${replyAfter({ k }) + 1}`]!,
   }
 
   return fixture
@@ -242,8 +242,8 @@ async function longTitan(): Promise<Fixture> {
 test(
   'an explicit push retry returns the original receipt for a live observation',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -264,11 +264,11 @@ test(
       'activity-receipt',
     ]
     const input = JSON.stringify({ activity: 'working' })
-    const first = await hydra.owner({
+    const first = await titan.owner({
       args,
       input,
     })
-    const retry = await hydra.owner({
+    const retry = await titan.owner({
       args,
       input,
     })
@@ -280,8 +280,8 @@ test(
 test(
   'an undo receipt belongs to the edit it reversed',
   async () => {
-    const hydra = await othrys.hydra()
-    await hydra.owner({
+    const titan = await othrys.titan()
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -297,7 +297,7 @@ test(
       'first-edit',
       'second-edit',
     ]) {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'rename',
@@ -316,11 +316,11 @@ test(
       '--event-id',
       'undo-edit',
     ]
-    const first = await hydra.owner({ args })
-    const retry = await hydra.owner({ args })
+    const first = await titan.owner({ args })
+    const retry = await titan.owner({ args })
     expect(retry.event).toEqual(first.event)
     expect(retry.duplicate).toBe('event id already applied; nothing appended')
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'undo',
         'first-edit',
@@ -334,10 +334,10 @@ test(
 test(
   'a completed native worker stays finished when an earlier hook observation is retried after restart',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     const key = 'hook-replay'
-    const folder = hydra.folder({ name: key })
-    const fullTask = async () => (await hydra.owner({
+    const folder = titan.folder({ name: key })
+    const fullTask = async () => (await titan.owner({
       args: [
         'task',
         'show',
@@ -345,7 +345,7 @@ test(
         '--full',
       ],
     })).task
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -359,21 +359,21 @@ test(
       ],
     })
     const turn = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       match: ({ text }) => text.includes('<othrys-worker'),
       partial: 'Native work in progress',
       reply: 'Native work completed',
       hold: true,
     })
     onTestFinished(turn.release)
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'start',
         key,
       ],
     })
-    await hydra.agent({ cwd: folder })
+    await titan.agent({ cwd: folder })
     const task = await fullTask()
     const id = `hook:${task.agent.sessionId}`
     const input = JSON.stringify({
@@ -395,7 +395,7 @@ test(
       '--event-id',
       id,
     ]
-    await hydra.owner({
+    await titan.owner({
       args,
       input,
     })
@@ -405,7 +405,7 @@ test(
       check: async () => (await fullTask()).activity === 'finished',
     })
     const unexpectedResume = othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: WORKER_RESUME,
       hold: true,
       partial: 'Resumed work is still running',
@@ -413,13 +413,13 @@ test(
     onTestFinished(unexpectedResume.release)
     await othrys.restart()
     expect((await fullTask()).activity).toBe('finished')
-    await hydra.owner({
+    await titan.owner({
       args,
       input,
     })
     expect((await fullTask()).activity).toBe('finished')
     expect(readEvents({
-      hydraId: hydra.id,
+      titanId: titan.id,
       ids: [id],
     })).toEqual([])
   },
@@ -428,13 +428,13 @@ test(
 test(
   'undoing a title edit observed by another task’s session preserves both assignments',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
 
     for (const key of [
       'first',
       'second',
     ]) {
-      await hydra.owner({
+      await titan.owner({
         args: [
           'task',
           'create',
@@ -445,7 +445,7 @@ test(
           key,
         ],
       })
-      await hydra.owner({
+      await titan.owner({
         args: [
           'push',
           '--key',
@@ -463,7 +463,7 @@ test(
       })
     }
 
-    await hydra.owner({
+    await titan.owner({
       args: [
         'push',
         '--key',
@@ -482,7 +482,7 @@ test(
         activity: 'finished',
       }),
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'undo',
         'mixed-edit',
@@ -490,20 +490,20 @@ test(
         'reverse-mixed-edit',
       ],
     })
-    expect((await hydra.task({ key: 'first' })).title).toBe('first')
-    await hydra.owner({
+    expect((await titan.task({ key: 'first' })).title).toBe('first')
+    await titan.owner({
       args: [
         'undo',
         'reverse-mixed-edit',
       ],
     })
-    expect((await hydra.task({ key: 'first' })).title).toBe('Renamed')
+    expect((await titan.task({ key: 'first' })).title).toBe('Renamed')
 
     for (const key of [
       'first',
       'second',
     ]) {
-      const { task } = await hydra.owner({
+      const { task } = await titan.owner({
         args: [
           'task',
           'show',
@@ -521,13 +521,13 @@ test(
 test(
   'completed native replies with offset clocks remain in history after observations leave the log and after restart',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
     othrys.claude.plan({
-      hydra: hydra.id,
+      titan: titan.id,
       text: 'Read native history',
       reply: 'NATIVE-HISTORY-END',
     })
-    const session = await hydra.chat({ text: 'Read native history' })
+    const session = await titan.chat({ text: 'Read native history' })
     await until({
       what: 'the native reply',
       check: () => session.answered === 1,
@@ -551,7 +551,7 @@ test(
       })}\n`,
     )
     await withWriter({
-      hydraId: hydra.id,
+      titanId: titan.id,
       fn: ({ writer }) => {
         const native = Object.values(writer.state.sessions ?? {}).find(candidate =>
           candidate.agent.sessionId === session.id)
@@ -587,7 +587,7 @@ test(
                 activity: reading.activity,
               },
               meta: {
-                actor: 'pnyx',
+                actor: 'othrys',
                 at: reading.at,
               },
             }),
@@ -595,9 +595,9 @@ test(
         }
       },
     })
-    const live = await hydra.owner({
+    const live = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--from',
         '1970-01-01T00:00:00Z',
@@ -605,9 +605,9 @@ test(
     })
     expect(live.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-HISTORY-END' }))
     expect(live.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
-    const at = await hydra.owner({
+    const at = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--at',
         delayedAt,
@@ -615,17 +615,17 @@ test(
     })
     expect(at.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
     const fixedArgs = [
-      'hydra',
+      'titan',
       'message',
       '--from',
       '1970-01-01T00:00:00Z',
       '--to',
       delayedAt,
     ]
-    const fixed = await hydra.owner({ args: fixedArgs })
+    const fixed = await titan.owner({ args: fixedArgs })
     expect(fixed.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
     await withWriter({
-      hydraId: hydra.id,
+      titanId: titan.id,
       fn: ({ writer }) => writer.append({
         event: {
           v: 1,
@@ -633,8 +633,8 @@ test(
           id: 'later-history-decision',
           at: '2099-01-01T00:00:10.000Z',
           actor: 'web',
-          cardId: '$board',
-          type: 'hydra.memory',
+          cardId: '$all',
+          type: 'titan.memory',
           data: {
             key: 'later-history',
             before: null,
@@ -643,12 +643,12 @@ test(
         },
       }),
     })
-    expect((await hydra.owner({ args: fixedArgs })).messages)
+    expect((await titan.owner({ args: fixedArgs })).messages)
       .toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
     await othrys.restart()
-    const restored = await hydra.owner({
+    const restored = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--from',
         '1970-01-01T00:00:00Z',
@@ -656,18 +656,18 @@ test(
     })
     expect(restored.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-HISTORY-END' }))
     expect(restored.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
-    const restoredAt = await hydra.owner({
+    const restoredAt = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--at',
         delayedAt,
       ],
     })
     expect(restoredAt.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
-    const range = await hydra.owner({
+    const range = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--from',
         delayedAt,
@@ -682,14 +682,14 @@ test(
 test(
   'an inscribe retry survives a restart without another history event',
   async () => {
-    const hydra = await othrys.hydra()
-    const session = await hydra.chat({ text: 'Conversation before the saved inscribe boundary' })
+    const titan = await othrys.titan()
+    const session = await titan.chat({ text: 'Conversation before the saved inscribe boundary' })
     await until({
       what: 'the conversation before inscribe to finish',
-      check: () => session.answered === 1 && !othrys.home().scopes[hydra.id]?.queue?.chat?.working,
+      check: () => session.answered === 1 && !othrys.home().scopes[titan.id]?.queue?.chat?.working,
     })
     const args = [
-      'hydra',
+      'titan',
       'inscribe',
       'start',
       '--key',
@@ -697,10 +697,10 @@ test(
       '--event-id',
       'stored-pass-start',
     ]
-    const first = await hydra.owner({ args })
-    const overlapping = await hydra.owner({
+    const first = await titan.owner({ args })
+    const overlapping = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'inscribe',
         'start',
         '--key',
@@ -708,11 +708,11 @@ test(
       ],
     })
     expect(overlapping.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still open') }))
-    const duplicate = await hydra.owner({ args })
+    const duplicate = await titan.owner({ args })
     expect(duplicate.notices ?? []).not.toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still open') }))
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
-        'hydra',
+        'titan',
         'inscribe',
         'finish',
         '--key',
@@ -721,9 +721,9 @@ test(
         String(Number.MAX_SAFE_INTEGER),
       ],
     })).code).toBe('VALIDATION_ERROR')
-    const completed = await hydra.owner({
+    const completed = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'inscribe',
         'finish',
         '--key',
@@ -733,9 +733,9 @@ test(
     expect(completed.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('history snapshot') }))
     const log = join(
       process.env.OTHRYS_HOME!,
-      'hydras',
-      hydra.id,
-      'hydra.log',
+      'titans',
+      titan.id,
+      'titan.log',
     )
     const inscriptions = () => readFileSync(
       log,
@@ -747,17 +747,17 @@ test(
       .map(fact => fact.id)
     const beforeRestart = inscriptions()
     expect(beforeRestart).toHaveLength(2)
-    const saved = readEvents({ hydraId: hydra.id }).map(event => ({
+    const saved = readEvents({ titanId: titan.id }).map(event => ({
       id: event.id,
       type: event.type,
     }))
-    expect(saved.map(event => event.type)).not.toContain('hydra.operation')
+    expect(saved.map(event => event.type)).not.toContain('titan.operation')
     await othrys.restart()
-    const retried = await hydra.owner({ args })
+    const retried = await titan.owner({ args })
     expect(retried.duplicate).toBe('event id already applied; nothing appended')
     expect(retried.event).toEqual(first.event)
     expect(retried.milestone).toBe('stored-pass')
-    expect(readEvents({ hydraId: hydra.id }).map(event => ({
+    expect(readEvents({ titanId: titan.id }).map(event => ({
       id: event.id,
       type: event.type,
     }))).toEqual(saved)
@@ -784,12 +784,12 @@ test(
   'a message lookup reads the replies around a reference and a range of the long thread in both directions',
   async () => {
     const {
-      hydra,
+      titan,
       replySeq,
     } = await longTitan()
-    const one = await hydra.owner({
+    const one = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--seq',
         String(replySeq({ k: 3500 })),
@@ -799,9 +799,9 @@ test(
     expect(one.messages[0].text).toContain('reply-3500 ')
     const reference = one.messages[0].id as string
 
-    const around = await hydra.owner({
+    const around = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--id',
         reference,
@@ -822,9 +822,9 @@ test(
     expect(Boolean(around.older)).toBe(true)
     expect(Boolean(around.newer)).toBe(true)
 
-    const last = await hydra.owner({
+    const last = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--seq',
         String(replySeq({ k: REPLIES - 1 })),
@@ -851,9 +851,9 @@ test(
     const numbers = ({ page }: { page: Output }) => page.messages
       .map((message: { text: string }) => /reply-(\d+)/.exec(message.text)![1])
 
-    let older = await hydra.owner({
+    let older = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         ...range,
         '--direction',
@@ -863,9 +863,9 @@ test(
     const fromNewest = numbers({ page: older })
 
     while (older.older) {
-      older = await hydra.owner({
+      older = await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'message',
           '--cursor',
           older.older,
@@ -878,9 +878,9 @@ test(
 
     expectRun({ numbers: fromNewest })
 
-    let newer = await hydra.owner({
+    let newer = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         ...range,
       ],
@@ -888,9 +888,9 @@ test(
     const fromOldest = numbers({ page: newer })
 
     while (newer.newer) {
-      newer = await hydra.owner({
+      newer = await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'message',
           '--cursor',
           newer.newer,
@@ -903,9 +903,9 @@ test(
 
     expectRun({ numbers: fromOldest })
 
-    const acrossBack = await hydra.owner({
+    const acrossBack = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--seq',
         String(replySeq({ k: GAP.to })),
@@ -919,9 +919,9 @@ test(
       '3998',
       '3999',
     ])
-    const acrossForward = await hydra.owner({
+    const acrossForward = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--seq',
         String(replySeq({ k: GAP.from - 1 })),
@@ -936,9 +936,9 @@ test(
       '4501',
     ])
 
-    const missing = await hydra.ownerRefused({
+    const missing = await titan.ownerRefused({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--id',
         'no-such-session:12:m0',
@@ -946,9 +946,9 @@ test(
     })
     expect(missing.code).toBe('NOT_FOUND')
 
-    const timed = await hydra.owner({
+    const timed = await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'message',
         '--from',
         new Date(BASE + replyAfter({ k: 2000 }) * 1000).toISOString(),
@@ -972,7 +972,7 @@ test(
   'a message lookup reads a transcript denser than one read keeps in both directions, each reply once and in order',
   async () => {
     const {
-      hydra,
+      titan,
       busy,
       transcript,
       first,
@@ -981,7 +981,7 @@ test(
     await othrys.restart({
       whileStopped: async () => {
         await insertEvents({
-          hydraId: hydra.id,
+          titanId: titan.id,
           first,
           card: busy,
           count: DENSE_EVENTS,
@@ -1025,9 +1025,9 @@ test(
       let page: Output
 
       do {
-        page = await hydra.owner({
+        page = await titan.owner({
           args: [
-            'hydra',
+            'titan',
             'message',
             ...cursor ? [
               '--cursor',

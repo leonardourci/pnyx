@@ -12,18 +12,18 @@ beforeAll(async () => {
 test(
   'owner-memory revisions cannot cross a home-polis change',
   async () => {
-    const hydra = await othrys.hydra()
+    const titan = await othrys.titan()
 
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--polis',
         'revision-first',
       ],
     })
 
-    const first = await hydra.owner({
+    const first = await titan.owner({
       args: [
         'owner',
         'memory',
@@ -34,15 +34,15 @@ test(
         'revision-first',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--polis',
         'revision-next',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'owner',
         'memory',
@@ -54,7 +54,7 @@ test(
       ],
     })
 
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'owner',
         'memory',
@@ -67,7 +67,7 @@ test(
         String(first.revision),
       ],
     })).code).toBe('REVISION_CONFLICT')
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         'owner',
         'memory',
@@ -80,7 +80,7 @@ test(
         String(first.revision),
       ],
     })).code).toBe('REVISION_CONFLICT')
-    const current = await hydra.owner({
+    const current = await titan.owner({
       args: [
         'owner',
         'memory',
@@ -88,7 +88,7 @@ test(
       ],
     })
     expect(current.writable.preferences.text).toBe('revision-next')
-    await hydra.owner({
+    await titan.owner({
       args: [
         'owner',
         'memory',
@@ -101,22 +101,22 @@ test(
         String(current.revision),
       ],
     })
-    expect((await hydra.owner({
+    expect((await titan.owner({
       args: [
         'owner',
         'memory',
         'list',
       ],
     })).writable.preferences.text).toBe('fresh replacement')
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--polis',
         'revision-final',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'owner',
         'memory',
@@ -127,9 +127,9 @@ test(
         'revision-final',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--polis',
         'revision-next',
@@ -170,7 +170,7 @@ test(
           path,
           `${invalidEntry}\n`,
         )
-        const memory = await hydra.owner({
+        const memory = await titan.owner({
           args: [
             'owner',
             'memory',
@@ -179,7 +179,7 @@ test(
         })
         expect(memory.writable.preferences.text).toBe('fresh replacement')
         expect(JSON.stringify(memory.memory)).not.toMatch(/Invalid (local sequence|imported sequence|source rewrite|destination rewrite)/)
-        expect((await hydra.ownerRefused({
+        expect((await titan.ownerRefused({
           args: [
             'owner',
             'memory',
@@ -207,14 +207,14 @@ test(
           import.meta.url,
         )),
       )
-      expect((await hydra.owner({
+      expect((await titan.owner({
         args: [
           'owner',
           'memory',
           'list',
         ],
       })).writable.preferences.text).toBe('fresh replacement')
-      const combined = await hydra.owner({
+      const combined = await titan.owner({
         args: [
           'owner',
           'memory',
@@ -226,7 +226,7 @@ test(
       expect(JSON.stringify(combined.memory)).not.toContain('Rejected dependent-source import')
       expect(JSON.stringify(combined.memory)).toContain('revision-final')
       expect(JSON.stringify(combined.memory)).toContain('revision-first')
-      expect((await hydra.ownerRefused({
+      expect((await titan.ownerRefused({
         args: [
           'owner',
           'memory',
@@ -262,7 +262,7 @@ test(
           '"seq":4,',
         ),
       )
-      const invalidTail = await hydra.owner({
+      const invalidTail = await titan.owner({
         args: [
           'owner',
           'memory',
@@ -292,7 +292,7 @@ test(
           '"seq":4,',
         ),
       )
-      const malformedProjectMove = await hydra.owner({
+      const malformedProjectMove = await titan.owner({
         args: [
           'owner',
           'memory',
@@ -312,7 +312,7 @@ test(
           import.meta.url,
         )),
       )
-      const gap = await hydra.owner({
+      const gap = await titan.owner({
         args: [
           'owner',
           'memory',
@@ -322,7 +322,7 @@ test(
       expect(gap.writable.preferences.text).toBe('fresh replacement')
       expect(JSON.stringify(gap.memory)).not.toContain('Rejected source-gap import')
       expect(JSON.stringify(gap.memory)).toContain('revision-first')
-      expect((await hydra.ownerRefused({
+      expect((await titan.ownerRefused({
         args: [
           'owner',
           'memory',
@@ -333,15 +333,15 @@ test(
           'Overwrite gapped log',
         ],
       })).code).toBe('LOG_CORRUPT')
-      await hydra.owner({
+      await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'set',
           '--polis',
           'revision-first',
         ],
       })
-      expect((await hydra.ownerRefused({
+      expect((await titan.ownerRefused({
         args: [
           'owner',
           'memory',
@@ -374,15 +374,15 @@ test(
           import.meta.url,
         )),
       )
-      await hydra.owner({
+      await titan.owner({
         args: [
-          'hydra',
+          'titan',
           'set',
           '--polis',
           'revision-next',
         ],
       })
-      const rejectedDestination = await hydra.owner({
+      const rejectedDestination = await titan.owner({
         args: [
           'owner',
           'memory',
@@ -393,7 +393,7 @@ test(
       expect(JSON.stringify(rejectedDestination.memory)).toContain('revision-first')
       expect(JSON.stringify(rejectedDestination.memory)).not.toContain('Rejected destination-conflict import')
       expect(JSON.stringify(rejectedDestination.memory)).not.toContain('Conflicting destination replacement')
-      expect((await hydra.ownerRefused({
+      expect((await titan.ownerRefused({
         args: [
           'owner',
           'memory',
@@ -420,7 +420,7 @@ test(
           '',
         ].join('\n'),
       )
-      const outOfOrder = await hydra.owner({
+      const outOfOrder = await titan.owner({
         args: [
           'owner',
           'memory',
@@ -428,7 +428,7 @@ test(
         ],
       })
       expect(outOfOrder.writable.preferences.text).toBe('fresh replacement')
-      expect((await hydra.ownerRefused({
+      expect((await titan.ownerRefused({
         args: [
           'owner',
           'memory',
@@ -455,16 +455,16 @@ test(
 test(
   'completed project confirmation retries keep their pinned revision',
   async () => {
-    const hydra = await othrys.hydra()
-    const path = hydra.folder({ name: 'confirmation-retry' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const path = titan.folder({ name: 'confirmation-retry' })
+    await titan.owner({
       args: [
         'project',
         'add',
         path,
       ],
     })
-    const saved = await hydra.owner({
+    const saved = await titan.owner({
       args: [
         'project',
         'memory',
@@ -494,11 +494,11 @@ test(
       '--if-revision',
       String(saved.revision),
     ]
-    const first = await hydra.owner({ args })
-    const retry = await hydra.owner({ args })
+    const first = await titan.owner({ args })
+    const retry = await titan.owner({ args })
     expect(retry.skipped).toBe('duplicate')
     expect(retry.revision).toBe(first.revision)
-    expect((await hydra.ownerRefused({
+    expect((await titan.ownerRefused({
       args: [
         ...args.slice(
           0,
@@ -516,8 +516,8 @@ test(
 test(
   'owner journals, Titan notes and project notes stay readable across Titans without access rules',
   async () => {
-    const owner = await othrys.hydra()
-    const caller = await othrys.hydra()
+    const owner = await othrys.titan()
+    const caller = await othrys.titan()
     const project = owner.folder({ name: 'unrestricted-memory' })
     await owner.owner({
       args: [
@@ -541,7 +541,7 @@ test(
     })
     await owner.owner({
       args: [
-        'hydra',
+        'titan',
         'memory',
         'set',
         '--key',
@@ -552,7 +552,7 @@ test(
     })
     await owner.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--polis',
         'old-private',
@@ -578,7 +578,7 @@ test(
     })
     await caller.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--polis',
         'moved-journal',
@@ -666,7 +666,7 @@ test(
     expect(moved.archived).not.toContainEqual(expect.objectContaining({ text: 'Owner journal previously private' }))
     await owner.owner({
       args: [
-        'hydra',
+        'titan',
         'set',
         '--polis',
         'moved-journal',
@@ -905,7 +905,7 @@ test(
     })).memory)).toContain('Owner journal previously private')
     expect(JSON.stringify((await read({
       args: [
-        'hydra',
+        'titan',
         'memory',
         'list',
       ],
@@ -952,16 +952,16 @@ test.each([
 ])(
   'worker context shares the attachment check (detached: $detached)',
   async ({ detached }) => {
-    const hydra = await othrys.hydra()
-    const project = hydra.folder({ name: 'worker-snapshot' })
-    await hydra.owner({
+    const titan = await othrys.titan()
+    const project = titan.folder({ name: 'worker-snapshot' })
+    await titan.owner({
       args: [
         'project',
         'add',
         project,
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'project',
         'memory',
@@ -974,7 +974,7 @@ test.each([
         'Project context marker',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'project',
         'memory',
@@ -987,7 +987,7 @@ test.each([
         'Standing project instruction marker',
       ],
     })
-    await hydra.owner({
+    await titan.owner({
       args: [
         'task',
         'create',
@@ -1022,7 +1022,7 @@ test.each([
         ...options,
       })
     })
-    const pending = hydra.owner({
+    const pending = titan.owner({
       args: [
         'task',
         'start',
@@ -1041,7 +1041,7 @@ test.each([
       })
 
       if (detached) {
-        await hydra.owner({
+        await titan.owner({
           args: [
             'project',
             'remove',

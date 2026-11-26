@@ -13,7 +13,6 @@ const GUARDED = [
   'firstmate',
   'herdr',
   'tmux',
-  'pnyx',
   'othrys',
   'quota-axi',
   'launchctl',
@@ -62,7 +61,7 @@ Object.assign(
     ),
     OTHRYS_HOME: join(
       root,
-      'pnyx',
+      'othrys',
     ),
     CLAUDE_CONFIG_DIR: join(
       root,

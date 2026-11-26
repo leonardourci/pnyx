@@ -264,7 +264,7 @@ test(
         ],
       },
       {
-        path: 'web/src/titan/hydra-chat.tsx',
+        path: 'web/src/titan/titan-chat.tsx',
         commands: codeCommands,
         instructions: [
           'review-code',
@@ -328,7 +328,7 @@ test(
       paths: [
         'docs/testing.md',
         'tests/access.test.ts',
-        'web/src/titan/hydra-chat.tsx',
+        'web/src/titan/titan-chat.tsx',
         '.github/workflows/tests.yml',
       ],
     })

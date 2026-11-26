@@ -209,7 +209,7 @@
     {
       "method": "initialize",
       "result": {
-        "userAgent": "pnyx/0.160.1 (Mac OS 26.6.2; arm64) kitty/470.2 (pnyx; 0)",
+        "userAgent": "othrys/0.160.1 (Mac OS 26.6.2; arm64) kitty/470.2 (othrys; 0)",
         "codexHome": "/work/codex-home",
         "platformFamily": "unix",
         "platformOs": "macos"
@@ -690,7 +690,7 @@
           "path": null,
           "cwd": "/work",
           "cliVersion": "0.160.1",
-          "originator": "pnyx",
+          "originator": "othrys",
           "source": "vscode",
           "canAcceptDirectInput": true,
           "threadSource": null,
@@ -758,7 +758,7 @@
             "path": null,
             "cwd": "/work",
             "cliVersion": "0.160.1",
-            "originator": "pnyx",
+            "originator": "othrys",
             "source": "vscode",
             "canAcceptDirectInput": true,
             "threadSource": null,
