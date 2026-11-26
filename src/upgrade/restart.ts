@@ -13,9 +13,6 @@ import { othrysHome } from '#store/storage.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Socket } from 'node:net'
 
-// A server from before the rename imports this name when its /upgrade or /restart starts the new build.
-export { restartOthrys as restartPnyx }
-
 export const RESTART_SIGNAL = 'SIGUSR2'
 
 // A server Othrys starts never takes the caller's Othrys or terminal identity, nor a worker's or Titan's login,
