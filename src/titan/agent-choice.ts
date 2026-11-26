@@ -1,4 +1,6 @@
 import type { TitanState } from '#app/model.ts'
+import { log } from '#app/diagnostics.ts'
+import { modelOption, type ModelOption } from '#workers/provider.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { effectiveDispatch, type TitanDispatch, type Candidate } from '#workers/dispatch-config.ts'
 import type { AgentConfig, AgentSettings } from '#workers/model.ts'
@@ -6,7 +8,6 @@ import { DEFAULT_HARNESS, harnessOf } from '#workers/providers.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import { TITAN_CARD } from './identity.ts'
 
-// After an agent change's compaction, Titan's next turn opens a new session from the summary, so no session holds context a change of agent would lose.
 export function startsFromSummary({ state }: { state: TitanState }): boolean {
   const agent = state.cards[TITAN_CARD]?.agent
 
@@ -53,4 +54,49 @@ export function agentSettings({ agent }: { agent: Partial<AgentConfig> }): Agent
       key,
       String(value),
     ]))
+}
+
+export async function runsDifferently({
+  previous,
+  next,
+  models,
+}: {
+  previous: AgentConfig
+  next: AgentConfig
+  models(): Promise<ModelOption[]>
+}): Promise<boolean> {
+  if (previous.harness !== next.harness || previous.account !== next.account) {
+    return true
+  }
+
+  if (previous.model === next.model && previous.effort === next.effort) {
+    return false
+  }
+
+  const offered = await models().catch((error: unknown) => {
+    log({
+      level: 'warn',
+      operation: 'titan.model-catalog',
+      error,
+    })
+
+    return []
+  })
+
+  const runs = ({ agent }: { agent: AgentConfig }) => {
+    const option = modelOption({
+      models: offered,
+      model: agent.model,
+    })
+
+    return {
+      model: option?.resolvedModel ?? option?.value ?? agent.model,
+      effort: agent.effort ?? option?.defaultEffort,
+    }
+  }
+
+  const was = runs({ agent: previous })
+  const now = runs({ agent: next })
+
+  return was.model !== now.model || was.effort !== now.effort
 }

@@ -12,7 +12,7 @@ import { loadTitan } from '#app/store.ts'
 import type { createThreadSubscriptions } from '#app/thread-subscriptions.ts'
 import { cliCommand } from './cli-command.ts'
 import { compactCommand } from './compact.ts'
-import { hydraAgentChangeCommand, hydraAgentCommand } from './hydra-agent.ts'
+import { hydraAgentCommand } from './hydra-agent.ts'
 import { hydrasCommand } from './hydras.ts'
 import { modelsCommand } from './models.ts'
 import { oracleCommand } from './oracle.ts'
@@ -218,7 +218,6 @@ export function createServerCommands({
       'catalog',
       'hydras',
       'hydra-agent',
-      'hydra-agent-change',
       'models',
       'compact',
     ].includes(String(name))) {
@@ -265,15 +264,6 @@ export function createServerCommands({
             send,
             hydraId,
             searches: oracleSearches,
-          })
-        } else if (name === 'hydra-agent-change') {
-          await hydraAgentChangeCommand({
-            ws,
-            id,
-            args,
-            send,
-            agents,
-            kick,
           })
         } else if (name === 'hydra-agent') {
           await hydraAgentCommand({

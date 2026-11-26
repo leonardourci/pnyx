@@ -20,6 +20,7 @@ const NON_VIEW_KEYS = [
   'logs',
   'logDays',
   'logMaxMB',
+  'allowedHosts',
 ] as const
 
 export function changedIds({

@@ -217,11 +217,13 @@ export async function startServer({
   // Clients that send no Origin are local programs, not pages; writes still need the token.
   const hosts = new Set<string>()
   const origins = new Set<string>()
+  let allowedHosts = readSettings().settings.allowedHosts
   const allowed = ({ req }: { req: IncomingMessage }) => allowedRequest({
     host: req.headers.host,
     origin: req.headers.origin,
     hosts,
     origins,
+    allowedHosts,
   })
 
   const request = async ({
@@ -992,6 +994,7 @@ export async function startServer({
 
     if (revision !== appliedRevision) {
       appliedRevision = revision
+      allowedHosts = settings.allowedHosts
       logs.apply({ settings })
       served.forEach(m => m.settings())
     }

@@ -1,4 +1,5 @@
-import { useEffect, useState, type ComponentProps } from 'react'
+import type { ComponentProps } from 'react'
+import { useCachedList } from '#web-shared/cached-list.ts'
 import type { ModelOption } from '#workers/provider.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Select, type Option } from '#web-shared/ui/controls.tsx'
@@ -51,6 +52,9 @@ export function PickerField({
   )
 }
 
+const validModels = ({ value }: { value: unknown }) => Array.isArray(value)
+  && value.every(model => typeof model?.value === 'string' && typeof model.label === 'string')
+
 export function useModels({
   harness,
   account,
@@ -64,82 +68,30 @@ export function useModels({
   command: Command
   connected: boolean
 }) {
-  const key = JSON.stringify([
-    harness,
-    account,
-    folder,
-  ])
-  const [
-    models,
-    setModels,
-  ] = useState<{
-    key: string
-    models: ModelOption[]
-  }>()
-  const [
-    error,
-    setError,
-  ] = useState<{
-    key: string
-    text: string
-  }>()
-  const [
-    retry,
-    setRetry,
-  ] = useState(0)
-
-  useEffect(
-    () => {
-      if (!connected) {
-        return
-      }
-
-      let active = true
-      setModels(undefined)
-      setError(undefined)
-      void command({
-        name: 'models',
-        args: account ? [
-          harness,
-          account,
-        ] : [harness],
-      })
-        .then(receipt => {
-          if (active) {
-            setModels({
-              key,
-              models: receipt.models as ModelOption[],
-            })
-          }
-        })
-        .catch((error: Error) => {
-          if (active) {
-            setError({
-              key,
-              text: error.message,
-            })
-          }
-        })
-
-      return () => {
-        active = false
-      }
-    },
-    [
+  const list = useCachedList<ModelOption[]>({
+    key: `othrys-models:${JSON.stringify([
       harness,
       account,
       folder,
-      key,
-      command,
-      connected,
-      retry,
-    ],
-  )
+    ])}`,
+    connected,
+    open: connected,
+    fetch: async ({ refresh }) => (await command({
+      name: 'models',
+      args: [
+        harness,
+        ...account ? [account] : [],
+        ...refresh ? ['--refresh'] : [],
+      ],
+    })).models as ModelOption[],
+    savedCopyValid: validModels,
+  })
 
   return {
-    models: models?.key === key ? models.models : undefined,
-    error: error?.key === key ? error.text : '',
-    retry: () => setRetry(value => value + 1),
+    models: list.value,
+    error: list.error ?? '',
+    reloading: list.reloading,
+    reload: list.reload,
   }
 }
 

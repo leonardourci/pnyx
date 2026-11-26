@@ -731,24 +731,6 @@ test(
       ],
     })
     expect(completed.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('history snapshot') }))
-    expect((await hydra.owner({
-      args: [
-        'hydra',
-        'history',
-        '--since',
-        'last-inscribe',
-        '--count',
-      ],
-    })).totalTokens).toBe(0)
-    expect((await hydra.owner({
-      args: [
-        'hydra',
-        'history',
-        '--since',
-        'stored-pass',
-        '--count',
-      ],
-    })).totalTokens).toBe(0)
     const log = join(
       process.env.OTHRYS_HOME!,
       'hydras',
@@ -1085,18 +1067,6 @@ test(
         index,
       ) => index === 0 || value - found[index - 1] === 1)).toBe(true)
     }
-
-    const count = await hydra.owner({
-      args: [
-        'hydra',
-        'history',
-        '--since',
-        'origin',
-        '--count',
-      ],
-    })
-    const formattedConversationBytes = 60_473
-    expect(count.totalTokens).toBe(Math.ceil(formattedConversationBytes / 4))
   },
   120_000,
 )

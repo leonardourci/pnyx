@@ -117,7 +117,6 @@ const COMMAND_REGISTRY = {
         'show',
         'messages',
         'message',
-        'history',
         'check',
         'usage',
         'digest',
@@ -225,7 +224,6 @@ const COMMAND_REGISTRY = {
     repeatable: true,
   },
   'hydra-agent': { repeatable: true },
-  'hydra-agent-change': { repeatable: true },
   setup: {
     scope: { reads: ['check'] },
     agentNotices: ({ args }) => args[0] !== 'check',

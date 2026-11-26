@@ -1,14 +1,54 @@
 import { ADD_PROJECT_COMMAND } from '#titan/built-in-skills.ts'
-import { matchingSuggestions } from '#titan/suggestion-matches.ts'
+import { filterRows,prepareRow,type PreparedRow } from '#titan/suggestion-matches.ts'
 import type { Catalog,Suggestion } from '#titan/transcripts-catalog.ts'
 import { skillReference } from '#titan/transcripts-skill-reference.ts'
-import { useEffect,type Dispatch,type RefObject,type SetStateAction } from 'react'
+import type { SavedLabelColor } from '#tasks/model.ts'
+import { Label } from '#web-shared/ui/label.tsx'
+import type { PickerItem } from '#web-shared/ui/suggestion-picker.tsx'
+import { useEffect,useMemo,type Dispatch,type RefObject,type SetStateAction } from 'react'
 import { draftView,replaceDisplay } from './draft.ts'
+import { slashIcons } from './skill-icons.ts'
 import { slashPrefix } from './view.ts'
+
+export interface SlashItem extends PickerItem {
+  suggestion: Suggestion
+}
+
+export const slashRows = ({
+  catalog,
+  labelColors,
+}: {
+  catalog: Catalog | null
+  labelColors?: SavedLabelColor[]
+}): PreparedRow<SlashItem>[] => (catalog?.suggestions ?? []).map(item => prepareRow<SlashItem>({
+  item: {
+    key: `${item.projectPath ?? item.source}:${item.file ?? item.command}`,
+    title: `/${item.command.replace(
+      /^[$/]/,
+      '',
+    )}`,
+    detail: '',
+    disabled: Boolean(item.unavailable),
+    badge: item.project ? (
+      <Label
+        project
+        label={item.projectPath ?? item.project}
+        text={item.project}
+        colors={labelColors}
+      />
+    ) : undefined,
+    group: item.source,
+    excerpt: item.description,
+    icons: slashIcons({ item }),
+    suggestion: item,
+  },
+}))
 
 export function useSlashMenu({
   catalog,
+  rows,
   prefix,
+  shownPrefix,
   onCatalogOpen,
   input,
   read,
@@ -19,7 +59,9 @@ export function useSlashMenu({
   write,
 }: {
   catalog: Catalog | null
+  rows: PreparedRow<SlashItem>[]
   prefix: string | null
+  shownPrefix: string
   onCatalogOpen({ open }: { open: boolean }): void
   input: RefObject<HTMLTextAreaElement | null>
   read(): string
@@ -51,11 +93,16 @@ export function useSlashMenu({
       onCatalogOpen,
     ],
   )
-  const suggestions = matchingSuggestions({
-    items: catalog?.suggestions ?? [],
-    query: prefix ?? '',
-    name: ({ item }) => item.command,
-  })
+  const matches = useMemo(
+    () => filterRows({
+      rows,
+      query: shownPrefix,
+    }),
+    [
+      rows,
+      shownPrefix,
+    ],
+  )
 
   const choose = ({
     command,
@@ -110,7 +157,7 @@ export function useSlashMenu({
   }
 
   return {
-    suggestions,
+    matches,
     catalogOpen,
     choose,
   }

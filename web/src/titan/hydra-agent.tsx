@@ -44,7 +44,6 @@ export function TitanAgent({
       inherited={inherited}
       command={command}
       connected={connected}
-      disabled={state.hydraAgentChange?.state === 'running'}
       fastNote="Applies from the next turn. It also applies to every agent this Titan starts, heads dispatch workers and the routine helper alike, where their model has Fast."
       onChange={save}
 

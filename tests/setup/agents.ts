@@ -163,6 +163,10 @@ export function fakeClaude() {
     ? m.message.content.flatMap(block => block.type === 'text' ? [block.text] : [])
     : []).join('')
   const recordedAssistant = assistantRecord()
+  const models: {
+    list: ModelInfo[]
+    failure?: string
+  } = { list: claudeRecording.models }
 
   const query = (({
     prompt,
@@ -174,7 +178,13 @@ export function fakeClaude() {
     // A model catalog read opens no session.
     if (options.persistSession === false) {
       return {
-        supportedModels: async () => claudeRecording.models,
+        supportedModels: async () => {
+          if (models.failure) {
+            throw new Error(models.failure)
+          }
+
+          return models.list
+        },
         close: () => {},
       }
     }
@@ -694,6 +704,7 @@ export function fakeClaude() {
     query,
     sessions,
     plan: turns.plan,
+    models,
     reply: recordedReply,
     // The context the recorded turn reports: its request's input and the window Claude Code measures it against.
     context: {
