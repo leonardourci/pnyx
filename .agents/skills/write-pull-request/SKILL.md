@@ -36,7 +36,7 @@ src/
 │   ├── server.ts ~400               mount, event pump, shutdown
 │   ├── -legacy-clients.ts           removed obsolete client handling
 │   └── (other files unchanged)
-└── hydra/
+└── titan/
     ├── +send-cli.ts · +history-cli.ts  send and history commands
     └── operations.ts ⇐              stop, outage, retry (from app/operations.ts)
 ```
