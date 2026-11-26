@@ -97,6 +97,7 @@ export function createFileIndex() {
           entry.files = undefined
         },
       )
+
       const stopCachingAfterWatchFailure = (error: Error) => {
         warn({
           operation: 'files.watch',
@@ -107,6 +108,7 @@ export function createFileIndex() {
         entry.watcher = undefined
         entry.files = undefined
       }
+
       watcher.on(
         'error',
         stopCachingAfterWatchFailure,
