@@ -20,7 +20,7 @@ import { useComposerSources } from './composer-sources.tsx'
 import { useComposerUploads } from './composer-uploads.ts'
 import { DraftMirror,writeDraftMirror } from './draft-mirror.tsx'
 import { attachmentRows,folderRows,mentionMatches,taskLook } from './mention-candidates.ts'
-import { CLONE_URL,folderSuggestions } from './mention-folders.ts'
+import { CLONE_URL,folderSuggestions,splitPath,typedListing } from './mention-folders.ts'
 import { useSlashMenu } from './slash-menu.tsx'
 
 const GOAL_ROWS = filterRows({
@@ -100,11 +100,13 @@ export function ComposerField({
   const {
     projects,
     mentionRows,
+    fileRows,
     slashRows,
     taskReferences,
     openTask,
     catalog,
     catalogOpen: onCatalogOpen,
+    mentionOpen,
     labelColors,
     notify,
     otherProjects,
@@ -171,10 +173,15 @@ export function ComposerField({
   const query = mention?.query ?? ''
   const typed = query.trim()
   const folderPath = /^[~/]/.test(typed) ? typed : ''
+  const {
+    directory,
+    name: typedName,
+  } = splitPath({ path: folderPath })
   const folders = useFolders({
-    path: folderPath,
+    path: directory,
     repository: '',
     connected: mention !== null,
+    files: true,
   })
   const listingWhileNextLoads = useRef<FolderListing | undefined>(undefined)
 
@@ -183,6 +190,19 @@ export function ComposerField({
   }
 
   const shownListing = listingWhileNextLoads.current
+  const pathListing = useMemo(
+    () => shownListing && folderPath ? typedListing({
+      listing: shownListing,
+      name: typedName,
+    }) : shownListing,
+    [
+      shownListing,
+      folderPath,
+      typedName,
+    ],
+  )
+  // Only the listing for the folder now typed can name the folder to add or complete the path.
+  const currentListing = folders?.listing ? pathListing : undefined
   const cloneUrl = CLONE_URL.test(typed) ? typed : ''
   const typedPath = !!folderPath
   const folderList = useMemo(
@@ -191,7 +211,7 @@ export function ComposerField({
         typed: cloneUrl,
         attached: projects,
         otherProjects,
-        listing: shownListing,
+        listing: pathListing,
         typedPath,
       }),
     }),
@@ -199,11 +219,11 @@ export function ComposerField({
       cloneUrl,
       projects,
       otherProjects,
-      shownListing,
+      pathListing,
       typedPath,
     ],
   )
-  const selectedFolder = folderPath ? folders?.listing?.selected : undefined
+  const selectedFolder = folderPath ? currentListing?.selected : undefined
   const typedFolder = useMemo(
     (): MentionItem | undefined => selectedFolder && {
       key: `folder:${selectedFolder.path}`,
@@ -242,24 +262,45 @@ export function ComposerField({
     ],
   )
   const shownQuery = useDeferredValue(query)
-  const filterFolders = !typedPath && !cloneUrl
+  // A typed path or clone URL lists only what was found for it, so its folders are not filtered again.
+  const folderQuery = typedPath || cloneUrl ? '' : shownQuery
+  const offersFiles = !typedPath && !cloneUrl
   const matched = useMemo(
     () => mentionMatches({
       query: shownQuery,
       rows,
+      files: offersFiles ? fileRows : [],
       folders: folderList,
-      filterFolders,
+      folderQuery,
       typedFolder,
     }),
     [
       shownQuery,
       rows,
+      offersFiles,
+      fileRows,
       folderList,
-      filterFolders,
+      folderQuery,
       typedFolder,
     ],
   )
   const matches = mention ? matched : []
+  const mentioning = mention !== null
+  useEffect(
+    () => {
+      if (!mentioning) {
+        return
+      }
+
+      mentionOpen({ open: true })
+
+      return () => mentionOpen({ open: false })
+    },
+    [
+      mentioning,
+      mentionOpen,
+    ],
+  )
   const picked = Math.min(
     mentionActive,
     matches.length - 1,
@@ -932,7 +973,7 @@ export function ComposerField({
             // A typed path completes like a shell: Tab extends it as text, and Tab on a complete path adds it.
             // Tab with nothing to complete leaves the path as typed; an item moved to with the arrows is picked as usual.
             const fromTop = picked <= 0
-            const listing = mention && folderPath && fromTop ? folders?.listing : undefined
+            const listing = mention && folderPath && fromTop ? currentListing : undefined
             const completed = listing && completePath({
               typed: folderPath,
               listing,

@@ -1,7 +1,57 @@
 import type { TitanProject } from '#projects/model.ts'
-import type { FolderListing } from '#projects/folders.ts'
+import type { Folder, FolderListing } from '#projects/folders.ts'
+import { ENTRY_LIMIT } from '#projects/folder-limit.ts'
 import { reference } from '#titan/mentions.ts'
 import type { MentionItem } from './mention-picker.tsx'
+
+// A typed path asks for its folder once; the name after the last slash only filters that listing.
+export function splitPath({ path }: { path: string }) {
+  const slash = path.lastIndexOf('/')
+
+  return {
+    directory: path.slice(
+      0,
+      slash + 1,
+    ) || path,
+    name: slash < 0 ? '' : path.slice(slash + 1),
+  }
+}
+
+const shownFor = ({
+  name,
+  lower,
+}: {
+  name: string
+  lower: string
+}) => ({ name: entry }: Folder) => entry.toLowerCase().startsWith(lower) && (!entry.startsWith('.') || name.startsWith('.'))
+
+// The folder's listing narrowed to the typed name as a prefix, as if the server had been asked for the whole path.
+export function typedListing({
+  listing,
+  name,
+}: {
+  listing: FolderListing
+  name: string
+}): FolderListing {
+  const shown = shownFor({
+    name,
+    lower: name.toLowerCase(),
+  })
+  const exact = name ? listing.folders.find(folder => folder.name === name) : undefined
+  // A capped listing may leave out matches, so it completes nothing.
+  const complete = listing.folders.length < ENTRY_LIMIT
+  const selected = name ? exact && {
+    ...exact,
+    empty: false,
+  } : listing.selected
+
+  return {
+    folders: complete ? listing.folders.filter(shown) : [],
+    files: (listing.files ?? []).filter(shown),
+    recent: listing.recent,
+    ...(selected ? { selected } : {}),
+  }
+}
 
 export const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
 
@@ -59,6 +109,21 @@ export function folderSuggestions({
     folders.push(...listing.folders)
   }
 
+  // A typed path also offers the files in its folder, as file references.
+  const files: MentionItem[] = typedPath ? (listing?.files ?? []).map(file => ({
+    key: `file:${file.path}`,
+    kind: 'file',
+    title: file.name,
+    detail: file.path,
+    icons: ['file'],
+    group: 'Folders',
+    insert: reference({
+      kind: 'file',
+      value: file.path,
+      label: file.name,
+    }),
+  })) : []
+
   for (const folder of folders) {
     candidates.push({
       ...folder,
@@ -90,5 +155,8 @@ export function folderSuggestions({
     }
   }
 
-  return items
+  return [
+    ...items,
+    ...files,
+  ]
 }

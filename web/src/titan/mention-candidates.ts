@@ -136,6 +136,45 @@ export const titanRows = ({ titans }: { titans: OtherTitan[] }): MentionRow[] =>
     },
   }))
 
+export interface ProjectFiles {
+  path: string
+  files: string[]
+}
+
+const fileRow = ({
+  project,
+  file,
+}: {
+  project: ProjectFiles
+  file: string
+}) => {
+  const path = `${project.path}/${file}`
+  const name = file.slice(file.lastIndexOf('/') + 1)
+
+  return prepareRow<MentionItem>({
+    item: {
+      key: `file:${path}`,
+      kind: 'file',
+      title: name,
+      detail: projectTitle({ project: project.path }),
+      excerpt: file,
+      icons: ['file'],
+      insert: reference({
+        kind: 'file',
+        value: path,
+        label: name,
+      }),
+    },
+    fallback: file,
+  })
+}
+
+export const fileRows = ({ projects }: { projects: ProjectFiles[] }): MentionRow[] => projects
+  .flatMap(project => project.files.map(file => fileRow({
+    project,
+    file,
+  })))
+
 export const attachmentRows = ({ chips }: { chips: PlacedChip[] }): MentionRow[] => chips
   .filter(chip => chip.attached && !isPendingImage({ path: chip.value }))
   .map(chip => prepareRow<MentionItem>({
@@ -162,14 +201,17 @@ export const folderRows = ({ folders }: { folders: MentionItem[] }): MentionRow[
 export function mentionMatches({
   query,
   rows,
+  files,
   folders,
-  filterFolders,
+  folderQuery,
   typedFolder,
 }: {
   query: string
   rows: MentionRow[]
+  // Project files follow the ranked rows, so a short query still finds tasks and projects first.
+  files: MentionRow[]
   folders: MentionRow[]
-  filterFolders: boolean
+  folderQuery: string
   typedFolder?: MentionItem
 }): RowMatch<MentionItem>[] {
   const listed = [
@@ -178,8 +220,12 @@ export function mentionMatches({
       query,
     }),
     ...filterRows({
+      rows: files,
+      query,
+    }),
+    ...filterRows({
       rows: folders,
-      query: filterFolders ? query : '',
+      query: folderQuery,
     }),
   ]
 
