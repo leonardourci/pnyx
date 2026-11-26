@@ -18,12 +18,12 @@ const findCards = async ({
   live?: boolean
   filters?: Search['filters']
 }) => {
-  // The workspace comes second, where an empty one searches every workspace, then the scope, where hydra keeps to live tasks.
+  // The workspace comes second, where an empty one searches every workspace, then the scope, where titan keeps to live tasks.
   const args = [
     query,
     '',
   ]
-  const scope = live ? 'hydra' : ''
+  const scope = live ? 'titan' : ''
 
   if (filters) {
     args.push(

@@ -1,4 +1,4 @@
-import { TitanRemoval } from './hydra-removal.tsx'
+import { TitanRemoval } from './titan-removal.tsx'
 import { Chip } from '#web-shared/ui/chip.tsx'
 import { applyRuntimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -10,7 +10,7 @@ import { DEFAULT_LOG_DAYS, DEFAULT_LOG_MAX_MB, DEFAULT_SETTINGS, MAX_LOG_DAYS, M
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
-import type { TitanSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-titans.ts'
 import { SettingsFrame, SettingsSearch, SettingsSection } from './settings-frame.tsx'
 import { RepositoryOwnership } from '#web-projects/ownership.tsx'
 import { About } from '#web-app/about.tsx'
@@ -23,8 +23,8 @@ import { useSharedSettings } from './shared-settings.ts'
 import { useTitanDispatch } from '#web-workers/heads-dispatch.ts'
 import { AccountSettings } from '#web-workers/account-settings.tsx'
 import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
-import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, LogDaysPreview, LogLinesPreview, LogSizePreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
-import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
+import { AgentPreview, TitanPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, LogDaysPreview, LogLinesPreview, LogSizePreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
+import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './titan-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
 import { AllowedHosts } from './allowed-hosts.tsx'
 import { SETTING_ICONS, SETTINGS_SECTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
@@ -33,7 +33,7 @@ const UNITS: Record<string, string> = {
   fontSize: 'px',
   chatFontSize: 'px',
   codeFontSize: 'px',
-  defaultHydraWidth: 'px',
+  defaultTitanWidth: 'px',
   doneAfterHours: 'h',
   reviewMinutes: 'min',
   logDays: 'd',
@@ -44,7 +44,7 @@ export const SETTING_PREVIEWS = new Set([
   'fontSize',
   'chatFontSize',
   'codeFontSize',
-  'defaultHydraWidth',
+  'defaultTitanWidth',
   'resetWidths',
   'lastMessageOnCards',
   'focusMode',
@@ -159,8 +159,8 @@ export function SettingPreview({
       return <ChatTextPreview view={view} />
     case 'codeFontSize':
       return <CodeTextPreview view={view} />
-    case 'defaultHydraWidth':
-      return <BoardPreview state={state} view={view} mark="chat" />
+    case 'defaultTitanWidth':
+      return <TitanPreview state={state} view={view} mark="chat" />
     case 'resetWidths':
       return <ResetPreview state={state} view={view} />
     case 'lastMessageOnCards':
@@ -181,8 +181,8 @@ export function SettingPreview({
     case 'logMaxMB':
       return <LogSizePreview days={settings.logDays} maxMB={settings.logMaxMB} />
     case 'helper':
-      return rule && <HelperPreview helper={settings.helper} hydra={rule} />
-    case 'hydraAgent':
+      return rule && <HelperPreview helper={settings.helper} titan={rule} />
+    case 'titanAgent':
       return rule && <AgentPreview agent={rule} />
     default:
       return undefined
@@ -279,7 +279,7 @@ export function SettingControl({
   connected: boolean
   saveTitan({ patch }: { patch: Partial<AgentConfig> }): Promise<unknown>
 }): ReactNode {
-  if ((entry.id === 'helper' || entry.id === 'hydraAgent') && !rule) {
+  if ((entry.id === 'helper' || entry.id === 'titanAgent') && !rule) {
     return <DispatchStatus error={dispatchError} />
   }
 
@@ -324,21 +324,21 @@ export function SettingControl({
           slide={slide}
         />
       )
-    case 'defaultHydraWidth':
+    case 'defaultTitanWidth':
       return (
         <NumberField
           label={entry.label}
-          value={view.hydraWidth}
-          min={VIEW_SIZE_LIMITS.hydraWidth.min}
+          value={view.titanWidth}
+          min={VIEW_SIZE_LIMITS.titanWidth.min}
           max={WIDTH_MAX}
           step={1}
           slider={{
             max: WIDTH_SLIDER_MAX,
-            initial: DEFAULT_VIEW.defaultHydraWidth,
+            initial: DEFAULT_VIEW.defaultTitanWidth,
             unit: 'px',
           }}
-          onChange={({ value }) => save({ patch: { defaultHydraWidth: value } })}
-          onSlide={slideTo({ key: 'defaultHydraWidth' })}
+          onChange={({ value }) => save({ patch: { defaultTitanWidth: value } })}
+          onSlide={slideTo({ key: 'defaultTitanWidth' })}
         />
       )
     case 'resetWidths':
@@ -402,14 +402,14 @@ export function SettingControl({
         rule && (
           <RoutineHelper
             helper={settings.helper}
-            hydra={rule}
+            titan={rule}
             command={command}
             connected={connected}
             save={save}
           />
         )
       )
-    case 'hydraAgent':
+    case 'titanAgent':
       return (
         rule && (
           <DefaultAgent
@@ -456,7 +456,7 @@ function Empty({
 }
 
 export function SettingsPage({
-  hydras,
+  titans,
   commandFor,
   state,
   connected,
@@ -470,7 +470,7 @@ export function SettingsPage({
   accountSetup,
   hidden = false,
 }: Saving & {
-  hydras: TitanSummary[]
+  titans: TitanSummary[]
   commandFor({ id }: { id: string }): Command
   state: TitanState
   connected: boolean
@@ -502,7 +502,7 @@ export function SettingsPage({
     saveTitan,
     error: dispatchError,
   } = useTitanDispatch({ command })
-  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
+  const rule = effective?.dispatch.rules.titan?.candidates[0] ?? effective?.dispatch.default[0]
   // Previews draw what a slider shows while it moves, before the value saves.
   const shownView = patchView({
     state,
@@ -600,11 +600,11 @@ export function SettingsPage({
   return (
     <SettingsFrame ref={surface} hidden={hidden}>
       <TitanRemoval
-        hydras={hydras}
+        titans={titans}
         command={command}
         connected={connected}
       />
-      <RepositoryOwnership hydras={hydras} commandFor={commandFor} connected={connected} />
+      <RepositoryOwnership titans={titans} commandFor={commandFor} connected={connected} />
       <SettingsSearch ref={sticky}>
         <SearchBar
           label="Search settings"

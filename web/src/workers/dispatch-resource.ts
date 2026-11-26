@@ -24,7 +24,7 @@ function createDispatch({ scope }: { scope: string }) {
         return state
       }
 
-      const rule = state.dispatch.rules.hydra
+      const rule = state.dispatch.rules.titan
       const base = rule?.candidates[0] ?? { harness: 'claude' as const }
       const candidate = {
         ...base,
@@ -37,7 +37,7 @@ function createDispatch({ scope }: { scope: string }) {
           ...state.dispatch,
           rules: {
             ...state.dispatch.rules,
-            hydra: {
+            titan: {
               when: rule?.when ?? 'Titan',
               candidates: [
                 candidate,
@@ -52,7 +52,7 @@ function createDispatch({ scope }: { scope: string }) {
       state,
       patch,
     }) => {
-      const candidate: Partial<AgentConfig> | undefined = state.dispatch.rules.hydra?.candidates[0]
+      const candidate: Partial<AgentConfig> | undefined = state.dispatch.rules.titan?.candidates[0]
 
       return !!candidate && Object.entries(patch).every(([
         key,

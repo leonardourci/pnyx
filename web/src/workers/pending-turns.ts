@@ -65,7 +65,7 @@ export function turnTarget({
   args: string[]
   state: TitanState
 }): string | undefined {
-  if (name === 'hydra' && args[0] === 'send' && argument({
+  if (name === 'titan' && args[0] === 'send' && argument({
     args,
     flag: '--task',
   }) === undefined) {
@@ -89,10 +89,10 @@ export function turnTarget({
 
 export function pendingTurns({
   resource,
-  hydraStatus,
+  titanStatus,
 }: {
   resource: ReturnType<typeof createPendingTurns>
-  hydraStatus?: TitanState['hydraStatus']
+  titanStatus?: TitanState['titanStatus']
 }): Record<string, PendingTurn> {
   const snapshot = resource.snapshot()
   const latest = new Map<string, typeof snapshot.intents[number]>()
@@ -109,12 +109,12 @@ export function pendingTurns({
   for (const intent of latest.values()) {
     const card = snapshot.confirmed[intent.patch.card]
     const activity = card?.sessionActivity ?? card?.activity
-    const hydraFailed = intent.patch.card === TITAN_CARD && hydraStatus?.state === 'down'
-      && hydraStatus.seq > intent.patch.afterSeq && activity !== 'working'
-      && (card?.turnEndedSeq ?? 0) <= hydraStatus.seq
+    const titanFailed = intent.patch.card === TITAN_CARD && titanStatus?.state === 'down'
+      && titanStatus.seq > intent.patch.afterSeq && activity !== 'working'
+      && (card?.turnEndedSeq ?? 0) <= titanStatus.seq
 
-    if (hydraFailed) {
-      pending[intent.patch.card] = { error: hydraStatus.detail ?? 'Titan could not start a turn' }
+    if (titanFailed) {
+      pending[intent.patch.card] = { error: titanStatus.detail ?? 'Titan could not start a turn' }
       continue
     }
 

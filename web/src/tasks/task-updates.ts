@@ -166,7 +166,7 @@ export interface UpdateGroup {
 
 const EXCHANGE_MS = 10 * 60_000
 
-const spoken = ({ update }: { update?: TaskUpdate }) => update?.kind === 'ask' || update?.kind === 'hydra' || update?.kind === 'told' || update?.kind === 'report'
+const spoken = ({ update }: { update?: TaskUpdate }) => update?.kind === 'ask' || update?.kind === 'titan' || update?.kind === 'told' || update?.kind === 'report'
 
 const bookkeeping = ({ update }: { update?: TaskUpdate }) => update?.kind === 'renamed'
   || (update?.kind === 'moved' && !update.note)
@@ -197,7 +197,7 @@ export function groupUpdates({ updates }: { updates: TaskUpdate[] }): UpdateGrou
     ].includes(last.type)) {
       last.updates.push(update)
       last.type = last.updates.every(item => item.kind === 'decision') ? 'decisions' : 'moment'
-    } else if ((update.kind === 'hydra' || update.kind === 'told') && last?.type === 'single' && prev?.kind === 'ask'
+    } else if ((update.kind === 'titan' || update.kind === 'told') && last?.type === 'single' && prev?.kind === 'ask'
       && Date.parse(update.at) - Date.parse(prev.at) <= EXCHANGE_MS) {
       last.type = 'exchange'
       last.updates.push(update)

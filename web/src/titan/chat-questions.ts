@@ -26,7 +26,7 @@ export function chatDecisions({
   selectedTask?: string | null
   draft?: string
 }): ChatDecision[] {
-  const latest = state.hydraOwnerMessage
+  const latest = state.titanOwnerMessage
   const context = new Set([
     selectedTask,
     latest?.task,

@@ -83,7 +83,7 @@ export function oracleResultList({
   askAct,
   targets,
   pickedId,
-  hydra,
+  titan,
   sendAsk,
 }: {
   terms: string[]
@@ -116,7 +116,7 @@ export function oracleResultList({
   askAct({ key }: { key: AskKey }): void
   targets: AskTarget[]
   pickedId?: string
-  hydra: { id: string }
+  titan: { id: string }
   sendAsk({
     to,
     opening,
@@ -144,9 +144,9 @@ export function oracleResultList({
       terms={terms}
       meta={resultMeta({
         result,
-        state: workspaces.find(workspace => workspace.hydra.id === result.hydra)?.state ?? state,
+        state: workspaces.find(workspace => workspace.titan.id === result.titan)?.state ?? state,
         actions: workspaces.find(workspace =>
-          workspace.hydra.id === result.hydra)?.actions ?? actions,
+          workspace.titan.id === result.titan)?.actions ?? actions,
         now,
       })}
       pick={() => choose({
@@ -228,7 +228,7 @@ export function oracleResultList({
           icon={target.icon}
           label={target.name}
           terms={[]}
-          meta={target.id === hydra.id ? 'this Titan' : ''}
+          meta={target.id === titan.id ? 'this Titan' : ''}
           pick={() => sendAsk({
             to: target,
             opening: false,

@@ -1,5 +1,5 @@
 import type { TitanState } from '#app/model.ts'
-import type { TitanProjectSummary } from '#app/server-hydras.ts'
+import type { TitanProjectSummary } from '#app/server-titans.ts'
 import type { CurrentAction } from '#titan/calls.ts'
 import type { Hit } from '#oracle/model.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -8,10 +8,10 @@ import { taskRollup } from '#web-tasks/project-view.ts'
 import type { Filter } from './filters.ts'
 import { oracleResults, type OracleResult } from './results.ts'
 
-export type ScopedHit = Hit & { hydra?: string }
+export type ScopedHit = Hit & { titan?: string }
 export interface OracleWorkspace {
   state: TitanState
-  hydra: {
+  titan: {
     id: string
     name: string
     icon: string
@@ -40,7 +40,7 @@ export function workspaceSearch({
 
       return hits.map(hit => ({
         ...hit,
-        hydra: id,
+        titan: id,
       }))
     }))
 
@@ -87,11 +87,11 @@ export function workspaceResults({
   for (const workspace of workspaces) {
     const groups = oracleResults({
       state: workspace.state,
-      hits: hits.filter(hit => hit.hydra === workspace.hydra.id),
+      hits: hits.filter(hit => hit.titan === workspace.titan.id),
       projects: workspace.projects,
       actions: [],
       cardActions: workspace.actions,
-      hydra: workspace.hydra,
+      titan: workspace.titan,
       text,
       badges,
       now,
@@ -115,7 +115,7 @@ export function workspaceResults({
         return {
           ...result,
           title: parent ? `${parent.title} › ${result.title}` : result.title,
-          id: `${workspace.hydra.id}:${result.id}`,
+          id: `${workspace.titan.id}:${result.id}`,
         }
       })
       const label = !text && !badges.length ? 'Needs you' : group.label

@@ -179,8 +179,8 @@
   --animate-live-label-reduced: chat-fade-in var(--transition-duration-base) var(--ease-ui) var(--transition-duration-fast) backwards;
   --shadow-jump: 0 4px 12px var(--color-shadow);
   --animate-chat-fade: chat-fade-in var(--transition-duration-base) var(--ease-ui);
-  --animate-hydra-spin-reduced: hydra-spin var(--transition-duration-ambient) var(--ease-linear) infinite;
-  --animate-hydra-spin: hydra-spin var(--transition-duration-ambient) var(--ease-linear) infinite;
+  --animate-titan-spin-reduced: titan-spin var(--transition-duration-ambient) var(--ease-linear) infinite;
+  --animate-titan-spin: titan-spin var(--transition-duration-ambient) var(--ease-linear) infinite;
   --animate-reply-dot: reply-dot var(--transition-duration-ambient) var(--ease-ui) infinite;
   --animate-reply-dot-fade: reply-dot-fade var(--transition-duration-ambient) var(--ease-ui) infinite;
   --animate-reply-appear: reply-appear var(--transition-duration-fast) var(--ease-ui);
@@ -345,7 +345,7 @@ kbd {
   --color-usage-fill: color-mix(in srgb, var(--usage-tone, var(--color-surface)) 72%, var(--color-surface));
   --animate-comment-jump: comment-jump var(--comment-jump-duration) var(--ease-ui) both;
   --color-attachment-comments: color-mix(in srgb, var(--color-gold) 8%, transparent);
-  --color-update-hydra: color-mix(in srgb, var(--color-teal) 12%, var(--color-surface));
+  --color-update-titan: color-mix(in srgb, var(--color-teal) 12%, var(--color-surface));
   --color-update-told: color-mix(in srgb, var(--color-blue) 12%, var(--color-surface));
   --color-update-link: color-mix(in srgb, var(--color-purple) 12%, var(--color-surface));
   --color-update-done: color-mix(in srgb, var(--color-green) 12%, var(--color-surface));
@@ -425,7 +425,7 @@ kbd {
 
 .message .attachment-card:not(.composer-field *) { @apply my-0 mx-px select-auto; }
 
-@keyframes hydra-spin { to { transform: rotate(360deg); } }
+@keyframes titan-spin { to { transform: rotate(360deg); } }
 
 /* The overlay and editable text need identical metrics to keep chips on their text. */
 .composer-text {

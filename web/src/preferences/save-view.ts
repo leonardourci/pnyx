@@ -16,13 +16,13 @@ export function useSaveView({
 }) {
   return useCallback(
     async ({ patch }: { patch: Record<string, unknown> }) => {
-      const resize = 'defaultHydraWidth' in patch
+      const resize = 'defaultTitanWidth' in patch
       const applied = resize ? resizeViewPatch({
         patch,
       }) : patch
       const entries = Object.entries(applied)
       const sharedPatch = Object.fromEntries(entries.filter(([key]) => isSettingKey({ key })))
-      const boardPatch = Object.fromEntries(entries.filter(([key]) => !isSettingKey({ key })))
+      const titanPatch = Object.fromEntries(entries.filter(([key]) => !isSettingKey({ key })))
 
       const writes = []
 
@@ -37,18 +37,18 @@ export function useSaveView({
         }))
       }
 
-      const workspace = boardPatch.workspace
-      const foldOnly = Object.keys(boardPatch).length === 1 && workspace
+      const workspace = titanPatch.workspace
+      const foldOnly = Object.keys(titanPatch).length === 1 && workspace
         && typeof workspace === 'object'
         && Object.keys(workspace).every(key => key === 'foldedProjects')
 
-      if (!resize && Object.keys(boardPatch).length) {
+      if (!resize && Object.keys(titanPatch).length) {
         writes.push(command({
           name: 'view',
           args: [
             'set',
             '--json',
-            JSON.stringify(boardPatch),
+            JSON.stringify(titanPatch),
             ...(!foldOnly ? [
               '--if-revision',
               String(state.viewRevision ?? 0),

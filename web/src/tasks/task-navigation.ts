@@ -63,7 +63,7 @@ export function useTaskNavigation({
     selectedRef,
     revealing,
   ].filter((id): id is string => id !== null)
-  const interestIds = page === 'hydra' ? [...new Set(interestRefs)] : []
+  const interestIds = page === 'titan' ? [...new Set(interestRefs)] : []
   const interestKey = JSON.stringify(interestIds)
   const hadInterest = useRef(false)
   const [
@@ -182,7 +182,7 @@ export function useTaskNavigation({
   )
   useEffect(
     () => {
-      if (page !== 'hydra') {
+      if (page !== 'titan') {
         cancelOpen()
       }
     },
@@ -211,7 +211,7 @@ export function useTaskNavigation({
   )
   useEffect(
     () => {
-      if (!connected || page !== 'hydra' || pendingInterest.current) {
+      if (!connected || page !== 'titan' || pendingInterest.current) {
         return
       }
 
@@ -254,7 +254,7 @@ export function useTaskNavigation({
     id: string
     selected?: boolean
   }) =>
-    document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(titanId)}"] .card[data-task="${CSS.escape(id)}"]${selected ? '.selected' : ''}`)
+    document.querySelector<HTMLElement>(`[data-titan-workspace="${CSS.escape(titanId)}"] .card[data-task="${CSS.escape(id)}"]${selected ? '.selected' : ''}`)
 
   const columns = columnsFor({ state })
   const filteredCards = useMemo(
@@ -316,9 +316,9 @@ export function useTaskNavigation({
     // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
     cancelOpen(); setView(current => showingPage({
       view: current,
-      page: 'hydra',
+      page: 'titan',
     }))
-    requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(titanId)}"] .hydra-chat textarea` }))
+    requestAnimationFrame(() => focusElement({ selector: `[data-titan-workspace="${CSS.escape(titanId)}"] .titan-chat textarea` }))
   }
 
   const keepRevealed = ({ id }: { id: string }) => {
@@ -359,7 +359,7 @@ export function useTaskNavigation({
         state,
       }),
       selected: id,
-      page: 'hydra',
+      page: 'titan',
     }))
   }
 
@@ -413,7 +413,7 @@ export function useTaskNavigation({
     // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
     setView(current => showingPage({
       view: current,
-      page: 'hydra',
+      page: 'titan',
     })); setRevealing(pointer ? null : id)
 
     try {

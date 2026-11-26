@@ -24,7 +24,7 @@ type HeapPerformance = Performance & { memory?: { usedJSHeapSize: number } }
 interface Output {
   // False while the socket is down, so the lines wait for the next flush.
   send({ lines }: { lines: string[] }): boolean
-  hydra(): string
+  titan(): string
   // The serialized chat the page holds and its message count.
   chat(): {
     chars: number
@@ -158,7 +158,7 @@ export function log(line: PageLine): void {
     ...fields
   } = line
   // A line about no Titan in particular belongs to the one the page shows.
-  const selectedTitan = output?.hydra()
+  const selectedTitan = output?.titan()
   queue.push({
     queued: performance.now(),
     text: JSON.stringify({
@@ -283,12 +283,12 @@ const whenIdle = () => {
 // Watches the frames and long tasks the browser reports as slow, the page's uncaught errors and its memory, until stopped.
 export function startPageLog({
   send,
-  hydra,
+  titan,
   chat,
 }: Output) {
   output = {
     send,
-    hydra,
+    titan,
     chat,
   }
   schedule()

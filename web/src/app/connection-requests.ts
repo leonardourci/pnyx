@@ -1,6 +1,6 @@
 import { settleSavedCommand } from '#web-titan/outbox.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
-import type { TitanSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-titans.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import { reminderTime } from '#tasks/time.ts'
 import { saveEventId, savedReply } from '#app/save-receipts.ts'
@@ -18,7 +18,7 @@ export function createConnectionRequests({
   connection,
   scopes,
   requests,
-  hydras,
+  titans,
   publish,
   subscribe,
   persistSaves,
@@ -28,7 +28,7 @@ export function createConnectionRequests({
   connection: { readonly socket: WebSocket | null }
   scopes: Map<string, Scope>
   requests: Map<string, Request>
-  hydras: TitanListResource
+  titans: TitanListResource
   publish(): void
   subscribe({ scope }: { scope: Scope }): void
   persistSaves({ scope }: { scope: Scope }): void
@@ -105,7 +105,7 @@ export function createConnectionRequests({
             })
 
             if (request.creation) {
-              hydras.unknown({
+              titans.unknown({
                 id: request.creation,
                 error,
               })
@@ -407,8 +407,8 @@ export function createConnectionRequests({
       return
     }
 
-    if (request.creation && message.type === 'receipt' && Array.isArray(message.hydras)) {
-      updateTitans({ rows: message.hydras as TitanSummary[] })
+    if (request.creation && message.type === 'receipt' && Array.isArray(message.titans)) {
+      updateTitans({ rows: message.titans as TitanSummary[] })
     }
 
     if (message.type === 'error' && request.saveId && message.saved !== false) {
@@ -454,7 +454,7 @@ export function createConnectionRequests({
       })
 
       if (request.creation) {
-        hydras.refuse({
+        titans.refuse({
           id: request.creation,
           error,
         })
@@ -531,7 +531,7 @@ export function createConnectionRequests({
           }
 
           if (request.creation) {
-            hydras.unknown({
+            titans.unknown({
               id: request.creation,
               error,
             })

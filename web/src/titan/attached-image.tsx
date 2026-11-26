@@ -17,7 +17,7 @@ function attachmentSource({ path }: { path: string }) {
 
   // Cached chat can render while navigation still has the previous Titan's base URL.
   return token && route && (stored || copied)
-    ? `/hydra/${encodeURIComponent(served[1]!)}/${route.split('/').map(encodeURIComponent)
+    ? `/titan/${encodeURIComponent(served[1]!)}/${route.split('/').map(encodeURIComponent)
       .join('/')}?token=${encodeURIComponent(token)}`
     : undefined
 }

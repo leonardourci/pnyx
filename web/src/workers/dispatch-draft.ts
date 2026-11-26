@@ -3,7 +3,7 @@ import type { Candidate, Rule } from '#workers/dispatch-config.ts'
 import { canonical, checkDispatch, patchChanges, pointer, type DispatchChange, type DispatchDocument, type DispatchIssue } from '#workers/dispatch-check.ts'
 
 // Titan's own agent: Settings edits it under Titan's default agent, not in the workers' table.
-export const TITAN_RULE = 'hydra'
+export const TITAN_RULE = 'titan'
 
 const CANDIDATE_FIELDS = [
   'model',

@@ -42,7 +42,7 @@ export function Panel({
         <IconButton
           label={settings ? 'Close Settings' : 'Settings'}
           aria-pressed={settings}
-          onClick={() => navigate({ page: settings ? 'hydra' : 'settings' })}
+          onClick={() => navigate({ page: settings ? 'titan' : 'settings' })}
           icon={settings ? 'close' : 'settings'}
         />
       </nav>

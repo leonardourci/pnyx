@@ -1,5 +1,5 @@
 import { emptyTitan } from '#app/reducer.ts'
-import type { TitanSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-titans.ts'
 import { moveTitanStorage } from '#web-titan/outbox.ts'
 import { pendingTitan } from './pending-state.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
@@ -12,7 +12,7 @@ export function createTitanCreation({
   scopes,
   requests,
   creations,
-  hydras,
+  titans,
   namespace,
   creationKey,
   selectedKey,
@@ -29,7 +29,7 @@ export function createTitanCreation({
   scopes: Map<string, Scope>
   requests: Map<string, Request>
   creations: Map<string, Creation>
-  hydras: TitanListResource
+  titans: TitanListResource
   namespace: string
   creationKey: string
   selectedKey: string
@@ -82,7 +82,7 @@ export function createTitanCreation({
       to: canonical.id,
     })
     scope.resource = pendingTitan({
-      scope: `${namespace}/hydra/${canonical.id}/`,
+      scope: `${namespace}/titan/${canonical.id}/`,
       confirmed: emptyTitan(),
     })
     scopes.set(
@@ -101,11 +101,11 @@ export function createTitanCreation({
       history.replaceState(
         null,
         '',
-        `/hydra/${canonical.id}/`,
+        `/titan/${canonical.id}/`,
       )
     }
 
-    hydras.accept({
+    titans.accept({
       id: scope.creation!.attempt,
       complete: true,
     })
@@ -114,14 +114,14 @@ export function createTitanCreation({
 
   const updateTitans = ({ rows }: { rows: TitanSummary[] }) => {
     connection.listed = true
-    hydras.confirm({ state: rows })
+    titans.confirm({ state: rows })
 
     for (const scope of [...scopes.values()]) {
       if (!scope.creation || !scope.id.startsWith('pending-')) {
         continue
       }
 
-      const canonical = rows.find(hydra => hydra.creationAttempt === scope.creation!.attempt)
+      const canonical = rows.find(titan => titan.creationAttempt === scope.creation!.attempt)
 
       if (!canonical) {
         continue
@@ -144,7 +144,7 @@ export function createTitanCreation({
                 status: 'saved',
                 mount: 'pending',
               },
-              hydras: rows,
+              titans: rows,
             },
           })
         }
@@ -180,15 +180,15 @@ export function createTitanCreation({
       creation,
     )
     saveCreations()
-    const previous = hydras.snapshot().intents.find(intent => intent.id === creation.attempt)
+    const previous = titans.snapshot().intents.find(intent => intent.id === creation.attempt)
 
     if (previous && [
       'refused',
       'unknown',
     ].includes(previous.stage)) {
-      hydras.retry({ id: creation.attempt })
+      titans.retry({ id: creation.attempt })
     } else if (!previous) {
-      hydras.enqueue({
+      titans.enqueue({
         id: creation.attempt,
         targets: [id],
         patch: {
@@ -197,7 +197,7 @@ export function createTitanCreation({
           icon: creation.icon,
           // Created now, so it sorts last until the server's summary arrives.
           order: Date.now(),
-          hydra: 'Titan',
+          titan: 'Titan',
           projects: [],
           creationAttempt: creation.attempt,
         },
@@ -206,7 +206,7 @@ export function createTitanCreation({
     }
 
     if (restoring) {
-      hydras.unknown({
+      titans.unknown({
         id: creation.attempt,
         error: new CommandFailure({
           message: 'Checking the saved creation attempt.',
@@ -235,7 +235,7 @@ export function createTitanCreation({
     if (refusal) {
       scope.failed = true
       scope.error = refusal.message
-      hydras.refuse({
+      titans.refuse({
         id: creation.attempt,
         error: new CommandFailure(refusal),
       })
@@ -264,8 +264,8 @@ export function createTitanCreation({
         creation: creation.attempt,
       })
       const outcome = receipt.creation as { titanId: string }
-      const canonical = (receipt.hydras as TitanSummary[])
-        .find(hydra => hydra.id === outcome.titanId)!
+      const canonical = (receipt.titans as TitanSummary[])
+        .find(titan => titan.id === outcome.titanId)!
       promote({
         scope,
         canonical,

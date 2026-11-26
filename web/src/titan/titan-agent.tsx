@@ -18,8 +18,8 @@ export function TitanAgent({
   const {
     effective,
   } = useTitanDispatch({ command })
-  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
-  const agent: AgentConfig = state.config?.hydra.agent ?? rule ?? { harness: 'claude' }
+  const rule = effective?.dispatch.rules.titan?.candidates[0] ?? effective?.dispatch.default[0]
+  const agent: AgentConfig = state.config?.titan.agent ?? rule ?? { harness: 'claude' }
   const ruleAccount = rule ? resolvedAccount({
     effective,
     agent: rule,
@@ -29,7 +29,7 @@ export function TitanAgent({
 
   const save = ({ next }: { next: AgentConfig }) => {
     void command({
-      name: 'hydra-agent',
+      name: 'titan-agent',
       args: [JSON.stringify(next)],
     })
       .catch((error: Error) => notify({ text: error.message }))
@@ -40,7 +40,7 @@ export function TitanAgent({
       label="Titan agent settings"
       foldable
       agent={agent}
-      lastUsed={state.hydraAgent}
+      lastUsed={state.titanAgent}
       inherited={inherited}
       command={command}
       connected={connected}

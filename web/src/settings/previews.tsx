@@ -11,10 +11,10 @@ import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { projectWidth } from '#web-tasks/project-layout.ts'
 import { columnsFor } from '#web-tasks/view.ts'
 
-// The board preview draws a 1440 px screen this many times smaller.
-const BOARD_SCALE = 0.175
+// The Titan preview draws a 1440 px screen this many times smaller.
+const TITAN_SCALE = 0.175
 const SCREEN = 1440
-// The gaps and padding a real board spends beside the chat and between columns.
+// The gaps and padding a real Titan spends beside the chat and between columns.
 const CHAT_GAP = 20
 const COLUMN_GAP = 12
 
@@ -75,8 +75,8 @@ function MiniPanel({
   ...props
 }: ComponentProps<'div'> & { column?: boolean }) {
   const appearance = column
-    ? 'preview-board-column flex flex-col gap-0.75 border-subtle bg-background p-0.75 data-dragged:border-dashed data-dragged:border-muted [&>i]:block [&>i]:h-3.5 [&>i]:rounded-xs [&>i]:border [&>i]:border-t-2 [&>i]:border-line [&>i]:border-t-blue [&>i]:bg-surface'
-    : 'preview-board-chat border-line bg-surface'
+    ? 'preview-titan-column flex flex-col gap-0.75 border-subtle bg-background p-0.75 data-dragged:border-dashed data-dragged:border-muted [&>i]:block [&>i]:h-3.5 [&>i]:rounded-xs [&>i]:border [&>i]:border-t-2 [&>i]:border-line [&>i]:border-t-blue [&>i]:bg-surface'
+    : 'preview-titan-chat border-line bg-surface'
 
   return <div {...props} className={`relative shrink-0 rounded-preview border transition-width duration-base ease-ui ${appearance}`} />
 }
@@ -229,7 +229,7 @@ const fitting = ({ widths }: { widths: Widths }) => {
 }
 
 // The same widths drive the Titan and the live Settings preview.
-function boardWidths({
+function titanWidths({
   state,
   view,
   dragged,
@@ -239,7 +239,7 @@ function boardWidths({
   dragged: boolean
 }): Widths {
   return {
-    chat: dragged ? view.hydraWidth : view.defaultHydraWidth,
+    chat: dragged ? view.titanWidth : view.defaultTitanWidth,
     columns: columnsFor({ state }).map(column => {
       const own = dragged ? view.workspace.projectWidths[column.id] : undefined
 
@@ -256,7 +256,7 @@ function boardWidths({
   }
 }
 
-function MiniBoard({
+function MiniTitan({
   widths,
   mark,
 }: {
@@ -264,25 +264,25 @@ function MiniBoard({
   mark: 'columns' | 'chat' | 'none'
 }) {
   return (
-    <div className="preview-board relative flex h-23 gap-0.75 overflow-hidden rounded-compact bg-raised p-0.75 [&_[data-marked]]:outline-2 [&_[data-marked]]:-outline-offset-1 [&_[data-marked]]:outline-gold">
-      <MiniPanel data-marked={mark === 'chat' || undefined} style={runtimeStyle({ width: widths.chat * BOARD_SCALE })} />
+    <div className="preview-titan relative flex h-23 gap-0.75 overflow-hidden rounded-compact bg-raised p-0.75 [&_[data-marked]]:outline-2 [&_[data-marked]]:-outline-offset-1 [&_[data-marked]]:outline-gold">
+      <MiniPanel data-marked={mark === 'chat' || undefined} style={runtimeStyle({ width: widths.chat * TITAN_SCALE })} />
       {widths.columns.map(column => (
         <MiniPanel
           column
           key={column.id}
           data-marked={mark === 'columns' || undefined}
           data-dragged={column.dragged || undefined}
-          style={runtimeStyle({ width: column.width * BOARD_SCALE })}
+          style={runtimeStyle({ width: column.width * TITAN_SCALE })}
         >
           <i /><i />
         </MiniPanel>
       ))}
-      <span className="preview-board-screen absolute top-0 bottom-0 w-0.5 bg-red opacity-70" style={runtimeStyle({ left: SCREEN * BOARD_SCALE })} />
+      <span className="preview-titan-screen absolute top-0 bottom-0 w-0.5 bg-red opacity-70" style={runtimeStyle({ left: SCREEN * TITAN_SCALE })} />
     </div>
   )
 }
 
-export function BoardPreview({
+export function TitanPreview({
   state,
   view,
   mark,
@@ -291,7 +291,7 @@ export function BoardPreview({
   view: ViewPreferences
   mark: 'columns' | 'chat'
 }) {
-  const widths = boardWidths({
+  const widths = titanWidths({
     state,
     view,
     dragged: true,
@@ -299,11 +299,11 @@ export function BoardPreview({
   const fit = fitting({ widths }).toFixed(1)
   const caption = mark === 'columns'
     ? `On a 1440 px screen, ${fit} columns fit beside the chat.`
-    : `A ${view.hydraWidth} px chat leaves room for ${fit} columns. The red line is the edge of a 1440 px screen.`
+    : `A ${view.titanWidth} px chat leaves room for ${fit} columns. The red line is the edge of a 1440 px screen.`
 
   return (
     <Preview caption={caption}>
-      <MiniBoard widths={widths} mark={mark} />
+      <MiniTitan widths={widths} mark={mark} />
     </Preview>
   )
 }
@@ -386,7 +386,7 @@ const age = ({ hours }: { hours: number }) => {
 export function DonePreview({ hours }: { hours: DoneAfterHours }) {
   const hidden = ({ card }: { card: typeof DONE_CARDS[number] }) => hours !== 'off' && card.hours >= hours
   const count = DONE_CARDS.filter(card => hidden({ card })).length
-  const caption = hours === 'off' ? 'Every Done card stays on the board.' : `${count} of ${DONE_CARDS.length} Done cards hidden.`
+  const caption = hours === 'off' ? 'Every Done card stays on the Titan.' : `${count} of ${DONE_CARDS.length} Done cards hidden.`
 
   return (
     <Preview caption={caption}>
@@ -643,17 +643,17 @@ function Pill({
 
 export function HelperPreview({
   helper,
-  hydra,
+  titan,
 }: {
   helper: HelperSetting
-  hydra: Partial<AgentConfig>
+  titan: Partial<AgentConfig>
 }) {
-  const main = <Pill icon={providerIdOf({ harness: hydra.harness ?? 'claude' })} label={`Titan · ${modelName({ agent: hydra })}`} />
+  const main = <Pill icon={providerIdOf({ harness: titan.harness ?? 'claude' })} label={`Titan · ${modelName({ agent: titan })}`} />
   const routine = helper === 'off' ? main : (
     <Pill
       helper
       icon="helper"
-      label={`Helper · ${helper === 'auto' ? HELPER_MODELS[hydra.harness ?? 'claude'] : modelName({ agent: helper })}`}
+      label={`Helper · ${helper === 'auto' ? HELPER_MODELS[titan.harness ?? 'claude'] : modelName({ agent: helper })}`}
     />
   )
   const rows: [string, ReactNode][] = [
@@ -701,7 +701,7 @@ export function AgentPreview({ agent }: { agent: Partial<AgentConfig> }) {
     <Preview>
       <div className="preview-lanes grid gap-1.5 text-meta">
         <PreviewLane data-on>
-          <b><Icon name="hydra" size={ICON_SIZE.inline} />Titan, the orchestrator</b>
+          <b><Icon name="titan" size={ICON_SIZE.inline} />Titan, the orchestrator</b>
           <span>{details}</span>
         </PreviewLane>
         <PreviewLane >
@@ -720,12 +720,12 @@ export function ResetPreview({
   state: TitanState
   view: ViewPreferences
 }) {
-  const now = boardWidths({
+  const now = titanWidths({
     state,
     view,
     dragged: true,
   })
-  const after = boardWidths({
+  const after = titanWidths({
     state,
     view,
     dragged: false,
@@ -741,18 +741,18 @@ export function ResetPreview({
   ].map(width => {
     const outline = {
       left,
-      width: width * BOARD_SCALE,
+      width: width * TITAN_SCALE,
     }
-    left += width * BOARD_SCALE + 3
+    left += width * TITAN_SCALE + 3
 
     return outline
   })
 
   return (
     <Preview caption={moved ? 'Dashed outlines: where Reset puts each pane.' : 'Widths match the saved settings.'}>
-      <div className="preview-board-frame relative">
-        <MiniBoard widths={now} mark="none" />
-        {outlines.map(outline => <span key={outline.left} className="preview-board-ghost pointer-events-none absolute top-0.75 bottom-0.75 rounded-preview border border-dashed border-gold" style={runtimeStyle(outline)} />)}
+      <div className="preview-titan-frame relative">
+        <MiniTitan widths={now} mark="none" />
+        {outlines.map(outline => <span key={outline.left} className="preview-titan-ghost pointer-events-none absolute top-0.75 bottom-0.75 rounded-preview border border-dashed border-gold" style={runtimeStyle(outline)} />)}
       </div>
     </Preview>
   )

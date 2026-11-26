@@ -2,7 +2,7 @@ import type { IncomingMessage } from 'node:http'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defaultClientConditions, defineConfig, type Plugin } from 'vite'
-import { hydraIdentity, localToken } from '#app/server-state.ts'
+import { titanIdentity, localToken } from '#app/server-state.ts'
 
 const PORT = Number(process.env.OTHRYS_DEV_PORT ?? 4319)
 const SERVER = `http://127.0.0.1:${PORT}`
@@ -27,8 +27,8 @@ const devToken: Plugin = {
     {
       tag: 'meta',
       attrs: {
-        name: 'othrys-hydra',
-        content: hydraIdentity({ titanId: 'dev' }),
+        name: 'othrys-titan',
+        content: titanIdentity({ titanId: 'dev' }),
       },
       injectTo: 'head',
     },
@@ -36,7 +36,7 @@ const devToken: Plugin = {
       tag: 'meta',
       attrs: {
         name: 'othrys-installation',
-        content: hydraIdentity({ titanId: '' }),
+        content: titanIdentity({ titanId: '' }),
       },
       injectTo: 'head',
     },
@@ -70,7 +70,7 @@ export default defineConfig({
         target: SERVER,
         changeOrigin: true,
         // eslint-disable-next-line othrys/object-params
-        rewrite: path => `/hydra/dev${path}`,
+        rewrite: path => `/titan/dev${path}`,
       },
       '/ws': {
         target: SERVER,

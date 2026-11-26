@@ -58,7 +58,7 @@ export function WaitingDecisions({
               trigger.click()
             }
 
-            event.currentTarget.closest('.hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
+            event.currentTarget.closest('.titan-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
               ?.focus()
           } else if (event.key === ' ' && event.target === trigger) {
             event.preventDefault()
@@ -99,7 +99,7 @@ export function WaitingDecisions({
                   close()
                 } else if (next >= focusable.length) {
                   close()
-                  event.currentTarget.closest('.hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
+                  event.currentTarget.closest('.titan-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
                     ?.focus()
                 } else {
                   focusable[next].focus()

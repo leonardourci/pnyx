@@ -10,7 +10,7 @@ const chatComposer = ({ from }: { from: Element | null }) =>
   chatAround({ from })?.querySelector<HTMLTextAreaElement>(COMPOSER) ?? null
 
 const shownTitanComposer = ({ titanId }: { titanId: string }) =>
-  document.querySelector<HTMLTextAreaElement>(`[data-hydra-workspace="${CSS.escape(titanId)}"] .hydra-chat ${COMPOSER}`)
+  document.querySelector<HTMLTextAreaElement>(`[data-titan-workspace="${CSS.escape(titanId)}"] .titan-chat ${COMPOSER}`)
 
 export function focusChatComposer({ from }: { from: Element | null }) {
   const composer = chatComposer({ from })

@@ -82,7 +82,7 @@ export function SettingsRows({
   return <div {...props} className={`settings-rows rounded-card border border-line bg-surface [&>:first-child]:border-t-0 ${className}`} />
 }
 
-export const SETTING_STACK = 'setting-stack flex flex-col items-start [&>.hydra-agent-pickers]:self-stretch [&>.slider-field]:self-stretch [:where(&)]:gap-2'
+export const SETTING_STACK = 'setting-stack flex flex-col items-start [&>.slider-field]:self-stretch [&>.titan-agent-pickers]:self-stretch [:where(&)]:gap-2'
 
 export function SettingStack({
   className = '',

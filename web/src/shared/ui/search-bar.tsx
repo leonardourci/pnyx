@@ -20,7 +20,7 @@ interface SearchCombobox {
 }
 
 const BADGE_COLORS: Record<string, string> = {
-  hydra: 'bg-gold-wash text-gold',
+  titan: 'bg-gold-wash text-gold',
   ask: 'bg-gold-wash text-gold',
   section: 'bg-gold-wash text-gold',
   changed: 'bg-raised text-teal',

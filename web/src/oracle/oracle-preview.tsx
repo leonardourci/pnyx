@@ -4,7 +4,7 @@ import { useState } from 'react'
 import type { TitanState } from '#app/model.ts'
 import type { CurrentAction } from '#titan/calls.ts'
 import { TITAN_MARK } from '#titan/titan-names.ts'
-import type { TitanProjectSummary } from '#app/server-hydras.ts'
+import type { TitanProjectSummary } from '#app/server-titans.ts'
 import type { Hit, Kind } from '#oracle/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { viewFor } from '#preferences/view.ts'
@@ -198,7 +198,7 @@ function filterReach({ filter }: { filter: Filter }) {
     return `Keeps only ${names({ kinds: filter.values })}.`
   }
 
-  if (filter.type === 'hydra') {
+  if (filter.type === 'titan') {
     return 'Keeps this Titan’s results; settings and actions apply to every Titan.'
   }
 
@@ -263,7 +263,7 @@ function SettingResult({
     saveTitan,
     error: dispatchError,
   } = useTitanDispatch({ command: settings.command })
-  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
+  const rule = effective?.dispatch.rules.titan?.candidates[0] ?? effective?.dispatch.default[0]
   const shownSettings = {
     ...shared,
     ...live,

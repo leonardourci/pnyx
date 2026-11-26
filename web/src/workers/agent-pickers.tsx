@@ -10,9 +10,9 @@ import { PickerField, PickerShell, useModels, type CellMark } from './agent-pick
 import { modelOptions } from './model-options.ts'
 import { AccountModelPicker, type Selection } from './account-model-picker.tsx'
 import { AgentSettingsMenu, useFolded, type FastSetting, type SettingChoice } from './agent-settings-menu.tsx'
-import { hydraDefault, resolvedAccount, useTitanDispatch } from './heads-dispatch.ts'
+import { titanDefault, resolvedAccount, useTitanDispatch } from './heads-dispatch.ts'
 
-const PICKERS_CLASS = 'hydra-agent-pickers flex min-w-0 flex-1 flex-wrap items-center gap-0.5 in-[.settings-page]:gap-(--settings-column-gap) data-folded:relative in-[.settings-page]:[&_.fast-toggle]:w-(--agent-control-h) [&_.picker-field]:block [&_.picker-field]:min-w-0 [&_.picker-field]:text-meta [&_.picker-field>span]:hidden [&_.select]:min-w-0 [&_.select-menu]:absolute [&_.select-menu]:top-auto [&_.select-menu]:bottom-control-menu [&_.select>.button]:min-h-6.5 [&_.select>.button]:gap-0.75 [&_.select>.button]:border-0 [&_.select>.button]:bg-transparent [&_.select>.button]:px-1.25 [&_.select>.button]:py-0.5 [&_.select>.button]:text-meta [&_.select>.button]:text-muted [&_.select>.button>svg:not(:last-child)]:text-ink in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:min-h-(--agent-control-h) in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:text-ui [&_:is(.select>.button,.account-model-picker>.button,.fast-toggle):is(:hover,:focus-visible):not(:disabled)]:bg-hover [&[data-folded]>.agent-pickers-row]:pointer-events-none [&[data-folded]>.agent-pickers-row]:invisible [&[data-folded]>.agent-pickers-row]:absolute'
+const PICKERS_CLASS = 'titan-agent-pickers flex min-w-0 flex-1 flex-wrap items-center gap-0.5 in-[.settings-page]:gap-(--settings-column-gap) data-folded:relative in-[.settings-page]:[&_.fast-toggle]:w-(--agent-control-h) [&_.picker-field]:block [&_.picker-field]:min-w-0 [&_.picker-field]:text-meta [&_.picker-field>span]:hidden [&_.select]:min-w-0 [&_.select-menu]:absolute [&_.select-menu]:top-auto [&_.select-menu]:bottom-control-menu [&_.select>.button]:min-h-6.5 [&_.select>.button]:gap-0.75 [&_.select>.button]:border-0 [&_.select>.button]:bg-transparent [&_.select>.button]:px-1.25 [&_.select>.button]:py-0.5 [&_.select>.button]:text-meta [&_.select>.button]:text-muted [&_.select>.button>svg:not(:last-child)]:text-ink in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:min-h-(--agent-control-h) in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:text-ui [&_:is(.select>.button,.account-model-picker>.button,.fast-toggle):is(:hover,:focus-visible):not(:disabled)]:bg-hover [&[data-folded]>.agent-pickers-row]:pointer-events-none [&[data-folded]>.agent-pickers-row]:invisible [&[data-folded]>.agent-pickers-row]:absolute'
 
 const ALL_FIELDS = [
   'effort',
@@ -122,7 +122,7 @@ export function AgentPickers({
   const fastShown = fields.includes('fast') && (!ready || defaults?.fast || agent.fast)
   // A table cell keeps its place with a dash instead.
   const fastDash = fields.includes('fast') && !fastShown && marks !== undefined
-  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
+  const rule = effective?.dispatch.rules.titan?.candidates[0] ?? effective?.dispatch.default[0]
   const defaultAgent = rule && effective ? {
     ...rule,
     account: resolvedAccount({
@@ -150,7 +150,7 @@ export function AgentPickers({
 
     try {
       await saveTitan({
-        patch: hydraDefault({
+        patch: titanDefault({
           rule: defaultAgent,
           next,
         }),

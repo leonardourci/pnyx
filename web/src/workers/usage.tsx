@@ -232,7 +232,7 @@ export function Usage({
       {recorded?.tokens !== undefined && (
         <UsageSection divided className="shared-footer recorded-usage">
           <span>Recorded task tokens <b>{recorded.tokens.toLocaleString()}</b></span>
-          <UsageText className="shared-sub">{(recorded.worker ?? 0).toLocaleString()} worker · {(recorded.hydra ?? 0).toLocaleString()} attributed Titan</UsageText>
+          <UsageText className="shared-sub">{(recorded.worker ?? 0).toLocaleString()} worker · {(recorded.titan ?? 0).toLocaleString()} attributed Titan</UsageText>
           <UsageText className="shared-sub">Includes earlier workers. Unattributed Titan turns excluded.</UsageText>
           {recorded.sharedTitan && <UsageText className="shared-sub">Includes Titan turns shared with other tasks.</UsageText>}
         </UsageSection>

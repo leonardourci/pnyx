@@ -1,7 +1,7 @@
 import type { createThreadReceiver } from '#titan/thread-receive.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
 import type { AgentUsage } from '#workers/provider.ts'
-import type { TitanSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-titans.ts'
 import type { CurrentAction } from '#titan/calls.ts'
 import type { LatestMessage,ThreadPage } from '#titan/transcripts-read.ts'
 import type { TitanQueue } from '#titan/wakes.ts'

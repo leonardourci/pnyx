@@ -3,7 +3,7 @@ import { TITAN_ICONS as NAME_ICONS, TITAN_MARK, TITAN_NAME_MAX } from '#titan/ti
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { IconPicker } from '#web-shared/ui/icon-picker.tsx'
 import { Input } from '#web-shared/ui/controls.tsx'
-import { hydraTitle } from '#web-app/view.ts'
+import { titanTitle } from '#web-app/view.ts'
 
 const COUNTER_FROM = 30
 export const TITAN_ICONS = [
@@ -28,7 +28,7 @@ export function TitanLabel({
   return (
     <>
       <Icon name={icon ?? TITAN_MARK} size={size} />
-      <span className={`hydra-label min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-label ${name ? '' : 'text-muted'}`}>{hydraTitle({ name })}</span>
+      <span className={`titan-label min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-label ${name ? '' : 'text-muted'}`}>{titanTitle({ name })}</span>
     </>
   )
 }
@@ -117,7 +117,7 @@ export function TitanNameEditor({
 
   return (
     <form
-      className="hydra-name-editor flex items-start gap-1.5 min-w-0"
+      className="titan-name-editor flex items-start gap-1.5 min-w-0"
       onSubmit={e => {
         e.preventDefault(); commit({ blocking: true })
       }}
@@ -136,7 +136,7 @@ export function TitanNameEditor({
           setIcon(icon); input.current?.focus()
         }}
       />
-      <span className="hydra-name-field flex flex-1 flex-col gap-0.75 min-w-0 [&_.input]:w-full [&_.input]:py-1 [&_.input]:px-2 [&_.input]:font-label">
+      <span className="titan-name-field flex flex-1 flex-col gap-0.75 min-w-0 [&_.input]:w-full [&_.input]:py-1 [&_.input]:px-2 [&_.input]:font-label">
         <Input
           ref={input}
           aria-label="Titan name"
@@ -154,7 +154,7 @@ export function TitanNameEditor({
           }}
         />
         {(note || counter) && (
-          <span className={`hydra-name-note flex justify-between gap-1.5 text-meta ${isDuplicate ? 'error text-red' : 'text-muted'}`} role={isDuplicate ? 'alert' : undefined}>
+          <span className={`titan-name-note flex justify-between gap-1.5 text-meta ${isDuplicate ? 'error text-red' : 'text-muted'}`} role={isDuplicate ? 'alert' : undefined}>
             <span>{note}</span><span>{counter}</span>
           </span>
         )}

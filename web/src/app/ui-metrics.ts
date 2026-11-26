@@ -232,7 +232,7 @@ export function trackUIDrag({
   action,
   titanId,
 }: {
-  action: 'hydra' | 'project' | 'task'
+  action: 'titan' | 'project' | 'task'
   titanId?: string
 }): () => void {
   if (!measuring()) {
@@ -363,8 +363,8 @@ function context({ target }: { target?: Node }): {
   }
 
   const namedAction = action ?? fallback
-  const workspace = element?.closest('[data-hydra-workspace]')?.getAttribute('data-hydra-workspace')
-  const settings = element?.closest('[data-settings-hydra]')?.getAttribute('data-settings-hydra')
+  const workspace = element?.closest('[data-titan-workspace]')?.getAttribute('data-titan-workspace')
+  const settings = element?.closest('[data-settings-titan]')?.getAttribute('data-settings-titan')
 
   return {
     titanId: workspace ?? settings ?? undefined,

@@ -11,8 +11,8 @@ import { afterSteadyLayout } from '#web-tasks/scroll-task.ts'
 import { projectColumns, compareTasks, nextSibling } from '#web-tasks/project-view.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
 import { useTitan } from './connection.ts'
-import { useTitanEdits } from './hydra-edits.ts'
-import { placements } from './hydra-order.ts'
+import { useTitanEdits } from './titan-edits.ts'
+import { placements } from './titan-order.ts'
 import { ProfileSurface } from './profile-surface.tsx'
 import { TitanView } from './workspace.tsx'
 import { useComposerShortcut } from '#web-titan/composer-shortcut.ts'
@@ -20,23 +20,23 @@ import { useComposerShortcut } from '#web-titan/composer-shortcut.ts'
 const SCROLL_EDGE_EPSILON = 1
 
 const WorkspaceInstance = memo(function WorkspaceInstance({
-  hydra,
+  titan,
   workspace,
   navigate,
   ...props
-}: Omit<ComponentProps<typeof TitanView>, 'hydra'> & {
-  hydra: ReturnType<typeof useTitan>
+}: Omit<ComponentProps<typeof TitanView>, 'titan'> & {
+  titan: ReturnType<typeof useTitan>
   workspace: ReturnType<typeof useTitan>['workspaces'][number]
   navigate: ReturnType<typeof useTitan>['navigate']
 }) {
   return (
     <TitanView
       {...props}
-      hydra={{
-        ...hydra,
+      titan={{
+        ...titan,
         ...workspace,
         navigate,
-        command: hydra.commandFor({id: workspace.navigation.titanId}),
+        command: titan.commandFor({id: workspace.navigation.titanId}),
       }}
     />
   )
@@ -44,13 +44,13 @@ const WorkspaceInstance = memo(function WorkspaceInstance({
 
 export function App() {
   const duration = useMotionDuration()
-  const hydra = useTitan()
+  const titan = useTitan()
 
   const [
     polisFilter,
     filterPolis,
   ] = useState<string | undefined>()
-  const current = hydra.navigation.titanId
+  const current = titan.navigation.titanId
   useComposerShortcut({ titanId: current })
   const axis = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
@@ -65,7 +65,7 @@ export function App() {
     root: axis,
     content: track,
     horizontal: true,
-    snapKey: hydra.navigation.hydras.map(item => item.id).join(':'),
+    snapKey: titan.navigation.titans.map(item => item.id).join(':'),
   })
   const [
     preview,
@@ -80,26 +80,26 @@ export function App() {
     [],
   )
   const edits = useTitanEdits({
-    hydras: hydra.navigation.hydras,
-    command: hydra.command,
+    titans: titan.navigation.titans,
+    command: titan.command,
     notify: rootNotify,
   })
-  const orderedTitans = preview?.kind === 'hydra' ? movedOrder({
-    items: edits.hydras,
+  const orderedTitans = preview?.kind === 'titan' ? movedOrder({
+    items: edits.titans,
     ...preview,
     key: ({ item }) => item.id,
-  }) : edits.hydras
+  }) : edits.titans
   const shownEdits = useMemo(
     () => ({
       ...edits,
-      hydras: orderedTitans,
+      titans: orderedTitans,
     }),
     [
       edits,
       orderedTitans,
     ],
   )
-  const workspaces = [...hydra.workspaces].sort((
+  const workspaces = [...titan.workspaces].sort((
     a,
     b,
   ) =>
@@ -124,15 +124,15 @@ export function App() {
 
   const drop = ({ preview }: { preview: SortMove }) => {
     const commit = async () => {
-      if (preview.kind === 'hydra') {
+      if (preview.kind === 'titan') {
         const index = movedOrder({
-          items: edits.hydras,
+          items: edits.titans,
           ...preview,
           key: ({ item }) => item.id,
         }).findIndex(item => item.id === preview.id)
 
         for (const placement of placements({
-          hydras: edits.hydras,
+          titans: edits.titans,
           id: preview.id,
           index,
         })) {
@@ -142,13 +142,13 @@ export function App() {
         return
       }
 
-      const workspace = hydra.workspaces.find(item => item.navigation.titanId === preview.hydra)
+      const workspace = titan.workspaces.find(item => item.navigation.titanId === preview.titan)
 
       if (!workspace) {
         return
       }
 
-      const command = hydra.commandFor({ id: preview.hydra })
+      const command = titan.commandFor({ id: preview.titan })
       const event = crypto.randomUUID()
 
       if (preview.kind === 'project') {
@@ -230,7 +230,7 @@ export function App() {
 
       if (preview.nest) {
         openTaskFamily({
-          titanId: preview.hydra,
+          titanId: preview.titan,
           id: target.id,
         })
         await command({
@@ -309,9 +309,9 @@ export function App() {
     () => {
       const surface = axis.current
       const inner = track.current
-      const group = surface?.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(current)}"]`)
+      const group = surface?.querySelector<HTMLElement>(`[data-titan-workspace="${CSS.escape(current)}"]`)
 
-      if (!hydra.loaded || !surface || !inner || !group) {
+      if (!titan.loaded || !surface || !inner || !group) {
         return
       }
 
@@ -418,7 +418,7 @@ export function App() {
       const observer = new ResizeObserver(align)
       observer.observe(inner)
       observer.observe(surface)
-      surface.querySelectorAll('[data-hydra-workspace]').forEach(workspace => observer.observe(workspace))
+      surface.querySelectorAll('[data-titan-workspace]').forEach(workspace => observer.observe(workspace))
 
       return () => {
         surface.removeEventListener(
@@ -431,7 +431,7 @@ export function App() {
     },
     [
       current,
-      hydra.loaded,
+      titan.loaded,
       workspaceOrder,
       smoothScroll,
     ],
@@ -448,22 +448,22 @@ export function App() {
       ownerAxisScroll.current = false
 
       const follow = () => {
-        if (!ownerAxisScroll.current || !hydra.loaded || surface.dataset.dragging || hydra.navigation.page === 'settings') {
+        if (!ownerAxisScroll.current || !titan.loaded || surface.dataset.dragging || titan.navigation.page === 'settings') {
           return
         }
 
         const padding = parseFloat(getComputedStyle(surface).scrollPaddingLeft) || 0
         const left = surface.getBoundingClientRect().left + padding
-        const destination = [...surface.querySelectorAll<HTMLElement>('[data-hydra-workspace]')]
+        const destination = [...surface.querySelectorAll<HTMLElement>('[data-titan-workspace]')]
           .find(element => Math.abs(element.getBoundingClientRect().left - left) < 2)
-          ?.dataset.hydraWorkspace
+          ?.dataset.titanWorkspace
 
         if (destination) {
           ownerAxisScroll.current = false
         }
 
         if (destination && destination !== current) {
-          hydra.navigate({ url: `/hydra/${encodeURIComponent(destination)}/` })
+          titan.navigate({ url: `/titan/${encodeURIComponent(destination)}/` })
             .catch((error: Error) => setRootError(error.message))
         }
       }
@@ -547,9 +547,9 @@ export function App() {
     },
     [
       current,
-      hydra.navigate,
-      hydra.navigation.page,
-      hydra.loaded,
+      titan.navigate,
+      titan.navigation.page,
+      titan.loaded,
     ],
   )
 
@@ -565,7 +565,7 @@ export function App() {
         url,
         location.href,
       ).pathname.split('/')[2]!)
-      const opening = hydra.commandFor({ id: destination })({
+      const opening = titan.commandFor({ id: destination })({
         name: 'view',
         args: [
           'set',
@@ -581,17 +581,17 @@ export function App() {
         ],
       })
       opening.catch((error: Error) => setRootError(error.message))
-      await hydra.navigate({
+      await titan.navigate({
         url,
         replace,
       })
-      const group = document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(destination)}"]`)
+      const group = document.querySelector<HTMLElement>(`[data-titan-workspace="${CSS.escape(destination)}"]`)
       group?.scrollIntoView({
         behavior: scrollBehavior(),
         inline: 'start',
         block: 'nearest',
       })
-      group?.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus({ preventScroll: true })
+      group?.querySelector<HTMLTextAreaElement>('.titan-chat textarea')?.focus({ preventScroll: true })
       alignment.current?.abort()
       const controller = new AbortController()
       alignment.current = controller
@@ -608,8 +608,8 @@ export function App() {
       }
     },
     [
-      hydra.commandFor,
-      hydra.navigate,
+      titan.commandFor,
+      titan.navigate,
     ],
   )
 
@@ -618,7 +618,7 @@ export function App() {
 
     if (polis && currentPolis !== polis && destination) {
       try {
-        await navigate({ url: `/hydra/${encodeURIComponent(destination.id)}/` })
+        await navigate({ url: `/titan/${encodeURIComponent(destination.id)}/` })
       } catch (error) {
         rootNotify({ text: error instanceof Error ? error.message : String(error) })
 
@@ -649,10 +649,10 @@ export function App() {
               onBeforeLayoutMeasure={() => anchor.current?.()}
               ref={axis}
               className="workspace-axis group/axis flex h-dvh snap-x snap-proximity scroll-px-3 items-stretch gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-3 pt-workspace-axis-top pb-3 data-[dragging]:cursor-grabbing data-[page=settings]:overflow-hidden motion-reduce:scroll-auto max-phone:scroll-px-1.5 max-phone:gap-2 max-phone:px-1.5 max-phone:pt-workspace-axis-phone-top max-phone:pb-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! [@media(pointer:coarse)]:[&.lenis]:snap-x"
-              data-page={hydra.navigation.page}
+              data-page={titan.navigation.page}
               aria-label="Titans"
             >
-              <div ref={track} data-sort-surface="hydra-axis" className="workspace-track relative flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
+              <div ref={track} data-sort-surface="titan-axis" className="workspace-track relative flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
                 {rootError && (
                   <StatusNotice role="alert">{rootError}<IconButton
                     label="Dismiss"
@@ -661,18 +661,18 @@ export function App() {
                   />
                   </StatusNotice>
                 )}
-                <SortGroup id="hydra-axis" items={visibleWorkspaceIds}>
+                <SortGroup id="titan-axis" items={visibleWorkspaceIds}>
                   {visibleWorkspaces.map(workspace => (
                     <ProfileSurface key={workspace.viewKey} name="workspace" titanId={workspace.navigation.titanId}>
                       <WorkspaceInstance
                         polisFilter={shownFilter}
                         filterPolis={choosePolis}
                         active={workspace.navigation.titanId === current}
-                        navigatePage={hydra.navigate}
+                        navigatePage={titan.navigate}
                         navigate={navigate}
                         edits={shownEdits}
-                        preview={preview?.hydra === workspace.navigation.titanId ? preview : null}
-                        hydra={hydra}
+                        preview={preview?.titan === workspace.navigation.titanId ? preview : null}
+                        titan={titan}
                         workspace={workspace}
                       />
                     </ProfileSurface>

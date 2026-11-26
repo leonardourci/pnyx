@@ -6,7 +6,7 @@ import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import type { TitanState } from '#app/model.ts'
 import type { CurrentAction } from '#titan/calls.ts'
 import type { TitanChatQueue } from '#titan/chat-queue.ts'
-import { hydraConfig } from '#titan/config.ts'
+import { titanConfig } from '#titan/config.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import type { ThreadPage } from '#titan/transcripts-read.ts'
 import type { TitanQueue } from '#titan/wakes.ts'
@@ -31,7 +31,7 @@ import { ActionBubble } from './action-bubble.tsx'
 import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
-import { compactionRuns,hydraDown,noticesInTimeline,quoteInto,withTimedRows } from './chat.ts'
+import { compactionRuns,titanDown,noticesInTimeline,quoteInto,withTimedRows } from './chat.ts'
 import { useChatScroll } from './chat-scroll.ts'
 import { useChatThread } from './chat-thread.ts'
 import { CHAT_FRAME, Chat } from './chat-view.tsx'
@@ -39,9 +39,9 @@ import { sendChatMessage } from './chat-send.ts'
 import { centerMessage } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
-import { TitanAgent } from './hydra-agent.tsx'
-import { TitanHead } from './hydra-head.tsx'
-import { type TitanIdentity } from './hydra-title.tsx'
+import { TitanAgent } from './titan-agent.tsx'
+import { TitanHead } from './titan-head.tsx'
+import { type TitanIdentity } from './titan-title.tsx'
 import { Messages,type ChatEntry } from './messages.tsx'
 import { othrysLookup } from './othrys-action.ts'
 import { TITAN_SEND_SETTLED,readUnsent,saveUnsent } from './outbox.ts'
@@ -148,7 +148,7 @@ export function TitanChat({
   useEffect(
     () => {
       if (new URLSearchParams(location.search).has('new-chat')) {
-        scroll.scroller.current?.closest('.hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
+        scroll.scroller.current?.closest('.titan-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
           ?.focus()
         const url = new URL(location.href)
         url.searchParams.delete('new-chat'); history.replaceState(
@@ -177,7 +177,7 @@ export function TitanChat({
   const previousEntries = useRef<ChatEntry[]>([])
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
-  const config = hydraConfig({ state }), card = state.cards[TITAN_CARD]
+  const config = titanConfig({ state }), card = state.cards[TITAN_CARD]
   const { catalog } = useComposerSources()
   const thread = useChatThread({
     card: TITAN_CARD,
@@ -205,7 +205,7 @@ export function TitanChat({
   const stop = async () => {
     try {
       await command({
-        name: 'hydra',
+        name: 'titan',
         args: ['stop'],
       })
     } catch (error) {
@@ -652,7 +652,7 @@ export function TitanChat({
     ],
   )
   const canStop = ((working || compacting) && card?.agent?.host === 'othrys') || upgradeRunning
-  const down = hydraDown({ status: state.hydraStatus })
+  const down = titanDown({ status: state.titanStatus })
   const showsTools = traces({
     view,
     card: TITAN_CARD,
@@ -675,11 +675,11 @@ export function TitanChat({
 
   return (
     <aside
-      className={`hydra-chat relative flex-none min-h-0 flex flex-col border border-line rounded-xl bg-surface overflow-visible max-phone:w-70 max-phone:basis-70 ${CHAT_FRAME}`}
+      className={`titan-chat relative flex-none min-h-0 flex flex-col border border-line rounded-xl bg-surface overflow-visible max-phone:w-70 max-phone:basis-70 ${CHAT_FRAME}`}
       aria-label="Titan’s chat"
       style={{
-        width: width ?? view.hydraWidth,
-        flexBasis: width ?? view.hydraWidth,
+        width: width ?? view.titanWidth,
+        flexBasis: width ?? view.titanWidth,
       }}
     >
       <TitanHead
@@ -689,7 +689,7 @@ export function TitanChat({
         editTitan={editTitan}
         connected={connected}
       >
-        {down && <span className="hydra-status ml-auto shrink-0 text-red font-normal text-meta font-sans leading-[normal] not-italic tracking-normal" role="status">{down}</span>}
+        {down && <span className="titan-status ml-auto shrink-0 text-red font-normal text-meta font-sans leading-[normal] not-italic tracking-normal" role="status">{down}</span>}
       </TitanHead>
       <Chat
         title="Titan"
@@ -733,7 +733,7 @@ export function TitanChat({
           notify={notify}
         />
         {!entries.length && (
-          <p className="hydra-empty mt-3 text-muted text-ui">
+          <p className="titan-empty mt-3 text-muted text-ui">
             What are we working on?
           </p>
         )}
@@ -809,10 +809,10 @@ export function TitanChat({
       />
       <Resize
         label="Resize Titan panel"
-        value={view.hydraWidth}
-        min={VIEW_SIZE_LIMITS.hydraWidth.min}
+        value={view.titanWidth}
+        min={VIEW_SIZE_LIMITS.titanWidth.min}
         onPreview={({ value }) => setWidth(value)}
-        onCommit={({ value }) => save({ patch: { hydraWidth: value } }).then(saved => {
+        onCommit={({ value }) => save({ patch: { titanWidth: value } }).then(saved => {
           setWidth(null)
 
           return saved

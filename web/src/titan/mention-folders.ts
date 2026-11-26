@@ -20,7 +20,7 @@ export function folderSuggestions({
   otherProjects: {
     name: string
     path: string
-    hydra: string
+    titan: string
   }[]
   listing?: TypedListing
   typedPath: boolean
@@ -49,7 +49,7 @@ export function folderSuggestions({
   // A typed path lists only what is under it; other Titans' projects would match any path.
   const candidates = (typedPath ? [] : otherProjects).map(project => ({
     ...project,
-    detail: `In ${project.hydra}`,
+    detail: `In ${project.titan}`,
   }))
   const folders: FolderListing['recent'] = []
 
@@ -64,7 +64,7 @@ export function folderSuggestions({
   for (const folder of folders) {
     candidates.push({
       ...folder,
-      hydra: '',
+      titan: '',
       detail: folder.path,
     })
   }

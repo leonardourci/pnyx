@@ -30,13 +30,13 @@ export function openingView({
   titanId: string
 }): PageView {
   const search = new URLSearchParams(location.search)
-  const task = location.pathname === `/hydra/${encodeURIComponent(titanId)}/` ? search.get('task') : null
+  const task = location.pathname === `/titan/${encodeURIComponent(titanId)}/` ? search.get('task') : null
   const openProject = search.has('open-project')
   const opened = restored.expanded ?? (restored.selected ? [restored.selected] : [])
   const lastOpened = restored.expanded?.at(-1) ?? null
 
   return {
-    page: 'hydra',
+    page: 'titan',
     selected: task ?? (openProject ? null : restored.selected ?? lastOpened),
     expanded: openProject ? [] : opened,
     revealed: restored.revealed ?? {
@@ -46,7 +46,7 @@ export function openingView({
   }
 }
 
-// Showing the page already shown keeps the view, so the board does not redraw.
+// Showing the page already shown keeps the view, so the Titan does not redraw.
 export function showingPage({
   view,
   page,
@@ -69,9 +69,9 @@ export function restoreView({ key }: { key: string }): Restore {
 }
 
 const workspaceElement = ({ workspace }: { workspace: string }) =>
-  document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(workspace)}"]`)
+  document.querySelector<HTMLElement>(`[data-titan-workspace="${CSS.escape(workspace)}"]`)
 
-export const hydraViews = new Map<string, Restore>()
+export const titanViews = new Map<string, Restore>()
 
 function persistView({
   key,
@@ -88,7 +88,7 @@ function persistView({
   }
 
   if (viewKey !== undefined) {
-    hydraViews.set(
+    titanViews.set(
       viewKey,
       restored,
     )

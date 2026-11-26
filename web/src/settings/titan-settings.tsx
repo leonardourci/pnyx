@@ -35,12 +35,12 @@ export function Help({ text }: { text: string }) {
 
 const doneHelp = ({ hours }: { hours: DoneAfterHours }) => {
   if (hours === 'off') {
-    return 'Off: Done cards stay on the board until you hide them yourself.'
+    return 'Off: Done cards stay on the Titan until you hide them yourself.'
   }
 
   return hours === 0
-    ? '0 hours: a card leaves the board as soon as it lands in Done. It stays in History and the Oracle, and task unhide brings it back.'
-    : `A card leaves the board after ${hours} h in Done. It stays in History and the Oracle, and task unhide brings it back. 0 hides it right away.`
+    ? '0 hours: a card leaves the Titan as soon as it lands in Done. It stays in History and the Oracle, and task unhide brings it back.'
+    : `A card leaves the Titan after ${hours} h in Done. It stays in History and the Oracle, and task unhide brings it back. 0 hides it right away.`
 }
 
 export function HideDone({
@@ -113,13 +113,13 @@ export function ReviewCadence({
 
 export function RoutineHelper({
   helper,
-  hydra,
+  titan,
   command,
   connected,
   save,
 }: {
   helper: HelperSetting
-  hydra: AgentConfig
+  titan: AgentConfig
   command: Command
   connected: boolean
   save: Save
@@ -138,8 +138,8 @@ export function RoutineHelper({
 
   const selected = helper === 'off' ? lastEnabled.current : helper
   const agent = typeof selected === 'object' ? selected : {
-    harness: hydra.harness,
-    model: HELPER_MODELS[hydra.harness],
+    harness: titan.harness,
+    model: HELPER_MODELS[titan.harness],
   }
 
   return (

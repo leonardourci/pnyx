@@ -17,8 +17,8 @@ const KINDS: Record<UpdateKind, {
     icon: 'you',
     label: 'You asked',
   },
-  hydra: {
-    icon: 'hydra',
+  titan: {
+    icon: 'titan',
     label: 'Titan, from its chat reply',
   },
   told: {
@@ -95,7 +95,7 @@ function UpdateIcon({
   const tones: Partial<Record<UpdateKind, string>> = {
     ask: 'bg-gold-wash text-gold',
     decision: 'bg-gold-wash text-gold',
-    hydra: 'bg-update-hydra text-teal',
+    titan: 'bg-update-titan text-teal',
     told: 'bg-update-told text-blue',
     link: 'bg-update-link text-purple',
     done: 'bg-update-done text-green',
@@ -214,14 +214,14 @@ export function UpdateEntry({
 
 function Answer({ decision }: { decision: NonNullable<TaskUpdate['decision']> }) {
   if (!decision.answer) {
-    return <p className="muted">{decision.ask?.to === 'hydra' ? 'Waiting for Titan' : decision.ask ? 'Waiting for your answer' : 'Waiting for an answer'}</p>
+    return <p className="muted">{decision.ask?.to === 'titan' ? 'Waiting for Titan' : decision.ask ? 'Waiting for your answer' : 'Waiting for an answer'}</p>
   }
 
   const you = decision.actor === 'You'
 
   return (
     <div className="decision-answer grid grid-cols-update items-start gap-1.5">
-      <UpdateIcon kind={you ? 'ask' : 'hydra'} label={`Answered by ${you ? 'you' : decision.actor}`} />
+      <UpdateIcon kind={you ? 'ask' : 'titan'} label={`Answered by ${you ? 'you' : decision.actor}`} />
       <div className="decision-answer-text grid min-w-0 gap-0.5">
         {decision.choice && <CollapsibleText text={decision.choice} />}
         {decision.answer !== decision.choice && <CollapsibleText text={decision.answer} />}

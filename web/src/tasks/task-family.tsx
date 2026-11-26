@@ -55,15 +55,15 @@ const FamilyPanel = memo(SortablePanel)
 
 function DraggableFamily({
   id,
-  hydra,
+  titan,
   ...props
 }: ComponentProps<typeof SortablePanel> & {
   id: string
-  hydra: string
+  titan: string
 }) {
   const drag = useSortState()
   const lifted = drag.active?.kind === 'task' && drag.active.id === id
-    && drag.active.hydra === hydra
+    && drag.active.titan === titan
 
   return <FamilyPanel {...props} lifted={lifted} />
 }
@@ -128,7 +128,7 @@ export function TaskFamily({
     state,
     actions,
   }))
-  const shown = preview?.kind === 'task' && preview.hydra === titanId
+  const shown = preview?.kind === 'task' && preview.titan === titanId
     && !preview.nest && preview.scope === preview.targetScope
     ? movedOrder({
       items: sorted,
@@ -154,7 +154,7 @@ export function TaskFamily({
   return (
     <DraggableFamily
       id={card.id}
-      hydra={titanId}
+      titan={titanId}
       layout={false}
       className={className}
       data-family={card.id}
@@ -180,7 +180,7 @@ export function TaskFamily({
                 render={({ card: child }) => (
                   <DraggableFamily
                     id={child.id}
-                    hydra={titanId}
+                    titan={titanId}
                     layout={false}
                     key={child.key}
                     data-child={child.id}

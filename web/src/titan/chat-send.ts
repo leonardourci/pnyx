@@ -22,7 +22,7 @@ export function sendChatMessage({
 }) {
   if (card === TITAN_CARD) {
     return command({
-      name: 'hydra',
+      name: 'titan',
       args: [
         'send',
         `--text=${text}`,

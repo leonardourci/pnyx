@@ -1,11 +1,11 @@
 import { withDefaults } from '#settings/settings.ts'
 import { createThreadReceiver } from '#titan/thread-receive.ts'
 import type { TitanState } from '#app/model.ts'
-import type { TitanSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-titans.ts'
 import { emptyTitan } from '#app/reducer.ts'
 import { saveEventId,savedReply,type SaveCommand } from '#app/save-receipts.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
-import { hydraConfig } from '#titan/config.ts'
+import { titanConfig } from '#titan/config.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import type { TitanQueue } from '#titan/wakes.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
@@ -18,7 +18,7 @@ import type { Creation,Request,Scope } from './connection-model.ts'
 import { reconnectDelay,retainedReadings,withChanges } from './connection-protocol.ts'
 import { createConnectionRequests } from './connection-requests.ts'
 import { dropSnapshots, save } from './connection-storage.ts'
-import { createTitanCreation } from './hydra-creation.ts'
+import { createTitanCreation } from './titan-creation.ts'
 import { applyPageChanges, pageChanges, type HomePage } from '#app/socket-state.ts'
 import type { SocketCursor } from '#app/socket-history.ts'
 import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
@@ -47,13 +47,13 @@ const emptyQueue = (): TitanQueue => ({
 export function createTitanConnection() {
   const origin = location.origin
   const installation = document.querySelector<HTMLMetaElement>('meta[name=othrys-installation]')?.content
-    ?? document.querySelector<HTMLMetaElement>('meta[name=othrys-hydra]')?.content ?? ''
+    ?? document.querySelector<HTMLMetaElement>('meta[name=othrys-titan]')?.content ?? ''
   const namespace = `${origin}:${installation}`
   const initialId = location.pathname.split('/')[2] ?? 'default'
   const scopes = new Map<string, Scope>()
   const requests = new Map<string, Request>()
   const listeners = new Set<() => void>()
-  const creationKey = `othrys:${namespace}:hydra-creations`
+  const creationKey = `othrys:${namespace}:titan-creations`
   const selectedKey = `othrys:${namespace}:selected-creation`
   const creations = new Map<string, Creation>()
   let selected = initialId
@@ -76,21 +76,21 @@ export function createTitanConnection() {
   let watchdog: ReturnType<typeof setInterval> | undefined
   let staleSince: number | undefined
 
-  const hydras = createPendingResource<TitanSummary[], TitanSummary>({
-    scope: `${namespace}/hydras`,
+  const titans = createPendingResource<TitanSummary[], TitanSummary>({
+    scope: `${namespace}/titans`,
     confirmed: [],
     adapter: {
       project: ({
         state,
         patch,
       }) => [
-        ...state.filter(hydra => hydra.id !== patch.id),
+        ...state.filter(titan => titan.id !== patch.id),
         patch,
       ],
       represented: ({
         state,
         intent,
-      }) => state.some(hydra => hydra.creationAttempt === intent.patch.creationAttempt),
+      }) => state.some(titan => titan.creationAttempt === intent.patch.creationAttempt),
     },
   })
 
@@ -108,7 +108,7 @@ export function createTitanConnection() {
     },
     scopes,
     requests,
-    hydras,
+    titans,
     publish: () => publish(),
     subscribe: ({ scope }) => subscribe({ scope }),
     persistSaves: ({ scope }) => persistSaves({ scope }),
@@ -140,7 +140,7 @@ export function createTitanConnection() {
     scopes,
     requests,
     creations,
-    hydras,
+    titans,
     namespace,
     creationKey,
     selectedKey,
@@ -158,19 +158,19 @@ export function createTitanConnection() {
       return existing
     }
 
-    const summary = hydras.snapshot().view.find(hydra => hydra.id === id)
+    const summary = titans.snapshot().view.find(titan => titan.id === id)
     const identity = summary?.identity ?? (id === initialId
-      ? document.querySelector<HTMLMetaElement>('meta[name=othrys-hydra]')?.content ?? id : id)
+      ? document.querySelector<HTMLMetaElement>('meta[name=othrys-titan]')?.content ?? id : id)
     const threads = createThreadReceiver()
     const scope: Scope = {
       id,
       identity,
       viewKey: id,
       resource: pendingTitan({
-        scope: `${namespace}/hydra/${id}/`,
+        scope: `${namespace}/titan/${id}/`,
         confirmed: emptyTitan(),
       }),
-      turns: createPendingTurns({ scope: `${namespace}/hydra/${id}/turns` }),
+      turns: createPendingTurns({ scope: `${namespace}/titan/${id}/turns` }),
       hasSnapshot: false,
       ready: false,
       subscribed: false,
@@ -284,12 +284,12 @@ export function createTitanConnection() {
 
   const shell = ({ scope }: { scope: Scope }): TitanState => {
     const state = emptyTitan()
-    const summary = hydras.snapshot().view.find(hydra => hydra.id === scope.id)
+    const summary = titans.snapshot().view.find(titan => titan.id === scope.id)
 
     return {
       ...state,
       config: {
-        ...hydraConfig({
+        ...titanConfig({
           state,
           id: scope.id,
         }),
@@ -407,7 +407,7 @@ export function createTitanConnection() {
       checking: [...requests.values()].some(request => request.scope === scope && request.checking),
       creating: !!scope.creation && scope.id.startsWith('pending-'),
       error: scope.creation && scope.failed ? '' : scope.error,
-      hydraThread: scope.thread,
+      titanThread: scope.thread,
       taskThreads: Object.fromEntries((scope.page ?? []).filter((
         _,
         index,
@@ -421,31 +421,31 @@ export function createTitanConnection() {
             scope.threads.read({ card: id }),
           ]
         })),
-      hydraQueue: scope.queue,
+      titanQueue: scope.queue,
       upgrade,
       latest: scope.latest,
       actions: scope.actions,
       pendingTurns: pendingTurns({
         resource: scope.turns,
-        hydraStatus: resource.confirmed.hydraStatus,
+        titanStatus: resource.confirmed.titanStatus,
       }),
       navigation: {
         titanId: scope.id,
-        page: scope.id === selected && (location.pathname.endsWith('/settings/') || new URLSearchParams(location.search).has('settings')) ? 'settings' : 'hydra',
-        hydras: hydras.snapshot().view.map(hydra => {
-          const preview = scopes.get(hydra.id)?.resource.snapshot().view.config
+        page: scope.id === selected && (location.pathname.endsWith('/settings/') || new URLSearchParams(location.search).has('settings')) ? 'settings' : 'titan',
+        titans: titans.snapshot().view.map(titan => {
+          const preview = scopes.get(titan.id)?.resource.snapshot().view.config
 
           return preview ? {
-            ...hydra,
+            ...titan,
             name: preview.name,
             polis: preview.polis ?? 'shared',
-          } : hydra
+          } : titan
         }),
       },
       edits: resource.intents,
       intents: [
         ...resource.intents,
-        ...hydras.snapshot().intents.filter(intent => intent.patch.id === scope.viewKey),
+        ...titans.snapshot().intents.filter(intent => intent.patch.id === scope.viewKey),
       ],
     }
   }
@@ -453,13 +453,13 @@ export function createTitanConnection() {
   let snapshot = visible()
 
   const metadata = () => {
-    document.querySelector<HTMLMetaElement>('meta[name=othrys-hydra]')?.setAttribute(
+    document.querySelector<HTMLMetaElement>('meta[name=othrys-titan]')?.setAttribute(
       'content',
       selection().identity,
     )
     document.querySelector('base')?.setAttribute(
       'href',
-      `/hydra/${selection().id}/`,
+      `/titan/${selection().id}/`,
     )
   }
 
@@ -498,8 +498,8 @@ export function createTitanConnection() {
 
   const persistSaves = ({ scope }: { scope: Scope }) => {
     const commands = [...requests.values()]
-      .filter(request => request.scope === scope && (request.name === 'hydra-agent'
-        || request.name === 'hydra' && request.args[0] === 'send' && !!request.saveId))
+      .filter(request => request.scope === scope && (request.name === 'titan-agent'
+        || request.name === 'titan' && request.args[0] === 'send' && !!request.saveId))
       .map(request => saveCommand({ request }))
     const ids = new Set(commands.map(command => saveEventId({command})))
     const retained = scope.restoredSaves ? [] : readSavedCommands({titanId: scope.identity})
@@ -548,7 +548,7 @@ export function createTitanConnection() {
     }
 
     for (const scope of scopes.values()) {
-      const displayed = hydras.snapshot().view.some(hydra => hydra.id === scope.id)
+      const displayed = titans.snapshot().view.some(titan => titan.id === scope.id)
 
       if (displayed || scope.id === selected || scope.id.startsWith('pending-')) {
         continue
@@ -782,7 +782,7 @@ export function createTitanConnection() {
       }
 
       if (home) {
-        updateTitans({ rows: home.hydras })
+        updateTitans({ rows: home.titans })
         setLogMode({ mode: home.settings.settings.logs })
         sharedSettings().receive({
           state: {
@@ -884,8 +884,8 @@ export function createTitanConnection() {
         watchSubscription({ scope })
         subscribe({ scope: selection() })
 
-        for (const hydra of hydras.snapshot().view) {
-          subscribe({ scope: scopeFor({ id: hydra.id }) })
+        for (const titan of titans.snapshot().view) {
+          subscribe({ scope: scopeFor({ id: titan.id }) })
         }
 
         for (const request of requests.values()) {
@@ -1225,7 +1225,7 @@ export function createTitanConnection() {
       location.href,
     )
 
-    if (next.origin !== origin || !/^\/hydra\/[a-z0-9._-]+\/(?:settings\/)?$/.test(next.pathname)) {
+    if (next.origin !== origin || !/^\/titan\/[a-z0-9._-]+\/(?:settings\/)?$/.test(next.pathname)) {
       throw new CommandFailure({
         message: 'Invalid Titan URL',
         code: 'VALIDATION_ERROR',
@@ -1296,7 +1296,7 @@ export function createTitanConnection() {
     workspaces: () => {
       const ids = new Set([
         selected,
-        ...hydras.snapshot().view.map(hydra => hydra.id),
+        ...titans.snapshot().view.map(titan => titan.id),
       ])
 
       return [...ids].map(id => visible({ scope: scopeFor({ id }) }))
@@ -1350,7 +1350,7 @@ export function createTitanConnection() {
 
           return true
         },
-        hydra: () => selected,
+        titan: () => selected,
         chat: () => {
           let chars = 0, messages = 0
 

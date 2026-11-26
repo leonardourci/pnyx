@@ -1,5 +1,5 @@
 import type { TitanState } from '#app/model.ts'
-import { hydraConfig } from '#titan/config.ts'
+import { titanConfig } from '#titan/config.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import type { Catalog } from '#titan/transcripts-catalog.ts'
 import type { TitanProject } from '#projects/model.ts'
@@ -33,7 +33,7 @@ export interface ComposerSources {
   otherProjects: {
     name: string
     path: string
-    hydra: string
+    titan: string
   }[]
   notify({ text }: { text: string }): void
 }
@@ -108,7 +108,7 @@ export function TitanComposerSources({
   otherTitans: OtherTitan[]
   children: ReactNode
 }) {
-  const config = hydraConfig({ state }), card = state.cards[TITAN_CARD]
+  const config = titanConfig({ state }), card = state.cards[TITAN_CARD]
   const {
     open: slashMenuOpen,
     opened: catalogOpen,
@@ -137,10 +137,10 @@ export function TitanComposerSources({
       TITAN_CARD,
       card?.agent?.provider,
       card?.agent?.cwd,
-      config.hydra.agent?.harness,
+      config.titan.agent?.harness,
     ]),
     card: TITAN_CARD,
-    provider: config.hydra.agent?.harness ?? card?.agent?.provider,
+    provider: config.titan.agent?.harness ?? card?.agent?.provider,
     command,
     connected,
     open: slashMenuOpen,

@@ -1,16 +1,16 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import type { TitanSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-titans.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { TitanLabel } from '#web-titan/hydra-title.tsx'
+import { TitanLabel } from '#web-titan/titan-title.tsx'
 import { ICON_SIZE } from '#web-shared/icons.tsx'
 
 export function TitanRemoval({
-  hydras,
+  titans,
   command,
   connected,
 }: {
-  hydras: TitanSummary[]
+  titans: TitanSummary[]
   command: Command
   connected: boolean
 }) {
@@ -39,25 +39,25 @@ export function TitanRemoval({
     <section className="my-3 rounded-xl border border-gold-line p-4" aria-label="Titans">
       <h2>Titans</h2>
       {error && <p role="alert">{error}</p>}
-      {hydras.map(hydra => (
-        <div key={hydra.id} className="mt-3 flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-2"><TitanLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} /></span>
+      {titans.map(titan => (
+        <div key={titan.id} className="mt-3 flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-2"><TitanLabel name={titan.name} icon={titan.icon} size={ICON_SIZE.control} /></span>
           <Button
-            aria-label={`Remove ${hydra.name}`}
-            disabled={!connected || pendingIds.includes(hydra.id)}
+            aria-label={`Remove ${titan.name}`}
+            disabled={!connected || pendingIds.includes(titan.id)}
             onClick={async () => {
               setError('')
               setPendingIds(ids => [
                 ...ids,
-                hydra.id,
+                titan.id,
               ])
 
               try {
                 await command({
-                  name: 'hydra',
+                  name: 'titan',
                   args: [
                     'remove',
-                    hydra.id,
+                    titan.id,
                   ],
                 })
               } catch (error) {
@@ -66,7 +66,7 @@ export function TitanRemoval({
                 }
               } finally {
                 if (currentVisit.current) {
-                  setPendingIds(ids => ids.filter(id => id !== hydra.id))
+                  setPendingIds(ids => ids.filter(id => id !== titan.id))
                 }
               }
             }}

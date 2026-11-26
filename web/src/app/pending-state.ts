@@ -129,7 +129,7 @@ export function editTargets({ edit }: { edit: Edit }): string[] {
     ]
   }
 
-  if (edit.name === 'view' || edit.name === 'hydra') {
+  if (edit.name === 'view' || edit.name === 'titan') {
     return [edit.name]
   }
 
@@ -151,7 +151,7 @@ export function commandArguments({
     args: edit.args,
     flag: '--event-id',
   }) !== undefined
-  const args = persisted && edit.name !== 'hydra-agent' && !hasEvent ? [
+  const args = persisted && edit.name !== 'titan-agent' && !hasEvent ? [
     ...edit.args,
     '--event-id',
     id,

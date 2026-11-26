@@ -46,7 +46,7 @@ export function useUsageRefresh({
 
       try {
         await command({
-          name: 'hydra',
+          name: 'titan',
           args: refresh ? [
             'usage',
             'refresh',

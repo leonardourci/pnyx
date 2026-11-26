@@ -4,7 +4,7 @@ import { patchSettings } from '#settings/settings.ts'
 import { TitanError } from '#store/errors.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { SettingField } from '#web-shared/ui/setting-row.tsx'
-import { Help, type Save } from './hydra-settings.tsx'
+import { Help, type Save } from './titan-settings.tsx'
 
 const HOST_SEPARATOR = /[\s,]+/
 

@@ -215,11 +215,11 @@ const subscribeModal = (changed: () => void) => {
   }
 }
 
-// The task whose modal this Titan's address opens; the board behind it keeps its own layout.
+// The task whose modal this Titan's address opens; the Titan behind it keeps its own layout.
 export function useModalTask({ titanId }: { titanId: string }) {
   return useSyncExternalStore(
     subscribeModal,
-    () => location.pathname === `/hydra/${encodeURIComponent(titanId)}/`
+    () => location.pathname === `/titan/${encodeURIComponent(titanId)}/`
       ? new URLSearchParams(location.search).get('task') : null,
   )
 }

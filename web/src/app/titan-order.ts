@@ -1,4 +1,4 @@
-import type { TitanSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-titans.ts'
 
 // Order keys sit between their neighbors', so a move usually writes one event to the moved Titan only.
 const ORDER_GAP = 1000
@@ -6,15 +6,15 @@ const ORDER_GAP = 1000
 // The positions a move writes: the moved Titan's alone, or, when its neighbors leave no room between
 // them (equal keys, or a gap halved too often), every Titan renumbered in the new order.
 export const placements = ({
-  hydras,
+  titans,
   id,
   index,
 }: {
-  hydras: TitanSummary[]
+  titans: TitanSummary[]
   id: string
   index: number
 }) => {
-  const others = hydras.filter(h => h.id !== id)
+  const others = titans.filter(h => h.id !== id)
   const before = others[index - 1], after = others[index]
   let position: number
 
@@ -39,7 +39,7 @@ export const placements = ({
   }
 
   // The moved Titan comes from this list.
-  const moved = hydras.find(h => h.id === id)!
+  const moved = titans.find(h => h.id === id)!
   const ordered = [
     ...others.slice(
       0,
@@ -48,13 +48,13 @@ export const placements = ({
     moved,
     ...others.slice(index),
   ]
-  const base = Math.min(...hydras.map(h => h.order))
+  const base = Math.min(...titans.map(h => h.order))
 
   return ordered.map((
-    hydra,
+    titan,
     n,
   ) => ({
-    id: hydra.id,
+    id: titan.id,
     position: base + n * ORDER_GAP,
-  })).filter(placement => placement.position !== hydras.find(h => h.id === placement.id)?.order)
+  })).filter(placement => placement.position !== titans.find(h => h.id === placement.id)?.order)
 }

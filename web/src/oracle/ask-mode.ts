@@ -214,7 +214,7 @@ export function useAskMode({
 
     const start = ask ? null : askStart({
       query: typed,
-      hydras: targets,
+      titans: targets,
     })
 
     if (start) {

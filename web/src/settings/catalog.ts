@@ -5,7 +5,7 @@ export const SETTING_ICONS: Record<string, string> = {
   fontSize: 'text-size',
   chatFontSize: 'comment',
   codeFontSize: 'tool',
-  defaultHydraWidth: 'chat-width',
+  defaultTitanWidth: 'chat-width',
   resetWidths: 'reset',
   lastMessageOnCards: 'cards',
   focusMode: 'focus',
@@ -16,7 +16,7 @@ export const SETTING_ICONS: Record<string, string> = {
   doneAfterHours: 'done',
   reviewMinutes: 'reminder',
   helper: 'helper',
-  hydraAgent: 'agent',
+  titanAgent: 'agent',
   accounts: 'you',
   logs: 'logs',
   logDays: 'log-days',
@@ -43,9 +43,9 @@ export const SETTINGS_SECTIONS = [
     icon: 'cards',
   },
   {
-    id: 'hydra',
+    id: 'titan',
     label: 'Titan',
-    icon: 'hydra',
+    icon: 'titan',
   },
   {
     id: 'accounts',
@@ -166,7 +166,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: 'defaultHydraWidth',
+    id: 'defaultTitanWidth',
     section: 'layout',
     label: 'Titan chat width',
     description: 'Resize this Titan’s chat and save the width for new Titans.',
@@ -233,9 +233,9 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   },
   {
     id: 'doneAfterHours',
-    section: 'hydra',
+    section: 'titan',
     label: 'Hide Done cards',
-    description: 'Take finished cards off the board once they have been in Done this long.',
+    description: 'Take finished cards off the Titan once they have been in Done this long.',
     values: ['Off'],
     related: [
       'archive',
@@ -277,7 +277,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: 'hydraAgent',
+    id: 'titanAgent',
     section: 'agent',
     label: 'Default selection',
     description: 'Provider, named account and model, with the controls that provider supports.',

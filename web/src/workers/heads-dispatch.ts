@@ -41,7 +41,7 @@ export const resolvedAccount = ({
   harness: agent.harness,
 }) : undefined)
 
-export const hydraDefault = ({
+export const titanDefault = ({
   rule,
   next,
 }: {
@@ -148,7 +148,7 @@ export function useTitanDispatch({ command }: { command: Command }) {
   const saveTitan = async ({ patch }: { patch: Partial<AgentConfig> }) => {
     const args = [
       'set',
-      'hydra',
+      'titan',
     ]
 
     for (const field of [

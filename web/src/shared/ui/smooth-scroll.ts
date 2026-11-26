@@ -96,7 +96,7 @@ export function useSmoothScroll({
         lenis.resize()
         removeSnaps.forEach(remove => remove())
         const padding = parseFloat(getComputedStyle(wrapper).scrollPaddingLeft) || 0
-        removeSnaps = [...wrapper.querySelectorAll<HTMLElement>('[data-hydra-workspace]')]
+        removeSnaps = [...wrapper.querySelectorAll<HTMLElement>('[data-titan-workspace]')]
           .flatMap(element => {
             if (!snap) {
               return []

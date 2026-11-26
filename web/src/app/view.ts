@@ -1,4 +1,4 @@
-export const hydraTitle = ({ name }: { name: string }) => name || 'Untitled'
+export const titanTitle = ({ name }: { name: string }) => name || 'Untitled'
 
 export const shouldReload = ({
   loaded,

@@ -20,8 +20,8 @@ import type { Card } from '#tasks/model.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 import { useChatDrafts } from '#web-titan/chat-drafts.ts'
 import { TitanComposerSources } from '#web-titan/composer-sources.tsx'
-import { TitanChat } from '#web-titan/hydra-chat.tsx'
-import { TitanLabel } from '#web-titan/hydra-title.tsx'
+import { TitanChat } from '#web-titan/titan-chat.tsx'
+import { TitanLabel } from '#web-titan/titan-title.tsx'
 import { storageKey } from '#web-titan/outbox.ts'
 import { Oracle } from '#web-oracle/oracle.tsx'
 import { workspaceSearch } from '#web-oracle/workspaces.ts'
@@ -58,12 +58,12 @@ import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
 import { useInstallationPending } from '#web-workers/dispatch-resource.ts'
 import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type ReactNode } from 'react'
 import { useTitan } from './connection.ts'
-import { useTitanEdits } from './hydra-edits.ts'
+import { useTitanEdits } from './titan-edits.ts'
 import { SortGroup, useSortItem, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
-import { TitanChips } from './hydra-chips.tsx'
+import { TitanChips } from './titan-chips.tsx'
 import { Panel } from './panel.tsx'
-import { hydraViews,openingView,restoreView,usePersistView } from './restore.ts'
-import { hydraTitle } from './view.ts'
+import { titanViews,openingView,restoreView,usePersistView } from './restore.ts'
+import { titanTitle } from './view.ts'
 
 function TitanDragName({
   id,
@@ -79,9 +79,9 @@ function TitanDragName({
   const sort = useSortItem({
     item: {
       id,
-      kind: 'hydra',
+      kind: 'titan',
       scope: 'titans',
-      hydra: id,
+      titan: id,
     },
     disabled,
   })
@@ -94,16 +94,16 @@ function TitanDragName({
       data-sort-key={sort.key}
       aria-label={`Move ${name}`}
       data-sort-id={id}
-      data-sort-kind="hydra"
-      data-sort-scope="hydras"
-      className={`hydra-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex max-w-workspace-title min-w-0 flex-none cursor-grab touch-none items-center gap-1.5 border-r border-line pr-2.5 font-brand text-workspace font-bold group-data-[collapsed=true]/workspace:border-r-0 group-data-[collapsed=true]/workspace:pr-0 group-data-[collapsed=true]/workspace:writing-vertical [&_.hydra-label]:max-w-workspace-label [&_.hydra-label]:truncate`}
+      data-sort-kind="titan"
+      data-sort-scope="titans"
+      className={`titan-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex max-w-workspace-title min-w-0 flex-none cursor-grab touch-none items-center gap-1.5 border-r border-line pr-2.5 font-brand text-workspace font-bold group-data-[collapsed=true]/workspace:border-r-0 group-data-[collapsed=true]/workspace:pr-0 group-data-[collapsed=true]/workspace:writing-vertical [&_.titan-label]:max-w-workspace-label [&_.titan-label]:truncate`}
     >{children}
     </div>
   )
 }
 
 export function TitanView({
-  hydra,
+  titan,
   active,
   edits,
   preview,
@@ -111,7 +111,7 @@ export function TitanView({
   polisFilter,
   filterPolis,
 }: {
-  hydra: ReturnType<typeof useTitan>
+  titan: ReturnType<typeof useTitan>
   navigatePage: ReturnType<typeof useTitan>['navigate']
   active: boolean
   edits: ReturnType<typeof useTitanEdits>
@@ -124,8 +124,8 @@ export function TitanView({
     command,
     connected,
     offline,
-    hydraThread,
-    hydraQueue,
+    titanThread,
+    titanQueue,
     upgrade,
     actions,
     navigation,
@@ -134,29 +134,29 @@ export function TitanView({
     loaded,
     error,
     checking,
-  } = hydra
+  } = titan
   useEffect(
     () => {
-      if (hydra.creating) {
-        setPage({ page: 'hydra' })
-        const frame = requestAnimationFrame(() => layer?.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
+      if (titan.creating) {
+        setPage({ page: 'titan' })
+        const frame = requestAnimationFrame(() => layer?.querySelector<HTMLTextAreaElement>('.titan-chat textarea')?.focus())
 
         return () => cancelAnimationFrame(frame)
       }
     },
-    [hydra.viewKey],
+    [titan.viewKey],
   )
   const installationPending = useInstallationPending()
   const projectPending = useProjectIntents({ command })
   const restoreKey = storageKey({
     key: 'restore',
-    titanId: hydra.storageTitan,
+    titanId: titan.storageTitan,
   })
   const commentsKey = storageKey({
     key: 'comments',
     titanId: navigation.titanId,
   })
-  const [restored] = useState(() => hydraViews.get(hydra.viewKey)
+  const [restored] = useState(() => titanViews.get(titan.viewKey)
     ?? restoreView({ key: restoreKey }))
   const [
     pageView,
@@ -183,7 +183,7 @@ export function TitanView({
       action: page === 'settings' ? 'settings.open' : 'settings.close',
     })
     const suffix = page === 'settings' ? 'settings/' : ''
-    navigatePage({ url: `/hydra/${encodeURIComponent(navigation.titanId)}/${suffix}` })
+    navigatePage({ url: `/titan/${encodeURIComponent(navigation.titanId)}/${suffix}` })
       .catch((error: Error) => notify({ text: error.message }))
       .finally(finish)
   }
@@ -225,8 +225,8 @@ export function TitanView({
     version: number
   } | null>({
     key: sessionViewKey({
-      scope: 'hydra',
-      id: hydra.storageTitan,
+      scope: 'titan',
+      id: titan.storageTitan,
       field: 'creatingTask',
     }),
     initial: null,
@@ -348,13 +348,13 @@ export function TitanView({
     opening: cancelProjectReveal,
     view: {
       ...pageView,
-      page: 'hydra',
+      page: 'titan',
     },
     setView: setPageView,
   })
   usePersistView({
     workspace: navigation.titanId,
-    viewKey: hydra.viewKey,
+    viewKey: titan.viewKey,
     key: restoreKey,
     selected,
     expanded,
@@ -374,7 +374,7 @@ export function TitanView({
     workspace: {
       ...configuredView.workspace,
       collapsed: state.view?.workspace?.collapsed
-        ?? shared?.hiddenHydras.includes(navigation.titanId) ?? false,
+        ?? shared?.hiddenTitans.includes(navigation.titanId) ?? false,
     },
   }
   const references = useTaskReferences({
@@ -390,7 +390,7 @@ export function TitanView({
   const startUpgrade = async () => {
     try {
       await command({
-        name: 'hydra',
+        name: 'titan',
         args: [
           'send',
           `--text=${UPGRADE_COMMAND}`,
@@ -403,7 +403,7 @@ export function TitanView({
     }
   }
 
-  const shownTitan = edits.hydras.find(h => h.id === navigation.titanId)
+  const shownTitan = edits.titans.find(h => h.id === navigation.titanId)
   const save = useSaveView({
     state,
     command,
@@ -419,9 +419,9 @@ export function TitanView({
     group?: string
     parent?: string
   }) => {
-    setPage({ page: 'hydra' }); clearSelection()
+    setPage({ page: 'titan' }); clearSelection()
     taskFormVersion.current++
-    const refused = hydra.edits.findLast(intent => {
+    const refused = titan.edits.findLast(intent => {
       const {
         name,
         args,
@@ -477,7 +477,7 @@ export function TitanView({
       draft,
       parent,
     })
-    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.titanId)}"] .task-create [aria-label="Task title"]` })))
+    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: `[data-titan-workspace="${CSS.escape(navigation.titanId)}"] .task-create [aria-label="Task title"]` })))
   }
 
   const baseColumns = useMemo(
@@ -494,13 +494,13 @@ export function TitanView({
       JSON.stringify(view.workspace.projectOrder),
     ],
   )
-  const orderedColumns = preview?.kind === 'project' && preview.hydra === navigation.titanId
+  const orderedColumns = preview?.kind === 'project' && preview.titan === navigation.titanId
     ? movedOrder({
       items: baseColumns,
       ...preview,
       key: ({ item }) => item.id,
     }) : baseColumns
-  const columns = preview?.kind === 'task' && preview.hydra === navigation.titanId
+  const columns = preview?.kind === 'task' && preview.titan === navigation.titanId
     && !preview.nest && preview.scope === preview.targetScope
     ? orderedColumns.map(column => ({
       ...column,
@@ -550,7 +550,7 @@ export function TitanView({
 
   const phone = viewport.width <= WORKSPACE_SIZING.phone
   const chatWidth = view.workspace.chatCollapsed ? WORKSPACE_SIZING.foldedChat
-    : phone ? viewport.width - WORKSPACE_SIZING.phoneChatInset : view.hydraWidth
+    : phone ? viewport.width - WORKSPACE_SIZING.phoneChatInset : view.titanWidth
   let projectLeft = (phone ? WORKSPACE_SIZING.phoneInset : WORKSPACE_SIZING.inset) / 2
     + chatWidth + WORKSPACE_SIZING.columnGap
   const projectSnaps = columns.map(column => {
@@ -643,7 +643,7 @@ export function TitanView({
       })
     }
 
-    setPage({ page: 'hydra' })
+    setPage({ page: 'titan' })
     setProjectRequest(true)
   }
 
@@ -655,7 +655,7 @@ export function TitanView({
         title: card.title,
       })}: `.trimStart(),
     })
-    requestAnimationFrame(() => layer?.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
+    requestAnimationFrame(() => layer?.querySelector<HTMLTextAreaElement>('.titan-chat textarea')?.focus())
   }
 
   // Stable callbacks let unchanged cards retain their memoized render.
@@ -717,7 +717,7 @@ export function TitanView({
 
   const openSettings = ({ query }: { query: string }) => {
     setAccountSetup(undefined); setSettingsQuery(query); setPage({ page: 'settings' })
-    requestAnimationFrame(() => focusElement({ selector: `[data-settings-hydra="${CSS.escape(navigation.titanId)}"] .search-bar-input` }))
+    requestAnimationFrame(() => focusElement({ selector: `[data-settings-titan="${CSS.escape(navigation.titanId)}"] .search-bar-input` }))
   }
 
   const revealProject = ({ id }: { id: string }) => {
@@ -738,7 +738,7 @@ export function TitanView({
   }
 
   const selectProject = ({ path }: { path: string }) => {
-    setPage({ page: 'hydra' })
+    setPage({ page: 'titan' })
     const project = state.projects?.find(project => project.path === path || project.name === path)
     const id = project?.group?.id ?? project?.path ?? path
     revealProject({ id })
@@ -747,13 +747,13 @@ export function TitanView({
   useEffect(() => {
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<{
-        hydra: string
+        titan: string
         id?: string
         path?: string
         answer?: boolean
       }>).detail
 
-      if (detail.hydra !== navigation.titanId) {
+      if (detail.titan !== navigation.titanId) {
         return
       }
 
@@ -784,21 +784,21 @@ export function TitanView({
   const oracleTarget = async ({
     id,
     path,
-    hydra: destination = navigation.titanId,
+    titan: destination = navigation.titanId,
     answer,
   }: {
     id?: string
     path?: string
-    hydra?: string
+    titan?: string
     answer?: boolean
   }) => {
-    await navigate({ url: `/hydra/${encodeURIComponent(destination)}/` })
+    await navigate({ url: `/titan/${encodeURIComponent(destination)}/` })
 
     window.dispatchEvent(new CustomEvent(
       'othrys:workspace-target',
       {
         detail: {
-          hydra: destination,
+          titan: destination,
           id,
           path,
           answer,
@@ -807,27 +807,27 @@ export function TitanView({
     ))
   }
 
-  const oracleIds = hydra.workspaces.filter(workspace => workspace.connected)
+  const oracleIds = titan.workspaces.filter(workspace => workspace.connected)
     .map(workspace => workspace.navigation.titanId)
     .join(':')
   const searchCommand = useMemo(
     () => workspaceSearch({
       ids: oracleIds.split(':').filter(Boolean),
-      commandFor: hydra.commandFor,
+      commandFor: titan.commandFor,
     }),
     [
       oracleIds,
-      hydra.commandFor,
+      titan.commandFor,
     ],
   )
-  const oracleWorkspaces = hydra.workspaces.map(workspace => {
-    const summary = navigation.hydras.find(item => item.id === workspace.navigation.titanId)
+  const oracleWorkspaces = titan.workspaces.map(workspace => {
+    const summary = navigation.titans.find(item => item.id === workspace.navigation.titanId)
 
     return {
       state: workspace.state,
       actions: workspace.actions,
       projects: summary?.projects ?? [],
-      hydra: {
+      titan: {
         id: workspace.navigation.titanId,
         name: summary?.name ?? '',
         icon: summary?.icon ?? TITAN_MARK,
@@ -846,8 +846,8 @@ export function TitanView({
     text: string
     event: string
     onChecking(): void
-  }) => hydra.commandFor({ id })({
-    name: 'hydra',
+  }) => titan.commandFor({ id })({
+    name: 'titan',
     args: [
       'send',
       `--text=${text}`,
@@ -861,7 +861,7 @@ export function TitanView({
     try {
       await navigate({
         url: new URL(
-          `/hydra/${encodeURIComponent(id)}/`,
+          `/titan/${encodeURIComponent(id)}/`,
           location.href,
         ).href,
       })
@@ -872,22 +872,22 @@ export function TitanView({
 
   const oracleTitan = {
     id: navigation.titanId,
-    name: shownTitan ? hydraTitle(shownTitan) : 'Titan',
+    name: shownTitan ? titanTitle(shownTitan) : 'Titan',
     icon: shownTitan?.icon ?? TITAN_MARK,
   }
-  const askTargets = edits.hydras.map(h => ({
+  const askTargets = edits.titans.map(h => ({
     id: h.id,
-    name: hydraTitle(h),
+    name: titanTitle(h),
     icon: h.icon ?? TITAN_MARK,
   }))
-  const opening = navigation.hydras.find(h => h.id === loading)
-  const retryLabel = hydra.creating ? 'Retry creating Titan' : 'Retry loading Titan'
-  const others = edits.hydras.filter(h => h.id !== navigation.titanId)
+  const opening = navigation.titans.find(h => h.id === loading)
+  const retryLabel = titan.creating ? 'Retry creating Titan' : 'Retry loading Titan'
+  const others = edits.titans.filter(h => h.id !== navigation.titanId)
   const otherTitans = askTargets.filter(target => target.id !== navigation.titanId)
   const otherProjects = others.flatMap(h => h.projects.map(p => ({
     name: p.name,
     path: p.path,
-    hydra: hydraTitle(h),
+    titan: titanTitle(h),
   })))
 
   const repositoryOptions = (state.projects ?? [])
@@ -942,7 +942,7 @@ export function TitanView({
         parentId: undefined,
       },
     }) : undefined
-    const pendingTurn = hydra.pendingTurns[item.id]
+    const pendingTurn = titan.pendingTurns[item.id]
     const statusOverride = pendingTurn ? observedStatus({
       card: item,
       state,
@@ -980,11 +980,11 @@ export function TitanView({
         tabIndex={0}
         chat={opened && (
           <TaskChat
-            storageIdentity={hydra.storageTitan}
+            storageIdentity={titan.storageTitan}
             titanId={navigation.titanId}
             card={item}
             state={state}
-            live={hydra.taskThreads[item.id]}
+            live={titan.taskThreads[item.id]}
             action={actions[item.id]}
             pendingTurn={pendingTurn}
             view={cardView}
@@ -1006,7 +1006,7 @@ export function TitanView({
     )
   }
 
-  const showWorkspace = (loaded || hydra.creating) && page === 'hydra'
+  const showWorkspace = (loaded || titan.creating) && page === 'titan'
   const fontSizes = {
     uiFont: `${view.fontSize}px`,
     chatFont: `${view.chatFontSize}px`,
@@ -1027,9 +1027,9 @@ export function TitanView({
     >
       <div
         ref={setLayer}
-        className="app hydra-workspace group/workspace flex h-full w-max min-w-workspace-frame flex-none snap-start flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal data-[collapsed=true]:w-14.5 data-[collapsed=true]:min-w-0 max-phone:min-w-phone-workspace-frame max-phone:p-1.5"
+        className="app titan-workspace group/workspace flex h-full w-max min-w-workspace-frame flex-none snap-start flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal data-[collapsed=true]:w-14.5 data-[collapsed=true]:min-w-0 max-phone:min-w-phone-workspace-frame max-phone:p-1.5"
         data-ui-surface="workspace"
-        data-hydra-workspace={navigation.titanId}
+        data-titan-workspace={navigation.titanId}
         data-active={active}
         data-page={page}
         data-project-snaps={phone ? JSON.stringify(projectSnaps) : undefined}
@@ -1058,7 +1058,7 @@ export function TitanView({
                 view={view}
                 command={command}
                 connected={connected}
-                hydra={oracleTitan}
+                titan={oracleTitan}
                 projects={shownTitan?.projects ?? []}
                 layer={layer}
                 save={save}
@@ -1068,10 +1068,10 @@ export function TitanView({
                 openTask={oracleTarget}
                 answerTask={({
                   id,
-                  hydra,
+                  titan,
                 }) => oracleTarget({
                   id,
-                  hydra,
+                  titan,
                   answer: true,
                 })}
                 selectProject={oracleTarget}
@@ -1085,7 +1085,7 @@ export function TitanView({
                   })
                 }}
                 createColumn={requestProject}
-                hydras={askTargets}
+                titans={askTargets}
                 send={askTitan}
                 openChat={openChat}
               />
@@ -1095,13 +1095,13 @@ export function TitanView({
           <TitanChips
             polisFilter={polisFilter}
             filterPolis={filterPolis}
-            hydras={edits.hydras}
+            titans={edits.titans}
             current={navigation.titanId}
             navigate={navigate}
             createTitan={async () => {
               try {
-                await hydra.createTitan(pickName({
-                  taken: edits.hydras.map(item => item.name),
+                await titan.createTitan(pickName({
+                  taken: edits.titans.map(item => item.name),
                 }))
               } catch (error) {
                 notify({ text: error instanceof Error ? error.message : String(error) })
@@ -1109,7 +1109,7 @@ export function TitanView({
             }}
           />
         </Panel>
-        <header className="hydra-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-workspace-bar flex-none items-center gap-2.5 bg-background px-0.5 pb-2 group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:px-0 [&>.button]:flex-none">
+        <header className="titan-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-workspace-bar flex-none items-center gap-2.5 bg-background px-0.5 pb-2 group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:px-0 [&>.button]:flex-none">
           <IconButton
             label={view.workspace.collapsed ? 'Unfold Titan' : 'Fold Titan'}
             onClick={toggleTitan}
@@ -1155,7 +1155,7 @@ export function TitanView({
                     id: column.id,
                     kind: 'project',
                     scope: 'projects',
-                    hydra: navigation.titanId,
+                    titan: navigation.titanId,
                   }}
                   disabledSort={column.id === IDEAS_COLUMN || !connected}
                   vertical={view.workspace.collapsed}
@@ -1176,33 +1176,33 @@ export function TitanView({
           open={!view.workspace.collapsed}
           className="shell flex min-h-0 w-max flex-1 flex-col gap-2 overflow-visible p-0"
           aria-busy={!!loading || !loaded}
-          data-hydra={navigation.titanId}
-          data-provisional={hydra.creating || undefined}
+          data-titan={navigation.titanId}
+          data-provisional={titan.creating || undefined}
         >
-          {(loading || !loaded || hydra.offline) && (
+          {(loading || !loaded || titan.offline) && (
             <StatusMessage role="status">
-              {hydra.offline && 'Connection lost. Reconnecting automatically.'}
-              {!hydra.offline && <>{hydra.creating ? 'Creating Titan' : <>Loading {opening ? <TitanLabel name={opening.name} icon={opening.icon} size={ICON_SIZE.inline} /> : 'Titan'}</>}…</>}
+              {titan.offline && 'Connection lost. Reconnecting automatically.'}
+              {!titan.offline && <>{titan.creating ? 'Creating Titan' : <>Loading {opening ? <TitanLabel name={opening.name} icon={opening.icon} size={ICON_SIZE.inline} /> : 'Titan'}</>}…</>}
             </StatusMessage>
           )}
-          {error && <ErrorBanner role="alert">{error} <Button onClick={hydra.dismissError}>Dismiss</Button></ErrorBanner>}
-          {hydra.recovery && (
+          {error && <ErrorBanner role="alert">{error} <Button onClick={titan.dismissError}>Dismiss</Button></ErrorBanner>}
+          {titan.recovery && (
             <ErrorBanner role="alert">
-              {hydra.recovery.message}
-              {hydra.recovery.action === 'retry' && <Button onClick={hydra.retryTitan}>{retryLabel}</Button>}
-              {hydra.recovery.action === 'reload' && <Button onClick={() => location.reload()}>Reload page</Button>}
+              {titan.recovery.message}
+              {titan.recovery.action === 'retry' && <Button onClick={titan.retryTitan}>{retryLabel}</Button>}
+              {titan.recovery.action === 'reload' && <Button onClick={() => location.reload()}>Reload page</Button>}
             </ErrorBanner>
           )}
           {checking && <StatusMessage className="save-checking" role="status">Checking whether your changes were saved. Retrying automatically.</StatusMessage>}
           <PendingStatus
             intents={[
-              ...hydra.intents,
+              ...titan.intents,
               ...installationPending,
               ...projectPending,
             ]}
           />
           {showWorkspace && (
-            <div className="hydra-page flex h-full min-h-0 w-max flex-row gap-2.5 overflow-visible">
+            <div className="titan-page flex h-full min-h-0 w-max flex-row gap-2.5 overflow-visible">
               <div data-ui-surface="chat" className={`workspace-chat relative z-1 h-full flex-none ${view.workspace.chatCollapsed ? 'collapsed w-10 rounded-card border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
                 <IconButton
                   className="chat-fold absolute top-3 right-1.75 z-4 p-1"
@@ -1210,14 +1210,14 @@ export function TitanView({
                   onClick={toggleChat}
                   icon={view.workspace.chatCollapsed ? 'chevron_right' : 'chevron_left'}
                 />
-                <FoldContent open={!view.workspace.chatCollapsed} className="chat-content h-full [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate [&>.hydra-chat]:h-full [&>.hydra-chat]:max-h-none [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line max-phone:[&>.hydra-chat]:w-phone-chat! max-phone:[&>.hydra-chat]:basis-phone-chat!">
+                <FoldContent open={!view.workspace.chatCollapsed} className="chat-content h-full [&_.titan-head]:pr-12 [&_.titan-title_.titan-label]:truncate [&>.titan-chat]:h-full [&>.titan-chat]:max-h-none [&>.titan-chat]:min-w-75 [&>.titan-chat]:shrink-0 [&>.titan-chat]:rounded-xl [&>.titan-chat]:border [&>.titan-chat]:border-line max-phone:[&>.titan-chat]:w-phone-chat! max-phone:[&>.titan-chat]:basis-phone-chat!">
                   <ProfileSurface name="chat" titanId={navigation.titanId}>
                     <TitanChat
                       titanId={navigation.titanId}
                       identity={shownTitan && {
                         name: shownTitan.name,
                         icon: shownTitan.icon,
-                        taken: edits.hydras.filter(h => h.id !== shownTitan.id).map(h => h.name),
+                        taken: edits.titans.filter(h => h.id !== shownTitan.id).map(h => h.name),
                       }}
                       editTitan={({
                         name,
@@ -1227,16 +1227,16 @@ export function TitanView({
                         name,
                         icon,
                       })}
-                      storageIdentity={hydra.storageTitan}
+                      storageIdentity={titan.storageTitan}
                       projectRequest={projectRequest}
                       projectRequested={() => setProjectRequest(false)}
                       state={state}
-                      liveThread={hydraThread}
+                      liveThread={titanThread}
                       action={actions[TITAN_CARD]}
-                      pendingTurn={hydra.pendingTurns[TITAN_CARD]}
+                      pendingTurn={titan.pendingTurns[TITAN_CARD]}
                       taskActions={actions}
                       selectedTask={selectedRef}
-                      queue={hydraQueue}
+                      queue={titanQueue}
                       command={command}
                       connected={connected}
                       openTask={revealTask}
@@ -1250,9 +1250,9 @@ export function TitanView({
               </div>
 
               <TaskReferencesProvider references={references} openTask={revealTask}>
-                <div className="hydra-main flex min-h-0 w-max flex-none flex-col">
+                <div className="titan-main flex min-h-0 w-max flex-none flex-col">
                   <div className="work-area relative inline h-full min-h-0 min-w-0 flex-1 overflow-visible">
-                    <div className="hydra-space flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-visible">
+                    <div className="titan-space flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-visible">
                       <div
                         ref={setKanban}
                         data-sort-surface={`project-columns:${navigation.titanId}`}
@@ -1282,7 +1282,7 @@ export function TitanView({
                                     {creatingTask?.group === c.id && (
                                       <TaskCreate
                                         titanId={navigation.titanId}
-                                        storageIdentity={hydra.storageTitan}
+                                        storageIdentity={titan.storageTitan}
                                         key={`${c.id}:${creatingTask.parent ?? ''}`}
                                         {...creatingTask}
                                         repositories={c.repositories.length
@@ -1316,7 +1316,7 @@ export function TitanView({
                                           }))
                                         }}
                                         submitted={() => {
-                                          focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.titanId)}"] [data-column-heading="${CSS.escape(c.id)}"]` })
+                                          focusElement({ selector: `[data-titan-workspace="${CSS.escape(navigation.titanId)}"] [data-column-heading="${CSS.escape(c.id)}"]` })
                                           setCreatingTask(null)
                                         }}
                                       />
@@ -1357,14 +1357,14 @@ export function TitanView({
             <div
               className="settings-route fixed inset-x-0 top-topbar-height bottom-0 z-65 flex bg-background [&>.settings-page]:w-full [&>.settings-page]:min-w-0 [&[hidden]]:hidden"
               data-ui-surface="settings"
-              data-settings-hydra={navigation.titanId}
+              data-settings-titan={navigation.titanId}
               hidden={!active || page !== 'settings'}
               style={runtimeStyle(fontSizes)}
             >
               <ProfileSurface name="settings" titanId={navigation.titanId}>
                 <SettingsPage
-                  hydras={navigation.hydras}
-                  commandFor={hydra.commandFor}
+                  titans={navigation.titans}
+                  commandFor={titan.commandFor}
                   key={settingsQuery}
                   initialQuery={settingsQuery}
                   accountSetup={accountSetup}

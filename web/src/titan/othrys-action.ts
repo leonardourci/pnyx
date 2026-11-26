@@ -207,8 +207,6 @@ export function othrysSentence({
         'Answered the question from ',
         task({ ref: action }),
       ]
-    case 'board':
-      return ['Read the Titan']
     case 'link':
       return [
         'Linked ',
@@ -315,8 +313,8 @@ export function othrysSentence({
       break
     }
     case 'titan':
-    case 'hydra':
       switch (action) {
+        case undefined: return ['Read the Titan']
         case 'check': return ['Checked what changed']
         case 'digest': return ['Read the Titan']
         case 'messages': return ['Read the messages']

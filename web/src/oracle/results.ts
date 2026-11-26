@@ -3,7 +3,7 @@ import { statusLabel } from '#tasks/card-status.ts'
 import { taskRollup } from '#web-tasks/project-view.ts'
 import { tokens } from '#oracle/query.ts'
 import type { TitanState } from '#app/model.ts'
-import type { TitanProjectSummary } from '#app/server-hydras.ts'
+import type { TitanProjectSummary } from '#app/server-titans.ts'
 import type { CurrentAction } from '#titan/calls.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import type { Hit } from '#oracle/model.ts'
@@ -19,7 +19,7 @@ import { ACTION_ICONS,matchesCommand,oraclePanels,type OracleAction,type OracleP
 interface Shown extends Candidate {
   id: string
   title: string
-  hydraName?: string
+  titanName?: string
 }
 
 export type OracleResult = Shown & ({
@@ -59,18 +59,18 @@ const taskResult = ({
   state,
   card,
   hit,
-  hydra,
+  titan,
 }: {
   state: TitanState
   card: Card
   hit?: Hit
-  hydra: Titan
+  titan: Titan
 }): OracleResult => ({
   id: `task:${card.id}`,
   kind: 'task',
   title: card.title,
-  hydra: hydra.id,
-  hydraName: hydra.name,
+  titan: titan.id,
+  titanName: titan.name,
   column: taskProjectGroup({
     state,
     card,
@@ -87,33 +87,33 @@ const newestSnippet = ({ hit }: { hit: Hit }) => hit.snippets.map(snippet => sni
 const conversationResult = ({
   hit,
   at,
-  hydra,
+  titan,
 }: {
   hit?: Hit
   at?: string
-  hydra: Titan
+  titan: Titan
 }): OracleResult => ({
-  id: 'conversation:hydra',
+  id: 'conversation:titan',
   kind: 'conversation',
-  title: `${hydra.name}’s chat`,
-  hydra: hydra.id,
-  hydraName: hydra.name,
+  title: `${titan.name}’s chat`,
+  titan: titan.id,
+  titanName: titan.name,
   at,
   hit,
 })
 
 const taskConversation = ({
   card,
-  hydra,
+  titan,
 }: {
   card: Card
-  hydra: Titan
+  titan: Titan
 }): OracleResult => ({
   id: `conversation:${card.id}`,
   kind: 'conversation',
   title: card.title,
-  hydra: hydra.id,
-  hydraName: hydra.name,
+  titan: titan.id,
+  titanName: titan.name,
   project: card.project,
   at: card.updatedAt,
   card,
@@ -144,16 +144,16 @@ const settingResult = ({ match }: { match: SettingsMatch }): OracleResult => ({
 
 const panelResult = ({
   panel,
-  hydra,
+  titan,
 }: {
   panel: OraclePanel
-  hydra: Titan
+  titan: Titan
 }): OracleResult => ({
   id: panel.id,
   kind: 'panel',
   title: panel.label,
-  hydra: hydra.id,
-  hydraName: hydra.name,
+  titan: titan.id,
+  titanName: titan.name,
   panel,
 })
 
@@ -163,13 +163,13 @@ export const menuActions = ({
   text,
   actions,
   state,
-  hydra,
+  titan,
 }: {
   token: FilterToken | null
   text: string
   actions: OracleAction[]
   state: TitanState
-  hydra: Titan
+  titan: Titan
 }): OracleResult[] => {
   if (!token || token.type || text) {
     return []
@@ -191,7 +191,7 @@ export const menuActions = ({
     ...oraclePanels({ state }).filter(named)
       .map(panel => panelResult({
         panel,
-        hydra,
+        titan,
       })),
   ]
 }
@@ -203,7 +203,7 @@ export function oracleResults({
   projects,
   actions,
   cardActions,
-  hydra,
+  titan,
   text,
   badges,
   now,
@@ -214,15 +214,15 @@ export function oracleResults({
   actions: OracleAction[]
   // What each task's worker is doing now, which its status badge shows.
   cardActions: Record<string, CurrentAction>
-  hydra: Titan
+  titan: Titan
   text: string
   badges: Filter[]
   now: number
 }): ResultGroup[] {
   const words = tokens({ text })
-  const chatHits = hits.filter(hit => hit.kind === 'hydra')
+  const chatHits = hits.filter(hit => hit.kind === 'titan')
   const cardHits = hits.flatMap(hit => {
-    const card = hit.kind === 'hydra' ? undefined : state.cards[hit.card]
+    const card = hit.kind === 'titan' ? undefined : state.cards[hit.card]
 
     return card && !card.hidden ? [
       {
@@ -241,7 +241,7 @@ export function oracleResults({
     .map(card => taskResult({
       state,
       card,
-      hydra,
+      titan,
     })) : []
   const tasks = text
     ? [
@@ -252,28 +252,28 @@ export function oracleResults({
         state,
         card,
         hit,
-        hydra,
+        titan,
       })),
       ...cardMatches,
     ]
     : recentCards({ state }).map(card => taskResult({
       state,
       card,
-      hydra,
+      titan,
     }))
   const chat = chatHits.map(hit => conversationResult({
     hit,
     at: newestSnippet({ hit }),
-    hydra,
+    titan,
   }))
   const ownChat = conversationResult({
     at: state.cards[TITAN_CARD]?.updatedAt,
-    hydra,
+    titan,
   })
   const taskChats = recentCards({ state }).filter(card => hasConversation({ card }))
     .map(card => taskConversation({
       card,
-      hydra,
+      titan,
     }))
   const conversations = text ? chat : [
     ownChat,
@@ -285,8 +285,8 @@ export function oracleResults({
       id: `project:${project.path}`,
       kind: 'project',
       title: project.name,
-      hydra: hydra.id,
-      hydraName: hydra.name,
+      titan: titan.id,
+      titanName: titan.name,
       project: project.path,
       summary: project,
     }))
@@ -297,7 +297,7 @@ export function oracleResults({
   }))
     .map(panel => panelResult({
       panel,
-      hydra,
+      titan,
     }))
   const actionResults = actions.filter(action => matchesCommand({
     query: text,
@@ -386,7 +386,7 @@ export function resultMeta({
 }): string {
   switch (result.kind) {
     case 'task':
-      return `${result.hydraName ?? ''} · ${statusLabel({
+      return `${result.titanName ?? ''} · ${statusLabel({
         status: taskRollup({
           state,
           card: result.card,

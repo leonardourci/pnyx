@@ -55,7 +55,7 @@ export function ProjectColumn({
       id: column.id,
       kind: 'task',
       scope: column.id,
-      hydra: titanId,
+      titan: titanId,
       zone: 'outdent',
     },
   })
@@ -99,23 +99,23 @@ export function ProjectColumn({
       id: column.id,
       kind: 'project',
       scope: 'projects',
-      hydra: titanId,
+      titan: titanId,
     },
     disabled: column.id === 'ideas',
   })
   const dragging = useSortState()
   const lifted = dragging.active?.kind === 'project' && dragging.active.id === column.id
-    && dragging.active.hydra === titanId
+    && dragging.active.titan === titanId
 
   const outdentSource = dragging.shift && dragging.active?.parent ? dragging.active : null
   const outdentOver = dragging.over?.zone === 'outdent' && dragging.over.id === column.id
-    && dragging.over.hydra === titanId ? dragging.over : null
+    && dragging.over.titan === titanId ? dragging.over : null
   const outdentArmed = !!outdentSource && !!outdentOver && !nestingRefusal({
     source: outdentSource,
     target: outdentOver,
   })
   const showHint = dragging.active?.kind === 'task'
-    && dragging.active.hydra === titanId && dragging.active.column === column.id
+    && dragging.active.titan === titanId && dragging.active.column === column.id
     && !dragging.active.hasChildren
 
   return (

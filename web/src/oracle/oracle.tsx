@@ -6,7 +6,7 @@ import { workspaceResults, type OracleWorkspace } from './workspaces.ts'
 import { tokens } from '#oracle/query.ts'
 import { searchFilters } from './filters.ts'
 import type { TitanState } from '#app/model.ts'
-import type { TitanProjectSummary } from '#app/server-hydras.ts'
+import type { TitanProjectSummary } from '#app/server-titans.ts'
 import type { CurrentAction } from '#titan/calls.ts'
 import { TITAN_MARK } from '#titan/titan-names.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -24,7 +24,7 @@ import { createPortal,flushSync } from 'react-dom'
 import { ASK_BADGE,useAskMode,type Asking } from './ask-mode.ts'
 import { askTargets,type AskAttempt,type AskTarget } from './ask.ts'
 import { useFoundCards } from './card-oracle.ts'
-import { addBadge,committedQuery,filterMenu,filterOptions,filterToken,hydraFilter,queryText,type Filter } from './filters.ts'
+import { addBadge,committedQuery,filterMenu,filterOptions,filterToken,titanFilter,queryText,type Filter } from './filters.ts'
 import { keepInView,usePreviewFocus } from './focus.ts'
 import { movedId,paletteKey,selectedId,type Chosen,type PaletteKey } from './keys.ts'
 import { oracleActions,type OracleAction } from './oracle-catalog.ts'
@@ -61,7 +61,7 @@ export function Oracle({
   view,
   command,
   connected,
-  hydra,
+  titan,
   projects,
   layer,
   save,
@@ -74,7 +74,7 @@ export function Oracle({
   openSettings,
   createTask,
   createColumn,
-  hydras,
+  titans,
   send,
   openChat,
 }: {
@@ -85,7 +85,7 @@ export function Oracle({
   view: ViewPreferences
   command: Command
   connected: boolean
-  hydra: {
+  titan: {
     id: string
     name: string
     icon: string
@@ -99,31 +99,31 @@ export function Oracle({
   startUpgrade(): void
   openTask({
     id,
-    hydra,
+    titan,
   }: {
     id: string
-    hydra?: string
+    titan?: string
   }): unknown
   // Opens the task and Titan's composer, ready to reply about it.
   answerTask({
     id,
-    hydra,
+    titan,
   }: {
     id: string
-    hydra?: string
+    titan?: string
   }): void
   selectProject({
     path,
-    hydra,
+    titan,
   }: {
     path: string
-    hydra?: string
+    titan?: string
   }): void
   openSettings({ query }: { query: string }): void
   createTask({ column }: { column: string }): void
   createColumn(): void
   // Every Titan a request can go to, by display name.
-  hydras: AskTarget[]
+  titans: AskTarget[]
   send({
     id,
     text,
@@ -140,7 +140,7 @@ export function Oracle({
   const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
   const shared = useSharedSettings()
   const remember = shared?.oracleRememberFilters === true
-  const hydraBadge = hydraFilter({ hydra })
+  const titanBadge = titanFilter({ titan })
   const [
     open,
     setOpen,
@@ -195,12 +195,12 @@ export function Oracle({
   const columns = columnsFor({ state })
   const options = [
     ...filterOptions({
-      hydra: hydraBadge,
+      titan: titanBadge,
       columns,
       projects,
     }),
-    ...workspaces.filter(item => item.hydra.id !== hydra.id)
-      .map(item => hydraFilter({ hydra: item.hydra })),
+    ...workspaces.filter(item => item.titan.id !== titan.id)
+      .map(item => titanFilter({ titan: item.titan })),
   ]
   // Badges keep only ids, so a renamed column or Titan shows its new name and a deleted one drops out.
   const badges = badgeIds.flatMap(id => options.filter(option => option.id === id))
@@ -250,7 +250,7 @@ export function Oracle({
     text,
     actions,
     state,
-    hydra,
+    titan,
   }) : []
   const globalGroups = open && !ask ? workspaceResults({
     workspaces,
@@ -265,7 +265,7 @@ export function Oracle({
     projects: [],
     actions,
     cardActions,
-    hydra,
+    titan,
     text,
     badges,
     now,
@@ -299,8 +299,8 @@ export function Oracle({
   const menuAction = typedActions.find(result => result.id === menuSelected)
   const optionId = ({ index }: { index: number }) => `${listId}-${index}`
   const targets = askTargets({
-    hydras,
-    current: hydra,
+    titans,
+    current: titan,
   })
   const targetIds = targets.map(target => target.id)
   const askTarget = targets.find(target => target.id === ask?.target)
@@ -439,12 +439,12 @@ export function Oracle({
       if (elsewhere) {
         answerTask({
           id,
-          hydra: result.hydra,
+          titan: result.titan,
         })
       } else {
         openTask({
           id,
-          hydra: result.hydra,
+          titan: result.titan,
         })
       }
     }
@@ -457,14 +457,14 @@ export function Oracle({
         if (result.card) {
           openCard({ id: result.card.id })
         } else {
-          openChat({ id: result.hydra ?? hydra.id })
+          openChat({ id: result.titan ?? titan.id })
         }
 
         break
       case 'project':
         selectProject({
           path: result.summary.path,
-          hydra: result.hydra,
+          titan: result.titan,
         })
         break
       case 'action':
@@ -753,7 +753,7 @@ export function Oracle({
   })
   const searchCount = token ? MENU_LABEL : found.partialFailure ? `${resultCount} · ${found.partialFailure}` : resultCount
   const count = ask ? 'Ask' : searchCount
-  const narrowing = badges.some(badge => badge.type !== 'kind' && badge.type !== 'hydra')
+  const narrowing = badges.some(badge => badge.type !== 'kind' && badge.type !== 'titan')
   const widen = narrowing ? ' Remove a badge to widen the search.' : ''
   const nothing = `Nothing matches.${widen}`
 
@@ -779,7 +779,7 @@ export function Oracle({
     askAct,
     targets,
     pickedId,
-    hydra,
+    titan,
     sendAsk,
   })
   // The previous results stay, dimmed, until the new query's answer arrives.
@@ -790,7 +790,7 @@ export function Oracle({
   const listLabel = token ? MENU_LABEL : 'Oracle results'
   const searchPlaceholder = 'Search…'
 
-  const previewWorkspace = workspaces.find(item => item.hydra.id === shownResult?.hydra)
+  const previewWorkspace = workspaces.find(item => item.titan.id === shownResult?.titan)
   const palette = (
     <OverlaySurface
       ref={dialog}

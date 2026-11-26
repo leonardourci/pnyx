@@ -14,10 +14,10 @@ const ASK = /^ask(?::(\S+))?\s/i
 // "ask " opens a request whose Titan is picked later; "ask:<name> " names the Titan, and an unknown name stays a search.
 export function askStart({
   query,
-  hydras,
+  titans,
 }: {
   query: string
-  hydras: AskTarget[]
+  titans: AskTarget[]
 }): AskStart | null {
   const match = ASK.exec(query)
 
@@ -32,7 +32,7 @@ export function askStart({
     return { request }
   }
 
-  const target = hydras.find(hydra => hydra.name.toLowerCase() === name)
+  const target = titans.find(titan => titan.name.toLowerCase() === name)
 
   return target ? {
     target,
@@ -42,14 +42,14 @@ export function askStart({
 
 // The current Titan leads even before the Titan list has loaded.
 export const askTargets = ({
-  hydras,
+  titans,
   current,
 }: {
-  hydras: AskTarget[]
+  titans: AskTarget[]
   current: AskTarget
 }) => [
   current,
-  ...hydras.filter(hydra => hydra.id !== current.id),
+  ...titans.filter(titan => titan.id !== current.id),
 ]
 
 export type AskKey = 'send' | 'send-open' | 'pick' | 'up' | 'down' | 'back' | 'leave'

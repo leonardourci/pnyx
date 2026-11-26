@@ -107,7 +107,7 @@ function OlderSentinel({
       )}
       {(loading || loadingEarlier) && (
         <div className="chat-loading h-full flex items-center justify-center pointer-events-none" role="status" aria-label="Loading earlier messages">
-          <span className="chat-spinner size-4 border-2 border-line border-t-muted rounded-full animate-hydra-spin motion-reduce:animate-hydra-spin-reduced" aria-hidden="true" />
+          <span className="chat-spinner size-4 border-2 border-line border-t-muted rounded-full animate-titan-spin motion-reduce:animate-titan-spin-reduced" aria-hidden="true" />
         </div>
       )}
     </div>

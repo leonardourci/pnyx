@@ -350,7 +350,7 @@ export const clock = (() => {
 })()
 
 // Shown in the header only while Titan cannot start: nothing else can happen until a start works.
-export const hydraDown = ({ status }: { status?: TitanStatus }) => status?.state === 'down'
+export const titanDown = ({ status }: { status?: TitanStatus }) => status?.state === 'down'
   ? `Down since ${clock({ at: status.since })} · retrying`
   : undefined
 

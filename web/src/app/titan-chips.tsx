@@ -2,21 +2,21 @@ import { Fragment } from 'react'
 import { Chip } from '#web-shared/ui/chip.tsx'
 import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
-import type { TitanSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-titans.ts'
 import { SortGroup } from '#web-shared/ui/sortable.tsx'
 import { SortableChip } from '#web-shared/ui/sortable-chip.tsx'
 import { WaitingCount } from '#web-shared/ui/waiting-count.tsx'
-import { TitanLabel } from '#web-titan/hydra-title.tsx'
+import { TitanLabel } from '#web-titan/titan-title.tsx'
 
 export function TitanChips({
-  hydras,
+  titans,
   current,
   navigate,
   createTitan,
   polisFilter,
   filterPolis,
 }: {
-  hydras: TitanSummary[]
+  titans: TitanSummary[]
   current: string
   navigate({ url }: { url: string }): Promise<void>
   polisFilter?: string
@@ -24,18 +24,18 @@ export function TitanChips({
   createTitan(): unknown
 }) {
   return (
-    <nav data-sort-surface={`hydra-chips:${current}`} className="hydra-chips flex min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden" aria-label="Titan navigation">
-      <SortGroup id={`hydra-chips:${current}`} items={hydras.map(hydra => hydra.id)}>
-        {hydras.map((
-          hydra,
+    <nav data-sort-surface={`titan-chips:${current}`} className="titan-chips flex min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden" aria-label="Titan navigation">
+      <SortGroup id={`titan-chips:${current}`} items={titans.map(titan => titan.id)}>
+        {titans.map((
+          titan,
           index,
         ) => {
-          const polis = hydra.polis ?? 'shared'
-          const previousPolis = hydras[index - 1]?.polis ?? 'shared'
+          const polis = titan.polis ?? 'shared'
+          const previousPolis = titans[index - 1]?.polis ?? 'shared'
           const startsPolis = index === 0 || previousPolis !== polis
           const selected = polisFilter === polis
           const nextFilter = selected ? undefined : polis
-          const waiting = hydra.asks ?? hydra.projects.reduce(
+          const waiting = titan.asks ?? titan.projects.reduce(
             (
               count,
               project,
@@ -44,7 +44,7 @@ export function TitanChips({
           )
 
           return (
-            <Fragment key={hydra.id}>
+            <Fragment key={titan.id}>
               {startsPolis && (
                 <Chip
                   variant="settings"
@@ -56,25 +56,25 @@ export function TitanChips({
               )}
               <SortableChip
                 item={{
-                  id: hydra.id,
-                  kind: 'hydra',
+                  id: titan.id,
+                  kind: 'titan',
                   scope: 'titans',
-                  hydra: hydra.id,
+                  titan: titan.id,
                 }}
-                variant="hydra"
-                data-sort-id={hydra.id}
-                data-sort-kind="hydra"
-                data-sort-scope="hydras"
-                aria-current={hydra.id === current ? 'page' : undefined}
+                variant="titan"
+                data-sort-id={titan.id}
+                data-sort-kind="titan"
+                data-sort-scope="titans"
+                aria-current={titan.id === current ? 'page' : undefined}
                 onClick={() => {
                   if (polisFilter !== polis) {
                     filterPolis({})
                   }
 
-                  return navigate({ url: `/hydra/${encodeURIComponent(hydra.id)}/` })
+                  return navigate({ url: `/titan/${encodeURIComponent(titan.id)}/` })
                 }}
               >
-                <TitanLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} />
+                <TitanLabel name={titan.name} icon={titan.icon} size={ICON_SIZE.control} />
                 <WaitingCount count={waiting} />
               </SortableChip>
             </Fragment>

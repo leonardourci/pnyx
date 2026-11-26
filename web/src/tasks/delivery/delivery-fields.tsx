@@ -28,7 +28,7 @@ const MERGER_OPTIONS = [
     label: 'You',
   },
   {
-    value: 'hydra',
+    value: 'titan',
     label: 'Titan, once checks are green',
   },
 ]

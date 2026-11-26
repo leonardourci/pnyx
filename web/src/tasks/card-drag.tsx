@@ -85,7 +85,7 @@ function SortableTaskCard({
   )
   const drag = useSortState()
   const nesting = drag.shift && drag.over?.zone === 'nest' && drag.over.id === item.id
-    && drag.over.hydra === item.hydra && !!drag.active
+    && drag.over.titan === item.titan && !!drag.active
     && !nestingRefusal({
       source: drag.active,
       target: drag.over,

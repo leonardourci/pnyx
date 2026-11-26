@@ -148,7 +148,7 @@ export const TitanCard = memo(function TitanCard({
   doneAfterHours?: DoneAfterHours
   notify({ text }: { text: string }): void
   selected: boolean
-  // A modal opened from a closed card leaves that card closed on the board.
+  // A modal opened from a closed card leaves that card closed on the Titan.
   openInline?: boolean
   open({
     id,
@@ -660,7 +660,7 @@ export const TitanCard = memo(function TitanCard({
         id: card.id,
         kind: 'task',
         scope: sortScope ?? '',
-        hydra: titanId,
+        titan: titanId,
         parent: card.parentId,
         root: rootColumn && rootScope ? {
           column: rootColumn,
@@ -682,7 +682,7 @@ export const TitanCard = memo(function TitanCard({
       elementRef={modal ? attachModal : attachInline}
       selected={selected}
       data-task={card.id}
-      data-task-hydra={titanId}
+      data-task-titan={titanId}
       data-tab={selected ? tab : undefined}
       tint={tint}
       onClick={modal ? undefined : click}

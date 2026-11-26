@@ -1,7 +1,7 @@
 // Identity icons: game-icons.net silhouettes (CC BY 3.0), plus a few drawn for Othrys, for Titans, the default columns
 // and some composer controls.
 // Plain data, so Node tests can read it; icon.tsx loads the files. Settings › About credits every author listed here.
-type IdentityKind = 'hydra' | 'column' | 'control'
+type IdentityKind = 'titan' | 'column' | 'control'
 
 export interface IdentityIcon {
   id: string
@@ -29,7 +29,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/scythe.html',
-    kind: 'hydra',
+    kind: 'titan',
     bold: true,
   },
   {
@@ -39,7 +39,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/lion.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'hyperion',
@@ -48,7 +48,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/third-eye.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'mnemosyne',
@@ -57,16 +57,16 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/brain.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
-    id: 'hydra',
+    id: 'titan',
     label: 'Titan',
     file: 'titan.svg',
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
-    source: 'https://game-icons.net/1x1/lorc/hydra.html',
-    kind: 'hydra',
+    source: 'https://game-icons.net/1x1/lorc/titan.html',
+    kind: 'titan',
   },
   {
     id: 'athena',
@@ -75,7 +75,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/owl.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'apollo',
@@ -84,7 +84,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/lyre.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'artemis',
@@ -93,7 +93,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/pocket-bow.html',
-    kind: 'hydra',
+    kind: 'titan',
     bold: true,
   },
   {
@@ -103,7 +103,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Delapouite',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/delapouite/caduceus.html',
-    kind: 'hydra',
+    kind: 'titan',
     bold: true,
   },
   {
@@ -113,7 +113,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Delapouite',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/delapouite/spartan-helmet.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'hera',
@@ -122,7 +122,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Delapouite',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/delapouite/tiara.html',
-    kind: 'hydra',
+    kind: 'titan',
     bold: true,
   },
   {
@@ -132,7 +132,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/zeus-sword.html',
-    kind: 'hydra',
+    kind: 'titan',
     bold: true,
   },
   {
@@ -142,7 +142,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/trident.html',
-    kind: 'hydra',
+    kind: 'titan',
     bold: true,
   },
   {
@@ -152,7 +152,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/anvil-impact.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'persephone',
@@ -161,7 +161,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/daisy.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'demeter',
@@ -170,7 +170,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/wheat.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'atlas',
@@ -179,7 +179,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Delapouite',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/delapouite/atlas.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'prometheus',
@@ -188,7 +188,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Delapouite',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/delapouite/torch.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'chronos',
@@ -197,7 +197,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/hourglass.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'helios',
@@ -206,7 +206,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/sun.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'selene',
@@ -215,7 +215,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/moon.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'nyx',
@@ -224,7 +224,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/night-sky.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'eos',
@@ -233,7 +233,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/sunrise.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'iris',
@@ -242,7 +242,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/rainbow-star.html',
-    kind: 'hydra',
+    kind: 'titan',
   },
   {
     id: 'nike',
@@ -251,7 +251,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/laurel-crown.html',
-    kind: 'hydra',
+    kind: 'titan',
     bold: true,
   },
   {
@@ -261,7 +261,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/whirlwind.html',
-    kind: 'hydra',
+    kind: 'titan',
     bold: true,
   },
   {
@@ -271,7 +271,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Delapouite',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/delapouite/hades-symbol.html',
-    kind: 'hydra',
+    kind: 'titan',
     bold: true,
   },
   {
@@ -281,7 +281,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/scales.html',
-    kind: 'hydra',
+    kind: 'titan',
     bold: true,
   },
   {
@@ -291,7 +291,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/spartan.html',
-    kind: 'hydra',
+    kind: 'titan',
     bold: true,
   },
   {

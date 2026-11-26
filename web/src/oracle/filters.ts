@@ -1,11 +1,11 @@
-import type { TitanProjectSummary } from '#app/server-hydras.ts'
+import type { TitanProjectSummary } from '#app/server-titans.ts'
 import type { SearchFilters } from '#oracle/filters.ts'
 import type { ProjectGroup } from '#projects/groups.ts'
 import { columnLook } from '#web-tasks/view.ts'
 
 // A panel is a whole settings block shown in the preview, such as Projects.
 type ResultKind = 'project' | 'task' | 'conversation' | 'setting' | 'panel' | 'action'
-type FilterType = 'kind' | 'hydra' | 'column' | 'project' | 'when'
+type FilterType = 'kind' | 'titan' | 'column' | 'project' | 'when'
 
 const RESULT_KINDS: ResultKind[] = [
   'project',
@@ -17,14 +17,14 @@ const RESULT_KINDS: ResultKind[] = [
 ]
 const FILTER_TYPES: FilterType[] = [
   'kind',
-  'hydra',
+  'titan',
   'column',
   'project',
   'when',
 ]
 export const TYPE_LABELS: Record<FilterType, string> = {
   kind: 'Kind',
-  hydra: 'Titan',
+  titan: 'Titan',
   column: 'Column',
   project: 'Project',
   when: 'When',
@@ -32,7 +32,7 @@ export const TYPE_LABELS: Record<FilterType, string> = {
 // Which results a filter type can narrow; settings and actions pass a Titan badge because they apply to every Titan.
 export const APPLIES: Record<FilterType, ResultKind[]> = {
   kind: RESULT_KINDS,
-  hydra: RESULT_KINDS,
+  titan: RESULT_KINDS,
   column: ['task'],
   project: [
     'project',
@@ -47,12 +47,12 @@ export const APPLIES: Record<FilterType, ResultKind[]> = {
 // The long forms, such as in:progress, name one filter type.
 const LONG_FORMS: Record<string, FilterType> = {
   kind: 'kind',
-  hydra: 'hydra',
+  titan: 'titan',
   in: 'column',
   project: 'project',
   when: 'when',
 }
-const TOKEN = /(?:^|\s)(>\S*|(?:kind|hydra|in|project|when):\S*)$/i
+const TOKEN = /(?:^|\s)(>\S*|(?:kind|titan|in|project|when):\S*)$/i
 const DAY_MS = 24 * 60 * 60 * 1000
 const WEEK_DAYS = 7
 
@@ -69,7 +69,7 @@ export interface Filter {
 
 export interface Candidate {
   kind: ResultKind
-  hydra?: string
+  titan?: string
   column?: string
   project?: string
   at?: string
@@ -131,33 +131,33 @@ const WHEN_FILTERS: Filter[] = [
   },
 ]
 
-export const hydraFilter = ({ hydra }: {
-  hydra: {
+export const titanFilter = ({ titan }: {
+  titan: {
     id: string
     name: string
     icon: string
   }
 }): Filter => ({
-  id: `hydra:${hydra.id}`,
-  type: 'hydra',
-  label: hydra.name,
-  icon: hydra.icon,
-  values: [hydra.id],
-  words: 'hydra',
+  id: `titan:${titan.id}`,
+  type: 'titan',
+  label: titan.name,
+  icon: titan.icon,
+  values: [titan.id],
+  words: 'titan',
 })
 
 export function filterOptions({
-  hydra,
+  titan,
   columns,
   projects,
 }: {
-  hydra: Filter
+  titan: Filter
   columns: ProjectGroup[]
   projects: TitanProjectSummary[]
 }): Filter[] {
   return [
     ...KIND_FILTERS,
-    hydra,
+    titan,
     ...columns.map((column): Filter => ({
       id: `column:${column.id}`,
       type: 'column',
@@ -282,7 +282,7 @@ export const addBadge = ({
 }: {
   badges: Filter[]
   filter: Filter
-}) => filter.type === 'hydra' ? [
+}) => filter.type === 'titan' ? [
   filter,
   ...badges,
 ] : [
@@ -328,10 +328,10 @@ function passesType({
     return false
   }
 
-  const { hydra } = item
+  const { titan } = item
 
-  if (type === 'hydra') {
-    return hydra === undefined || chosen.some(badge => badge.values.includes(hydra))
+  if (type === 'titan') {
+    return titan === undefined || chosen.some(badge => badge.values.includes(titan))
   }
 
   if (type === 'when') {

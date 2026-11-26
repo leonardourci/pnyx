@@ -2,7 +2,7 @@ import { saveEventId, type SaveCommand } from '#app/save-receipts.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { argument } from '#web-tasks/optimistic.ts'
 
-export const TITAN_SEND_SETTLED = 'othrys-hydra-send-settled'
+export const TITAN_SEND_SETTLED = 'othrys-titan-send-settled'
 
 export function storageKey({
   key,
@@ -11,7 +11,7 @@ export function storageKey({
   key: string
   titanId?: string
 }): string {
-  const titanId = given ?? (typeof document === 'undefined' ? '' : document.querySelector<HTMLMetaElement>('meta[name=othrys-hydra]')?.content)
+  const titanId = given ?? (typeof document === 'undefined' ? '' : document.querySelector<HTMLMetaElement>('meta[name=othrys-titan]')?.content)
 
   return `othrys:${titanId ?? ''}:${key}`
 }
@@ -114,8 +114,8 @@ export function readSavedCommands({ titanId }: { titanId: string }): SaveCommand
     return saved.filter((entry): entry is SaveCommand => entry?.type === 'command'
       && typeof entry.id === 'string' && !!entry.id
       && Array.isArray(entry.args) && entry.args.every((arg: unknown) => typeof arg === 'string')
-      && ((entry.name === 'hydra-agent' && entry.args.length === 1)
-        || (entry.name === 'hydra' && entry.args[0] === 'send' && !!saveEventId({command: entry}))))
+      && ((entry.name === 'titan-agent' && entry.args.length === 1)
+        || (entry.name === 'titan' && entry.args[0] === 'send' && !!saveEventId({command: entry}))))
   } catch {
     return []
   }
@@ -205,7 +205,7 @@ export function settleSavedCommand({
   storageIdentity: string
   refusal?: string
 }) {
-  if (command.name !== 'hydra' || command.args[0] !== 'send') {
+  if (command.name !== 'titan' || command.args[0] !== 'send') {
     return
   }
 

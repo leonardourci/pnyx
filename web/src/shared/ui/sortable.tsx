@@ -50,7 +50,7 @@ export interface SortMove {
   kind: SortItem['kind']
   scope: string
   targetScope: string
-  hydra: string
+  titan: string
   before: boolean
   nest: boolean
   outdent?: boolean
@@ -58,9 +58,9 @@ export interface SortMove {
 
 export interface SortItem {
   id: string
-  kind: 'hydra' | 'project' | 'task'
+  kind: 'titan' | 'project' | 'task'
   scope: string
-  hydra: string
+  titan: string
   parent?: string
   hasChildren?: boolean
   column?: string
@@ -271,7 +271,7 @@ export function useDropZone({
   disabled?: boolean
 }) {
   return useDroppable({
-    id: `${item.hydra}:${item.zone}:${item.id}`,
+    id: `${item.titan}:${item.zone}:${item.id}`,
     data: { item },
     disabled,
   })
@@ -300,7 +300,7 @@ function dropTargets({
 
   return containers.filter(container => {
     const target = itemOf({ data: container.data })
-    const sameTitan = source.kind === 'hydra' || target?.hydra === source.hydra
+    const sameTitan = source.kind === 'titan' || target?.titan === source.titan
 
     if (!target || target.kind !== source.kind || !sameTitan) {
       return false
@@ -642,7 +642,7 @@ export function SortableWorkspace({
   useEffect(
     () => active ? trackUIDrag({
       action: active.kind,
-      titanId: active.hydra,
+      titanId: active.titan,
     }) : undefined,
     [active],
   )
@@ -698,7 +698,7 @@ export function SortableWorkspace({
   } | null>(null)
   const landingDrop = useRef<{
     task: string
-    hydra: string
+    titan: string
     nest: boolean
   } | null>(null)
   const reducedMotion = useReducedMotion()
@@ -974,7 +974,7 @@ export function SortableWorkspace({
     target: SortItem
   }): SortMove | null => {
     const pointer = latestDetection.current?.pointerCoordinates
-    const workspace = root.current?.querySelector(`[data-hydra-workspace="${CSS.escape(source.hydra)}"]`)
+    const workspace = root.current?.querySelector(`[data-titan-workspace="${CSS.escape(source.titan)}"]`)
     const column = workspace?.querySelector(`[data-column="${CSS.escape(target.id)}"]`)
 
     if (!pointer || !column || !source.root || nestingRefusal({
@@ -997,7 +997,7 @@ export function SortableWorkspace({
       kind: source.kind,
       scope: source.scope,
       targetScope: target.id,
-      hydra: source.hydra,
+      titan: source.titan,
       before: anchor?.before ?? false,
       nest: false,
       outdent: true,
@@ -1059,7 +1059,7 @@ export function SortableWorkspace({
       kind: source.kind,
       scope: source.scope,
       targetScope: target.scope,
-      hydra: source.hydra,
+      titan: source.titan,
       before,
       nest: nesting,
     }
@@ -1110,7 +1110,7 @@ export function SortableWorkspace({
       if (lands && !reducedMotion) {
         landingDrop.current = {
           task: next.nest ? next.over : next.id,
-          hydra: next.hydra,
+          titan: next.titan,
           nest: next.nest,
         }
       }
@@ -1178,7 +1178,7 @@ export function SortableWorkspace({
     let landingCard = active.node.matches('.card') ? active.node : active.node.querySelector<HTMLElement>('.card[data-task]')
 
     if (landing) {
-      const scope = root.current?.querySelector(`[data-hydra-workspace="${CSS.escape(landing.hydra)}"]`)
+      const scope = root.current?.querySelector(`[data-titan-workspace="${CSS.escape(landing.titan)}"]`)
       landingCard = scope?.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(landing.task)}"]`) ?? null
 
       if (!landingCard) {

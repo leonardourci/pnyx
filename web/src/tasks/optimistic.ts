@@ -4,7 +4,7 @@ import type { TitanState } from '#app/model.ts'
 import type { Card, TaskReminder } from '#tasks/model.ts'
 import { reminderRepeat } from '#tasks/reminders.ts'
 import type { AgentConfig } from '#workers/model.ts'
-import { hydraConfig } from '#titan/config.ts'
+import { titanConfig } from '#titan/config.ts'
 import { hideAfterHours } from '#tasks/retention-rules.ts'
 import { patchView } from '#preferences/view.ts'
 
@@ -40,7 +40,7 @@ export function optimisticState({
     args,
     flag,
   })
-  const config = hydraConfig({ state })
+  const config = titanConfig({ state })
   const [
     action,
     ref,
@@ -140,15 +140,15 @@ export function optimisticState({
     }
   }
 
-  if (name === 'hydra-agent') {
+  if (name === 'titan-agent') {
     const agent = JSON.parse(args[0] ?? '{}') as AgentConfig
 
     return {
       ...state,
       config: {
         ...config,
-        hydra: {
-          ...config.hydra,
+        titan: {
+          ...config.titan,
           agent,
         },
       },
@@ -295,7 +295,7 @@ export function optimisticState({
     }
   }
 
-  if (name === 'hydra' && action === 'set') {
+  if (name === 'titan' && action === 'set') {
     const title = option({ flag: '--name' })
     const identity = option({ flag: '--identity' })
     const polis = option({ flag: '--polis' })
@@ -306,8 +306,8 @@ export function optimisticState({
         ...config,
         polis: polis ?? config.polis,
         ...(title ? { name: title } : {}),
-        hydra: {
-          ...config.hydra,
+        titan: {
+          ...config.titan,
           ...(identity ? { id: identity } : {}),
         },
       },
@@ -329,7 +329,7 @@ export function currentRevision({
   if (index >= 0) {
     const ref = args[1] ?? ''
     const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
-    args[index + 1] = String(edit.name === 'view' ? state.viewRevision ?? 0 : edit.name === 'hydra' ? state.configRevision ?? 0 : card?.revision ?? 0)
+    args[index + 1] = String(edit.name === 'view' ? state.viewRevision ?? 0 : edit.name === 'titan' ? state.configRevision ?? 0 : card?.revision ?? 0)
   }
 
   return args

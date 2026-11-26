@@ -10,7 +10,7 @@ import type { ObservedStatus } from './observed-status.ts'
 
 const STATE_COLORS: Record<string, string> = {
   asks: 'text-gold',
-  'asks-hydra': 'text-slate',
+  'asks-titan': 'text-slate',
   working: 'text-green',
   done: 'text-green',
   stopped: 'text-red',
