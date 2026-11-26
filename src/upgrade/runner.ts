@@ -224,7 +224,7 @@ const startCommitFile = async ({ root }: { root: string }) => resolve(
     args: [
       'rev-parse',
       '--git-path',
-      'pnyx-upgrade-from',
+      'othrys-upgrade-from',
     ],
   }),
 )

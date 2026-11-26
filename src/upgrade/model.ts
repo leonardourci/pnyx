@@ -91,7 +91,7 @@ export interface UpgradeOperation {
 }
 
 export type UpgradeEvent = EventBase & {
-  type: 'pnyx.upgrade'
+  type: 'othrys.upgrade'
   data: UpgradeOperation
 }
 

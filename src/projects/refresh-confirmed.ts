@@ -110,7 +110,7 @@ async function recordRefresh({
           state: writer.state,
           cardId,
           meta: {
-            actor: 'pnyx',
+            actor: 'othrys',
             at: new Date().toISOString(),
           },
           change: {

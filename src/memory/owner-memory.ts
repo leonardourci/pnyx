@@ -285,7 +285,7 @@ export async function migrateOwnerMemory(): Promise<void> {
 
       const meta = {
         at: new Date().toISOString(),
-        actor: 'pnyx',
+        actor: 'othrys',
       }
       const failed: string[] = []
 

@@ -49,7 +49,7 @@ export function workerNotesNotice({
     meta: {
       id,
       at: meta.at,
-      actor: 'pnyx',
+      actor: 'othrys',
     },
     change: {
       type: 'hydra.message',

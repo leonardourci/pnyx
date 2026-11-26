@@ -127,7 +127,7 @@ async function acquireRefreshLock({
         return false
       }
 
-      const ownerPid = /^pnyx-refresh:(\d+):/.exec(owner)?.[1]
+      const ownerPid = /^othrys-refresh:(\d+):/.exec(owner)?.[1]
 
       if (!ownerPid) {
         return false
@@ -453,7 +453,7 @@ export async function refreshProject({
   let turn: Promise<void> | undefined
   let ownsLock = false
   let performed = true
-  const token = `pnyx-refresh:${process.pid}:${randomUUID()}`
+  const token = `othrys-refresh:${process.pid}:${randomUUID()}`
   let lockPath: string | undefined
 
   try {
@@ -502,7 +502,7 @@ export async function refreshProject({
 
     lockPath = join(
       result.repository,
-      'pnyx-project-refresh.lock',
+      'othrys-project-refresh.lock',
     )
 
     ownsLock = await acquireRefreshLock({

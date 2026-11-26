@@ -154,7 +154,7 @@ async function landedSlotBranch({
           cardId: TITAN_CARD,
           meta: {
             id: `unrecorded-copy:${key}`,
-            actor: 'pnyx',
+            actor: 'othrys',
             at: new Date().toISOString(),
           },
           change: {
@@ -200,7 +200,7 @@ async function landedSlotBranch({
           state: writer.state,
           cardId: current.id,
           meta: {
-            actor: 'pnyx',
+            actor: 'othrys',
             at: new Date().toISOString(),
           },
           change: {

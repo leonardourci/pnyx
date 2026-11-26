@@ -109,7 +109,7 @@ export function sourceTask({
       actor: meta.actor,
       worker,
     })
-  } else if (!ownerActor({ actor: meta.actor }) && meta.actor !== 'hydra' && meta.actor !== 'pnyx') {
+  } else if (!ownerActor({ actor: meta.actor }) && meta.actor !== 'hydra' && meta.actor !== 'othrys') {
     inform({
       task: card.id,
       reason: 'External source changed by another actor',

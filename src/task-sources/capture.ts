@@ -132,7 +132,7 @@ export async function commitCapture({
         stderr: capture.result.stderr,
         detail: capture.result.detail,
         meta: {
-          actor: 'pnyx',
+          actor: 'othrys',
           at: capture.at,
         },
       })

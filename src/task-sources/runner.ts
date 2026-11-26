@@ -69,7 +69,7 @@ export function createSourceRunner({
   let reconciling: Promise<void> | undefined
   let capturePending = false
   const metadata = () => ({
-    actor: 'pnyx',
+    actor: 'othrys',
     at: new Date().toISOString(),
   })
   const key = ({
@@ -650,7 +650,7 @@ export function createSourceRunner({
             ids: [message],
             claim,
           }),
-          actor: 'pnyx',
+          actor: 'othrys',
         },
       })
       result = receipt.state === 'delivered' ? 'delivered' : 'unknown'
@@ -681,7 +681,7 @@ export function createSourceRunner({
           attempt: {
             id: `source-notice:${message}:${claim.generation}`,
             at: new Date().toISOString(),
-            actor: 'pnyx',
+            actor: 'othrys',
             claim,
             result,
             detail,

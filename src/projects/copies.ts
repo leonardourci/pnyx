@@ -40,7 +40,7 @@ export async function settleDone({
       hydraId,
       ref: card.id,
       meta: {
-        actor: 'pnyx',
+        actor: 'othrys',
         at,
       },
     })

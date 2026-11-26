@@ -9,7 +9,7 @@ export function applyUpgrade({
   state: TitanState
   event: TitanEvent
 }): boolean {
-  if (event.type !== 'pnyx.upgrade') {
+  if (event.type !== 'othrys.upgrade') {
     return false
   }
 
@@ -32,7 +32,7 @@ export function applyUpgrade({
         kind: 'divider',
         text,
         at: event.at,
-        actor: 'pnyx',
+        actor: 'othrys',
         hydra: hydraConfig({ state }).hydra.id,
       },
     ]

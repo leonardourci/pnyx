@@ -304,7 +304,7 @@ export function createRoutineHelper({
         cardId: TITAN_CARD,
         meta: {
           at: new Date().toISOString(),
-          actor: 'pnyx',
+          actor: 'othrys',
           id,
         },
         change,
@@ -323,7 +323,7 @@ export function createRoutineHelper({
               meta: {
                 id: transaction.id,
                 at: new Date().toISOString(),
-                actor: 'pnyx',
+                actor: 'othrys',
               },
             }),
             type: 'apply.recorded',
@@ -519,7 +519,7 @@ export function createRoutineHelper({
           provider: providerIdOf({ harness: candidate.harness }),
           sessionId: active.id,
           cwd,
-          host: 'pnyx',
+          host: 'othrys',
           transcriptPath: active.path,
           account: candidate.account,
           loginFolder: candidate.loginFolder,

@@ -222,7 +222,7 @@ function migrate(): void {
     after,
     meta: {
       at: new Date().toISOString(),
-      actor: 'pnyx',
+      actor: 'othrys',
       reason: 'Moved from each Titan when settings became shared by every Titan',
     },
   })
