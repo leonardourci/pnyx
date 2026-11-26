@@ -18,30 +18,18 @@ import {
   type ComponentProps,type RefObject,type ReactNode,
   type KeyboardEvent as KeyEvent,
 } from 'react'
-import {
-  CARET_CSS,CARET_HOST,CARET_KEY,CARET_SUPPORTED,QUESTION_CONTROLS,
-  caretBounds,
-  controlBetween,
-  enterControl,
-  focusComposer,latestAgentMessage,
-  leaveNote,
-  leaveQuestionControl,
-  onNoteEdgeLine,
-  placeMessageCaret,
-  revealCaret,
-  selectionFocus,
-} from './caret.ts'
 import { ChatTokensContext } from './chat-token-text.tsx'
 import { clock,copiedText,orderedComments,type ChatComment } from './chat.ts'
 import { leadingTask, ownMessage, type TurnTiming } from '#titan/chat-messages.ts'
 import { copyMessageChips } from './clipboard.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { useCommentDrafts } from './comment-drafts.ts'
-import { HIGHLIGHT_SUPPORTED,clearHighlights,commentHighlightName,commentRange,paintComments } from './comment-highlight.ts'
+import { focusChatComposer } from './composer-shortcut.ts'
+import { HIGHLIGHT_SUPPORTED,clearHighlights,commentHighlightName,paintComments } from './comment-highlight.ts'
 import { revealComment } from './comment-reveal.ts'
 import { MessageComment } from './message-comment.tsx'
 import {
-  MESSAGE_DECORATIONS,isMessageBlockKey,messageBlock,messageBlockKey,samePassage,
+  MESSAGE_CONTROLS,MESSAGE_DECORATIONS,isMessageBlockKey,messageBlock,messageBlockKey,samePassage,
   selectedPassage,type CommentPassage,
 } from './message-selection.ts'
 import type { OthrysLookup } from './othrys-action.ts'
@@ -127,7 +115,6 @@ interface RowComment {
 interface MessageActions {
   remove({ id }: { id: string }): void
   release({ id }: { id: string }): void
-  focus({ key }: { key: string }): void
   retry?({
     id,
     text,
@@ -289,22 +276,7 @@ const MessageRow = memo(function MessageRow({
                       drafts={drafts}
                       number={number}
                       inline
-                      remove={() => {
-                        actions.current.remove({ id: comment.id })
-                        actions.current.focus({ key })
-                      }}
-                      leave={({
-                        note,
-                        direction,
-                      }) => root.current && leaveNote({
-                        passage: commentRange({
-                          host: root.current,
-                          comment,
-                        })?.getClientRects()[0],
-                        host: root.current,
-                        note,
-                        direction,
-                      })}
+                      remove={() => actions.current.remove({ id: comment.id })}
                       release={() => actions.current.release({ id: comment.id })}
                       show={() => {
                         if (root.current) {
@@ -323,7 +295,7 @@ const MessageRow = memo(function MessageRow({
         )}
       </MessageBubble>
       {ownMessage({ entry }) && !entry.continued && (
-        <MessageFooter variant="owner" contentEditable={false}>
+        <MessageFooter variant="owner">
           {entry.checking && <span className="muted" role="status">Checking…</span>}
           {entry.unsent !== undefined && (
             <span className="unsent inline-flex items-center gap-1 px-1 py-0 text-red" role="alert">
@@ -495,24 +467,9 @@ export function Messages({
     [],
   )
 
-  const platform = /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other'
-  const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
-  const blockFor = ({ key }: { key: string | null }) =>
-    blocks().find(e => e.dataset.messageBlock === key)
-
-  const focusBlock = ({ element }: { element?: HTMLElement }) => {
-    if (element && root.current) {
-      setActive(element.dataset.messageBlock!); placeMessageCaret({
-        host: root.current,
-        target: element,
-        edge: 'start',
-      })
-    }
-  }
-
   const {
     addComment,
-    paste,
+    pasteAsComment,
     remove,
     release,
   } = useCommentDrafts({
@@ -522,10 +479,14 @@ export function Messages({
     clearSelection: () => setSelection(null),
   })
 
+  const removeAndKeepFocus = ({ id }: { id: string }) => {
+    remove({ id })
+    root.current?.focus({ preventScroll: true })
+  }
+
   const handlers: MessageActions = {
-    remove,
+    remove: removeAndKeepFocus,
     release,
-    focus: ({ key }) => focusBlock({ element: blockFor({ key }) }),
     retry,
   }
   const actions = useRef(handlers)
@@ -643,78 +604,10 @@ export function Messages({
     [],
   )
 
-  useEffect(
-    () => {
-      const host = root.current
-
-      const keep = (event: InputEvent) => {
-        if (event.target !== host) {
-          return
-        }
-
-        event.preventDefault()
-        const passage = selectedPassage({ messages: host })
-        const text = event.data ?? event.dataTransfer?.getData('text/plain')
-
-        if (passage && text && /^insert(Text|ReplacementText)$/.test(event.inputType)) {
-          addComment({
-            quote: passage,
-            text,
-          })
-        }
-      }
-
-      host?.addEventListener(
-        'beforeinput',
-        keep,
-      )
-
-      return () => host?.removeEventListener(
-        'beforeinput',
-        keep,
-      )
-    },
-  )
-
-  useEffect(
-    () => {
-      const jump = (event: KeyboardEvent) => {
-        const host = root.current, focused = document.activeElement
-        const mod = platform === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
-
-        if (!host || !mod || event.shiftKey || event.altKey || event.repeat || event.isComposing ||
-        event.defaultPrevented || event.key.toLowerCase() !== 'l') {
-          return
-        }
-
-        if (focused === host) {
-          event.preventDefault(); focusComposer({ host })
-        } else if (focused?.matches('.composer textarea') && focused.closest('.detail, .chat-frame')?.contains(host)) {
-          event.preventDefault(); placeMessageCaret({
-            host,
-            target: latestAgentMessage({ host }),
-            edge: 'start',
-          })
-        }
-      }
-
-      window.addEventListener(
-        'keydown',
-        jump,
-      )
-
-      return () => window.removeEventListener(
-        'keydown',
-        jump,
-      )
-    },
-    [platform],
-  )
-
   const quoteSelection = ({ passage }: { passage: CommentPassage }) => {
     quote({ text: passage.quote }); setSelection(null)
     window.getSelection()?.removeAllRanges()
-    requestAnimationFrame(() => root.current && focusComposer({ host: root.current }))
+    requestAnimationFrame(() => focusChatComposer({ from: root.current }))
   }
 
   // The pill floats under the selection, inside the messages so it scrolls with them and moves no text.
@@ -783,8 +676,8 @@ export function Messages({
     ],
   )
 
-  const caretKey = ({ event }: { event: KeyEvent<HTMLDivElement> }) => {
-    const host = event.currentTarget, {
+  const selectionKey = ({ event }: { event: KeyEvent<HTMLDivElement> }) => {
+    const {
       key,
       shiftKey,
       altKey,
@@ -792,58 +685,23 @@ export function Messages({
       metaKey,
     } = event
 
-    if (event.nativeEvent.isComposing) {
+    const modified = altKey || ctrlKey || metaKey
+
+    if (event.target !== event.currentTarget || event.nativeEvent.isComposing || modified) {
       return
     }
 
-    const plain = !shiftKey && !altKey && !ctrlKey && !metaKey
-    const control = event.target instanceof HTMLElement ? event.target : null
-
-    if (control !== host) {
-      if (!plain || !control?.matches(QUESTION_CONTROLS)) {
-        return
-      }
-
-      if (key === 'Escape') {
-        event.preventDefault(); event.stopPropagation(); focusComposer({ host })
-      } else if (key === 'ArrowUp' || key === 'ArrowDown') {
-        const direction = key === 'ArrowUp' ? 'backward' : 'forward'
-
-        if (control instanceof HTMLTextAreaElement && !onNoteEdgeLine({
-          note: control,
-          direction,
-        })) {
-          return
-        }
-
-        event.preventDefault(); event.stopPropagation(); leaveQuestionControl({
-          host,
-          control,
-          direction,
-        })
-      }
-
-      return
-    }
-
-    if (key === 'Escape' && !shiftKey && !altKey && !ctrlKey && !metaKey) {
-      const node = window.getSelection()?.focusNode
-      const element = node instanceof Element ? node : node?.parentElement
+    if (key === 'Escape' && !shiftKey) {
       event.preventDefault()
       window.getSelection()?.removeAllRanges()
-
-      if (element?.closest('.chat-decision')) {
-        focusComposer({ host })
-      } else {
-        host.closest<HTMLElement>('.thread')?.focus({ preventScroll: true })
-      }
+      event.currentTarget.closest<HTMLElement>('.thread')?.focus({ preventScroll: true })
 
       return
     }
 
     const selected = selectedPassage({ messages: root.current })
 
-    if (key === 'Enter' && selected && !altKey && !ctrlKey && !metaKey) {
+    if (key === 'Enter' && selected) {
       event.preventDefault()
 
       if (shiftKey) {
@@ -851,71 +709,25 @@ export function Messages({
       } else {
         addComment({ quote: selected })
       }
-
-      return
     }
-
-    if (!CARET_KEY.test(key)) {
-      return
-    }
-
-    const scroller = host.closest('.thread')
-
-    if (!scroller) {
-      return
-    }
-
-    const before = caretBounds(), top = (before?.top ?? 0) + scroller.scrollTop
-    const from = selectionFocus()
-    const line = (key === 'ArrowUp' || key === 'ArrowDown') && plain
-    setTimeout(() => {
-      const after = caretBounds()
-      const moved = after ? Math.abs(after.top + scroller.scrollTop - top) : 0
-      const stuck = !after || moved < (before?.height ?? 0) / 2
-      const direction = key === 'ArrowUp' ? 'backward' : 'forward'
-      const control = line && from ? controlBetween({
-        host,
-        from,
-        to: stuck ? null : selectionFocus(),
-        direction,
-      }) : null
-
-      if (control) {
-        enterControl({
-          control,
-          direction,
-        })
-      } else if (key === 'ArrowDown' && before && stuck && line) {
-        focusComposer({ host })
-      } else {
-        revealCaret({ host })
-      }
-    })
   }
 
   return (
     <TaskReferencesProvider references={taskReferences} openTask={openTask}>
-      <style>{CARET_CSS + comments.map(comment =>
+      <style>{`.messages :is(${MESSAGE_CONTROLS}) { user-select: none; }` + comments.map(comment =>
         `::highlight(${CSS.escape(commentHighlightName({
           name: highlight,
           id: comment.id,
         }))}) { background-color: var(--comment-highlight); }`).join('')}
       </style>
       <div
-        className="messages [&_:is(a,img):not(.composer-field_*)]:[-webkit-user-drag:none] relative flex flex-col gap-message-gap pt-2 in-[.chat-frame]:gap-(--chat-gap) data-caret-host:outline-none data-caret-host:caret-gold [--message-gap:var(--chat-gap,var(--spacing-message-gap))]"
+        className="messages [&_:is(a,img):not(.composer-field_*)]:[-webkit-user-drag:none] relative flex flex-col gap-message-gap pt-2 in-[.chat-frame]:gap-(--chat-gap) outline-none [--message-gap:var(--chat-gap,var(--spacing-message-gap))]"
         data-highlight={highlight}
         ref={root}
-        contentEditable={CARET_SUPPORTED}
-        suppressContentEditableWarning
-        {...{ [CARET_HOST]: '' }}
         role="document"
         aria-label="Messages"
-        aria-readonly="true"
         tabIndex={-1}
-        inputMode="none"
-        spellCheck={false}
-        data-gramm="false"
-        onKeyDown={event => caretKey({ event })}
+        onKeyDown={event => selectionKey({ event })}
         onCopy={event => {
           const editing = event.target instanceof Element && isEditing({ target: event.target })
 
@@ -926,23 +738,6 @@ export function Messages({
             event.preventDefault()
           }
         }}
-        onCut={event => {
-          if (event.target instanceof Element && isEditing({ target: event.target })) {
-            return
-          }
-
-          event.preventDefault()
-
-          if (!copyMessageChips({
-            selection: window.getSelection(),
-            clipboard: event.clipboardData,
-          })) {
-            event.clipboardData.setData(
-              'text/plain',
-              window.getSelection()?.toString() ?? '',
-            )
-          }
-        }}
         onDragStart={event => {
           const editing = event.target instanceof Element && isEditing({ target: event.target })
 
@@ -950,21 +745,7 @@ export function Messages({
             event.preventDefault()
           }
         }}
-        onPaste={event => paste({ event })}
-        // A composition can't be cancelled; over a selection it goes into the new comment's note.
-        onCompositionStart={event => {
-          if (event.target !== event.currentTarget) {
-            return
-          }
-
-          const passage = selectedPassage({ messages: event.currentTarget })
-
-          if (passage) {
-            addComment({ quote: passage })
-          } else {
-            focusComposer({ host: event.currentTarget })
-          }
-        }}
+        onPaste={event => pasteAsComment({ event })}
       >
         {entries.map(entry => {
           const messageId = entry.messageId ?? entry.id
@@ -1012,7 +793,6 @@ export function Messages({
           <div
             className="comment-pill absolute z-5 flex items-center gap-0.5 p-0.75 border border-gold-line rounded-lg bg-surface shadow-comment-pill whitespace-nowrap [&_.button]:min-h-6.5 [&_.button]:py-0.5 [&_.button]:px-2 [&_.button]:gap-1.25 [&_.button]:text-meta [&_.button:first-child]:text-gold [&_kbd]:py-0 [&_kbd]:px-1"
             ref={pill}
-            contentEditable={false}
             onMouseDown={e => e.preventDefault()}
           >
             <Button

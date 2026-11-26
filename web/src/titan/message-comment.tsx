@@ -5,17 +5,12 @@ import type { ChatDrafts } from './chat-drafts.ts'
 import { ComposerField,type ComposerFieldHandle } from './composer-field.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { markdownText } from './markdown-text.ts'
-import { onNoteEdgeLine, type CaretDirection } from './caret.ts'
 import { commentContext, quoteSnippet, type ChatComment } from './chat.ts'
 import { COMMENT_FOCUS } from './comment-motion.ts'
 import { draftView } from './draft.ts'
 import { CommentNumber } from './comment-number.tsx'
 
 const CLIP = 40
-const LINE_KEYS: Record<string, CaretDirection> = {
-  ArrowUp: 'backward',
-  ArrowDown: 'forward',
-}
 
 function CommentQuote({
   comment,
@@ -69,7 +64,6 @@ export function MessageComment({
   drafts,
   remove,
   inline = false,
-  leave,
   release,
   show,
 }: {
@@ -78,13 +72,6 @@ export function MessageComment({
   number: number
   remove(): void
   inline?: boolean
-  leave?({
-    note,
-    direction,
-  }: {
-    note: HTMLTextAreaElement
-    direction: CaretDirection | 'escape'
-  }): void
   release?(): void
   show?(): void
 }) {
@@ -119,7 +106,6 @@ export function MessageComment({
         COMMENT_FOCUS,
         { detail: comment.id },
       ))}
-      contentEditable={false}
       role="group"
       aria-label={`Comment ${number}`}
     >
@@ -142,35 +128,6 @@ export function MessageComment({
           onBlur={() => {
             if (document.hasFocus()) {
               release?.()
-            }
-          }}
-          onKeyDown={({ event }) => {
-            const note = event.currentTarget, {
-              key,
-              shiftKey,
-              altKey,
-              ctrlKey,
-              metaKey,
-            } = event
-
-            const modified = shiftKey || altKey || ctrlKey || metaKey
-
-            if (!leave || event.nativeEvent.isComposing || modified) {
-              return
-            }
-
-            const direction = LINE_KEYS[key]
-            const edge = direction && note.selectionStart === note.selectionEnd && onNoteEdgeLine({
-              note,
-              direction,
-            })
-
-            if (key === 'Escape' || edge) {
-              event.preventDefault(); event.stopPropagation()
-              leave({
-                note,
-                direction: direction ?? 'escape',
-              })
             }
           }}
         />

@@ -416,7 +416,7 @@ class WorkspacePointerSensor extends PointerSensor {
         options,
       ) => {
         const target = event.target
-        const control = target instanceof Element ? target.closest('button,input,textarea,select,a,.resize,[contenteditable=true], [popover]') : null
+        const control = target instanceof Element ? target.closest('button,input,textarea,select,a,.resize,[popover]') : null
 
         if (control && !control.matches('[data-drag-handle],[data-column-heading],[data-sort-id]')) {
           return false

@@ -1,4 +1,4 @@
-import { enterNote } from './caret.ts'
+import { focusAtEnd } from '#web-shared/ui/focus.ts'
 import { commentRange } from './comment-highlight.ts'
 import type { ChatComment } from './chat.ts'
 import { COMMENT_REVEAL, scrollMessage } from './comment-motion.ts'
@@ -19,9 +19,8 @@ export function revealComment({
   })
 
   if (note) {
-    enterNote({
-      note,
-      direction: 'backward',
+    focusAtEnd({
+      field: note,
       preventScroll: true,
     })
     scrollMessage({

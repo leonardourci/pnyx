@@ -426,7 +426,7 @@ export function CommentAnnotations({
   )
 
   return (
-    <div className="comment-annotations absolute inset-0 pointer-events-none select-none" ref={layer} contentEditable={false}>
+    <div className="comment-annotations absolute inset-0 pointer-events-none select-none" ref={layer}>
       <style>{`::highlight(${emphasis}) { background-color: var(--comment-emphasis); text-decoration: underline; text-decoration-color: var(--color-gold); }`}</style>
       {jump && layout.rects.map((
         rect,

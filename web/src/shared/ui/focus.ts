@@ -1,11 +1,18 @@
-import { CARET_HOST } from '#web-titan/caret.ts'
+export const isEditing = ({ target }: { target: Element }) =>
+  !!target.closest('input,textarea')
 
-export const isEditing = ({ target }: { target: Element }) => {
-  const field = target.closest('input,textarea,[contenteditable]:not([contenteditable=false])')
-
-  const isMessageCaret = field?.hasAttribute(CARET_HOST)
-
-  return !!field && !isMessageCaret
+export function focusAtEnd({
+  field,
+  preventScroll = false,
+}: {
+  field: HTMLTextAreaElement
+  preventScroll?: boolean
+}) {
+  field.focus({ preventScroll })
+  field.setSelectionRange(
+    field.value.length,
+    field.value.length,
+  )
 }
 
 export function focusElement({ selector }: { selector: string }) {

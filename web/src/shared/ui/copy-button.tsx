@@ -45,7 +45,6 @@ export function CopyButton({
       size="copy"
       title={title}
       data-copied={result === 'copied' || undefined}
-      contentEditable={false}
       // eslint-disable-next-line othrys/object-params -- React owns the button event signature.
       onMouseDown={event => event.preventDefault()}
       // eslint-disable-next-line othrys/object-params -- React owns the button event signature.

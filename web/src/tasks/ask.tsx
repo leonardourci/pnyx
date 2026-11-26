@@ -182,7 +182,6 @@ export function AskPanel({
           >Ask a follow-up
           </Button>
           <Button
-            contentEditable={false}
             variant="surface"
             disabled={busy || imagesLoading || (!pick && !text.trim())}
             onClick={async () => {

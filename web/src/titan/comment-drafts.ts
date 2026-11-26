@@ -1,13 +1,10 @@
 import type { ChatDrafts } from './chat-drafts.ts'
 import { imageLine } from '#titan/images.ts'
-import { isEditing } from '#web-shared/ui/focus.ts'
+import { focusAtEnd, isEditing } from '#web-shared/ui/focus.ts'
 import {
   type ClipboardEvent as PasteEvent,
 } from 'react'
 import { flushSync } from 'react-dom'
-import {
-  enterNote,
-} from './caret.ts'
 import { commentUpdates,sendableComment } from './chat.ts'
 import { pendingImage,settleImage } from './draft.ts'
 import { checkImages,pastedImages,uploadImage } from './image-upload.ts'
@@ -46,7 +43,6 @@ export function useCommentDrafts({
     }
   }
 
-  // Rendered at once, so keys or a composition begun over the selection land in the note.
   const addComment = ({
     quote,
     text = '',
@@ -81,10 +77,7 @@ export function useCommentDrafts({
     )
 
     if (note) {
-      enterNote({
-        note,
-        direction: 'backward',
-      })
+      focusAtEnd({ field: note })
     }
 
     return comment.id
@@ -152,8 +145,7 @@ export function useCommentDrafts({
     }
   }
 
-  // The caret host is contenteditable for navigation, so native paste must be intercepted.
-  const paste = ({ event }: { event: PasteEvent<HTMLDivElement> }) => {
+  const pasteAsComment = ({ event }: { event: PasteEvent<HTMLDivElement> }) => {
     if (event.target instanceof Element && (
       isEditing({ target: event.target }) || event.target.closest('.comment-card')
     )) {
@@ -187,7 +179,7 @@ export function useCommentDrafts({
 
   return {
     addComment,
-    paste,
+    pasteAsComment,
     remove,
     release,
   }

@@ -1712,3 +1712,112 @@ test.each([
     socket.close()
   },
 )
+
+test(
+  'a comment typed over a selected reply goes out with the next message, removing one keeps focus in the chat, and Mod+L reaches the composer from anywhere',
+  async () => {
+    const hydra = await othrys.hydra()
+    othrys.claude.plan({
+      hydra: hydra.id,
+      text: 'Say something',
+      reply: 'Here is the reply to read.',
+    })
+    const session = await hydra.chat({ text: 'Say something' })
+    const page = await openTitan({
+      port: othrys.port(),
+      hydraId: hydra.id,
+    })
+    const workspace = page.locator('[data-hydra-workspace][data-active=true]')
+    const reply = workspace.getByText(
+      'Here is the reply to read.',
+      { exact: true },
+    )
+    await reply.waitFor()
+    const composer = workspace.getByRole(
+      'textbox',
+      {
+        name: 'Reply to Titan',
+        exact: true,
+      },
+    )
+    const composerFocus = () => composer.evaluate((field: HTMLTextAreaElement) => ({
+      focused: field === document.activeElement,
+      caret: field.selectionStart,
+    }))
+    await composer.fill('Draft')
+    await composer.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(
+      0,
+      0,
+    ))
+    const note = workspace.getByRole(
+      'textbox',
+      {
+        name: 'Comment on selected text',
+        exact: true,
+      },
+    )
+
+    const selectReply = async () => {
+      const line = await reply.boundingBox()
+
+      if (!line) {
+        throw new Error('The reply has no box on screen')
+      }
+
+      const middle = line.y + line.height / 2
+      await page.mouse.move(
+        line.x + 1,
+        middle,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        line.x + line.width - 1,
+        middle,
+        { steps: 4 },
+      )
+      await page.mouse.up()
+      await workspace.getByRole(
+        'button',
+        { name: 'Comment on selection' },
+      ).waitFor()
+    }
+
+    await selectReply()
+    await page.keyboard.type('dropped')
+    await workspace.getByRole(
+      'button',
+      {
+        name: 'Remove comment',
+        exact: true,
+      },
+    ).press('Enter')
+    await note.waitFor({ state: 'detached' })
+    expect(await workspace.getByRole(
+      'document',
+      {
+        name: 'Messages',
+        exact: true,
+      },
+    ).evaluate(list => list === document.activeElement)).toBe(true)
+    await selectReply()
+    await page.keyboard.type('looks right')
+    expect(await note.inputValue()).toBe('looks right')
+    await page.keyboard.press('ControlOrMeta+l')
+    expect(await composerFocus()).toEqual({
+      focused: true,
+      caret: 'Draft'.length,
+    })
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await page.keyboard.press('ControlOrMeta+l')
+    expect(await composerFocus()).toEqual({
+      focused: true,
+      caret: 'Draft'.length,
+    })
+    await page.keyboard.press('Enter')
+    await until({
+      what: 'the comment to go out with the message',
+      check: () => session.received.some(text => text.includes('> Here is the reply to read.')
+        && text.includes('looks right') && text.includes('Draft') && !text.includes('dropped')),
+    })
+  },
+)

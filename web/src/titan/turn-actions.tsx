@@ -67,7 +67,7 @@ export function TurnActionsFold({
   }
 
   return (
-    <div contentEditable={false} className="turn-actions mt-0.5 mx-0 mb-3 text-muted text-meta [&>.disclosure>summary]:text-[length:inherit] [&>.disclosure>summary]:justify-start [&>.disclosure>summary]:gap-1.25 [&>.disclosure>summary]:p-0 [&>.disclosure>summary>.disclosure-chevron]:ml-0 [&>.disclosure>summary>.disclosure-chevron]:opacity-0 [&>.disclosure>summary>.disclosure-chevron]:transition-opacity [&>.disclosure>summary>.disclosure-chevron]:duration-fast [&>.disclosure>summary>.disclosure-chevron]:ease-ui [&>.disclosure:is([open],:hover,:focus-within)>summary>.disclosure-chevron]:opacity-100 [&>.disclosure>.disclosure-body]:pt-2.5 [&>.disclosure>.disclosure-body]:px-0 [&>.disclosure>.disclosure-body]:pb-0">
+    <div className="turn-actions mt-0.5 mx-0 mb-3 text-muted text-meta [&>.disclosure>summary]:text-[length:inherit] [&>.disclosure>summary]:justify-start [&>.disclosure>summary]:gap-1.25 [&>.disclosure>summary]:p-0 [&>.disclosure>summary>.disclosure-chevron]:ml-0 [&>.disclosure>summary>.disclosure-chevron]:opacity-0 [&>.disclosure>summary>.disclosure-chevron]:transition-opacity [&>.disclosure>summary>.disclosure-chevron]:duration-fast [&>.disclosure>summary>.disclosure-chevron]:ease-ui [&>.disclosure:is([open],:hover,:focus-within)>summary>.disclosure-chevron]:opacity-100 [&>.disclosure>.disclosure-body]:pt-2.5 [&>.disclosure>.disclosure-body]:px-0 [&>.disclosure>.disclosure-body]:pb-0">
       <Disclosure
         title={label}
         open={opened !== undefined && OPENED_PROGRESS.has(opened)}
@@ -122,7 +122,7 @@ export function TurnFooter({
   })
 
   return (
-    <MessageFooter variant="agent" contentEditable={false}>
+    <MessageFooter variant="agent">
       {turn.reply && (
         <CopyButton
           label="Copy reply"
