@@ -41,7 +41,7 @@ export function questionReminder({
   }
 
   const at = ask.reaskedAt ?? ask.escalated?.at ?? ask.at
-  const last = state.questionReminders?.[key] ?? state.hydraReview?.reminders[key]
+  const last = state.questionReminders?.[key] ?? state.titanReview?.reminders[key]
   const reminded = last && now - Date.parse(last) < QUESTION_REMINDER_MS
   const dueAt = card.reminder?.dueAt
   const scheduled = dueAt && now - Date.parse(dueAt) < QUESTION_REMINDER_MS

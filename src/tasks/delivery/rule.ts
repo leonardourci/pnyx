@@ -70,7 +70,7 @@ function landingLine({
     return 'Landing: commit your work on your branch in this copy, then append your completion to worker.log. Do not push or open a pull request; the owner lands the branch.'
   }
 
-  const merger = rule.merge === 'hydra'
+  const merger = rule.merge === 'titan'
     ? 'Titan merges it once every check is green'
     : 'the owner merges it'
 

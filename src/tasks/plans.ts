@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { Decision, TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { explained } from '#app/cli-support.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TitanError, inField } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
 import { taskProject } from '#projects/read.ts'
@@ -225,7 +225,7 @@ export function planTaskChange({
       }
     }
 
-    return hydraEvent({
+    return titanEvent({
       state,
       meta,
       cardId: createdId,
@@ -314,7 +314,7 @@ export function planTaskChange({
       data.intent = intent
     }
 
-    return hydraEvent({
+    return titanEvent({
       state,
       meta,
       cardId: task.id,
@@ -339,7 +339,7 @@ export function planTaskChange({
     return { skipped: 'unchanged' }
   }
 
-  return hydraEvent({
+  return titanEvent({
     state,
     meta,
     cardId: task.id,

@@ -6,7 +6,7 @@ import type { AnswerMessage, Ask, AskAudience, Card } from './model.ts'
 import type { Question } from '#workers/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { hydraEvent, reportActor } from '#titan/titan.ts'
+import { titanEvent, reportActor } from '#titan/titan.ts'
 import { isManagedTask } from './select.ts'
 import { askWording, openAsks, pendingAnswer } from './ask-state.ts'
 import { clarificationMessage } from './question-actions.ts'
@@ -275,7 +275,7 @@ export function decideAsk({
     })
   }
 
-  if (audience === 'hydra' && meta.actor === TITAN_ACTOR) {
+  if (audience === 'titan' && meta.actor === TITAN_ACTOR) {
     audience = 'owner'
     inform({
       task: card.id,
@@ -285,7 +285,7 @@ export function decideAsk({
   }
 
   // Titan hears a question as its asker's report, so only an agent's question goes to Titan.
-  if (audience === 'hydra' && !reportActor({ actor: meta.actor })) {
+  if (audience === 'titan' && !reportActor({ actor: meta.actor })) {
     inform({
       reason: 'Question sent to Titan by another actor',
       clear: 'othrys send --text "<message>"',
@@ -360,7 +360,7 @@ export function decideAsk({
     said.context ??= `Task: ${card.title}. [Card](othrys-task:${encodeURIComponent(card.id)})`
   }
 
-  return hydraEvent({
+  return titanEvent({
     state,
     meta,
     cardId: card.id,
@@ -462,7 +462,7 @@ export function decideEscalation({
     recommended: recommendation,
   })
 
-  return hydraEvent({
+  return titanEvent({
     state,
     meta,
     cardId: card.id,
@@ -537,7 +537,7 @@ export function askAnswer({
     id,
   })
 
-  if (actor.startsWith('helper:') && (ask.audience !== 'hydra' || ask.escalated)) {
+  if (actor.startsWith('helper:') && (ask.audience !== 'titan' || ask.escalated)) {
     inform({
       reason: 'Helper answered an owner question',
       clear: 'Review the saved question and its answers in the UI.',
@@ -557,7 +557,7 @@ export function askAnswer({
   let quoted = typed
 
   if (fromMessage !== undefined) {
-    const message = state?.hydraMessages?.find(message => message.id === fromMessage)
+    const message = state?.titanMessages?.find(message => message.id === fromMessage)
 
     if (!message) {
       throw new TitanError({
@@ -738,7 +738,7 @@ export function decideAskClosure({
       throw invalid({ message: 'only Titan can re-ask an answered merge Hold' })
     }
 
-    return hydraEvent({
+    return titanEvent({
       state,
       cardId: card.id,
       meta,
@@ -761,7 +761,7 @@ export function decideAskClosure({
       throw invalid({ message: 'Choose the current answer event to reopen this question' })
     }
 
-    return hydraEvent({
+    return titanEvent({
       state,
       cardId: card.id,
       meta,
@@ -805,7 +805,7 @@ export function decideAskClosure({
     })
   }
 
-  return hydraEvent({
+  return titanEvent({
     state,
     cardId: card.id,
     meta,

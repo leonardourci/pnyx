@@ -39,8 +39,8 @@ export interface TaskEvent {
   details?: string
 }
 
-// hydra: a chat paragraph that starts with the task's chip; told: Titan to the worker.
-export type UpdateKind = 'ask' | 'hydra' | 'told' | 'decision' | 'status' | 'worker' | 'link' | 'created' | 'moved' | 'renamed' | 'done' | 'report' | 'plain'
+// titan: a chat paragraph that starts with the task's chip; told: Titan to the worker.
+export type UpdateKind = 'ask' | 'titan' | 'told' | 'decision' | 'status' | 'worker' | 'link' | 'created' | 'moved' | 'renamed' | 'done' | 'report' | 'plain'
 
 export interface UpdateDecision {
   questionId?: string
@@ -158,7 +158,7 @@ const outcome = ({ data }: { data: Record<string, unknown> }): Row | undefined =
 }
 
 const decisionActor = ({ actor }: { actor?: string }) => {
-  if (actor === 'hydra') {
+  if (actor === 'titan') {
     return 'Titan'
   }
 
@@ -194,7 +194,7 @@ const replied = ({
     return undefined
   }
 
-  if (actor === 'hydra') {
+  if (actor === 'titan') {
     return {
       kind: 'told',
       state: 'Told the worker',
@@ -214,9 +214,9 @@ const noted = ({ data }: { data: Record<string, unknown> }): Row | undefined => 
   const text = String(data.text ?? '')
   const at = typeof data.at === 'string' ? { at: data.at } : {}
 
-  if (data.source === 'hydra') {
+  if (data.source === 'titan') {
     return {
-      kind: 'hydra',
+      kind: 'titan',
       state: 'Titan replied',
       note: text,
       ...at,

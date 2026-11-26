@@ -90,7 +90,7 @@ function cardDetail({
   }
 
   detail.sessions = card.sessionIds?.length ? card.sessionIds : 'none'
-  detail.visibility = card.hidden ? 'history' : 'hydra'
+  detail.visibility = card.hidden ? 'history' : 'titan'
   detail.hideAfterHours = card.doneAfterHours ?? 'shared setting'
 
   if (card.settings) {
@@ -286,7 +286,7 @@ export function taskHistory({
     0,
     limit,
   )
-  const moved = history.some(entry => entry.hydra !== titanId)
+  const moved = history.some(entry => entry.titan !== titanId)
   const last = page.at(-1)
   const more = matches.length > limit
   const out: Output = {
@@ -305,7 +305,7 @@ export function taskHistory({
 
   if (more && last) {
     // A cursor on this Titan stays a plain seq; one on an earlier Titan names it.
-    const next = last.hydra === titanId ? last.event.seq : `${last.hydra}:${last.event.seq}`
+    const next = last.titan === titanId ? last.event.seq : `${last.titan}:${last.event.seq}`
     out.next = next
   }
 
@@ -326,7 +326,7 @@ function historyRow({
   const row: Output = {}
 
   if (moved) {
-    row.hydra = entry.hydra
+    row.titan = entry.titan
   }
 
   Object.assign(
@@ -356,7 +356,7 @@ function historyRow({
   return row
 }
 
-// --before takes a seq on this Titan, or <hydra>:<seq> for the events a moved task had on an earlier Titan.
+// --before takes a seq on this Titan, or <titan>:<seq> for the events a moved task had on an earlier Titan.
 function historyStart({
   history,
   titanId,
@@ -371,7 +371,7 @@ function historyStart({
   }
 
   const [
-    hydra,
+    titan,
     seq,
   ] = before.includes(':') ? before.split(
     ':',
@@ -384,19 +384,19 @@ function historyStart({
 
   if (!/^\d+$/.test(seq ?? '') || !Number.isSafeInteger(at)) {
     throw new TitanError({
-      message: '--before takes a seq or <hydra>:<seq>',
+      message: '--before takes a seq or <titan>:<seq>',
       code: 'VALIDATION_ERROR',
     })
   }
 
   // The cursor names the last row shown, so paging continues right after it, even into another Titan's rows.
-  const shown = history.findIndex(entry => entry.hydra === hydra && entry.event.seq === at)
+  const shown = history.findIndex(entry => entry.titan === titan && entry.event.seq === at)
 
   if (shown !== -1) {
     return shown + 1
   }
 
-  const index = history.findIndex(entry => entry.hydra === hydra && entry.event.seq < at)
+  const index = history.findIndex(entry => entry.titan === titan && entry.event.seq < at)
 
   return index === -1 ? history.length : index
 }

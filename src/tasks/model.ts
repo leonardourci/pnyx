@@ -58,7 +58,7 @@ export interface AnswerMessage {
   at: string
 }
 
-export type AskAudience = 'hydra' | 'owner'
+export type AskAudience = 'titan' | 'owner'
 
 // The asking event's wording and asker never change; an escalation is its own event.
 export interface Ask {

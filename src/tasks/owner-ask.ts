@@ -28,7 +28,7 @@ export function ownerAsk({
   }
 
   if (message) {
-    const source = state.hydraMessages?.find(entry => entry.id === message
+    const source = state.titanMessages?.find(entry => entry.id === message
       && ownerActor({ actor: entry.actor }))
 
     if (!source || !source.text.includes(text)) {

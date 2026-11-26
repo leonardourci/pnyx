@@ -9,8 +9,8 @@ import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
 import { askAnswer, askReport, decideAsk, decideAskClosure, decideEscalation } from './ask-decide.ts'
 import { askWording, pendingAnswer } from './ask-state.ts'
-import { hydraConfig } from '#titan/config.ts'
-import { hydraDelivery, hydraEvent, reportActor } from '#titan/titan.ts'
+import { titanConfig } from '#titan/config.ts'
+import { titanDelivery, titanEvent, reportActor } from '#titan/titan.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
@@ -120,7 +120,7 @@ async function handToTitan({
   actor: string
 }): Promise<Output> {
   const state = loadTitan({ titanId }).state
-  const message = state.hydraMessages?.find(m => m.id === id)
+  const message = state.titanMessages?.find(m => m.id === id)
 
   if (!message || !await readServer({ titanId })) {
     return {}
@@ -129,9 +129,9 @@ async function handToTitan({
   return askHost({
     titanId,
     body: {
-      action: 'hydra',
+      action: 'titan',
       id,
-      text: hydraDelivery({ message }),
+      text: titanDelivery({ message }),
       actor,
     },
   })
@@ -184,7 +184,7 @@ async function answerTitan({
       }).decision
       const picks = choice && choice !== answer ? [`Choice: ${choice}`] : []
 
-      return hydraEvent({
+      return titanEvent({
         state,
         meta,
         cardId: card.id,
@@ -203,10 +203,10 @@ async function answerTitan({
             fromMessage: source,
             liftsHold,
             ...(choice ? { choice } : {}),
-            hydra: hydraConfig({
+            titan: titanConfig({
               state,
               id: titanId,
-            }).hydra.id,
+            }).titan.id,
           },
         },
       })
@@ -234,7 +234,7 @@ async function answerTitan({
   return {
     ...result,
     answered: id,
-    hydra: hosted.state ?? 'not running',
+    titan: hosted.state ?? 'not running',
   }
 }
 
@@ -408,11 +408,11 @@ async function askOne({
     value: values.recommend,
     flag: '--recommend',
   })
-  const to = values.to ?? (m.actor === TITAN_ACTOR ? 'owner' : 'hydra')
+  const to = values.to ?? (m.actor === TITAN_ACTOR ? 'owner' : 'titan')
 
-  if (to !== 'hydra' && to !== 'owner') {
+  if (to !== 'titan' && to !== 'owner') {
     throw new TitanError({
-      message: '--to takes hydra or owner',
+      message: '--to takes titan or owner',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -449,7 +449,7 @@ async function askOne({
         meta: m,
       })
 
-      // hydraEvent skips only an event id it knows, which returned above.
+      // titanEvent skips only an event id it knows, which returned above.
       if (!('event' in decision)) {
         throw new TitanError({
           message: `question already recorded: ${decision.skipped}`,
@@ -461,8 +461,8 @@ async function askOne({
       const card = writer.state.cards[decision.event.cardId]!
       const ask = card.asks!.find(a => a.id === id)!
 
-      if (ask.audience === 'hydra') {
-        const report = hydraEvent({
+      if (ask.audience === 'titan') {
+        const report = titanEvent({
           state: writer.state,
           meta: {
             at: m.at,
@@ -481,10 +481,10 @@ async function askOne({
                 titanId,
               }),
               ask: id,
-              hydra: hydraConfig({
+              titan: titanConfig({
                 state: writer.state,
                 id: titanId,
-              }).hydra.id,
+              }).titan.id,
             },
           },
         })
@@ -505,7 +505,7 @@ async function askOne({
   const state = loadTitan({ titanId }).state
   const ask = Object.values(state.cards).flatMap(c => c.asks ?? [])
     .find(a => a.id === id)
-  const message = state.hydraMessages?.find(msg => msg.ask === id)
+  const message = state.titanMessages?.find(msg => msg.ask === id)
   const help = ask?.audience === 'owner'
     ? 'The owner answers it in the task; wait for that answer before work that depends on it'
     : 'Titan answers or escalates it; keep working on what does not depend on the answer, which arrives as a message'

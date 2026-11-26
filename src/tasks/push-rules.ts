@@ -33,7 +33,7 @@ export function findCard({
     throw new TitanError({
       message: `card not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Use othrys board to list tasks'],
+      help: ['Use othrys titan to list tasks'],
     })
   }
 

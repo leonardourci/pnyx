@@ -3,8 +3,8 @@ import { ownerActor } from '#app/actors.ts'
 import type { TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { TitanError } from '#store/errors.ts'
-import { hydraEvent } from '#titan/titan.ts'
-import { hydraConfig } from '#titan/config.ts'
+import { titanEvent } from '#titan/titan.ts'
+import { titanConfig } from '#titan/config.ts'
 import { findCard } from './push-rules.ts'
 import { openAsks, pendingAnswer } from './ask-state.ts'
 import { reminderTime } from './time.ts'
@@ -58,7 +58,7 @@ export function decideQuestionAction({
   let source: AnswerMessage | undefined
 
   if (fromMessage) {
-    const message = state.hydraMessages?.find(message => message.id === fromMessage)
+    const message = state.titanMessages?.find(message => message.id === fromMessage)
     const askedAt = ask.reaskedAt ?? ask.escalated?.at ?? ask.at
     const newer = message && Date.parse(message.at) > Date.parse(askedAt)
 
@@ -106,7 +106,7 @@ export function decideQuestionAction({
       })
     }
 
-    return hydraEvent({
+    return titanEvent({
       state,
       cardId: card.id,
       meta,
@@ -133,14 +133,14 @@ export function decideQuestionAction({
     })
   }
 
-  return hydraEvent({
+  return titanEvent({
     state,
     cardId: card.id,
     meta,
     change: {
       type: 'titan.message',
       data: {
-        hydra: hydraConfig({ state }).hydra.id,
+        titan: titanConfig({ state }).titan.id,
         task: card.id,
         discusses: ask.id,
         action: 'send',

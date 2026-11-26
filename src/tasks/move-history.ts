@@ -2,7 +2,7 @@ import type { TitanEvent } from '#app/model.ts'
 import { scanEvents } from '#app/event-log.ts'
 
 export interface HistoryEntry {
-  hydra: string
+  titan: string
   event: TitanEvent
 }
 
@@ -29,7 +29,7 @@ export function movedHistory({
     }),
   ]
     .filter(event => matches({ event })).map(event => ({
-      hydra: event.titanId ?? titanId,
+      titan: event.titanId ?? titanId,
       event,
     }))
 }

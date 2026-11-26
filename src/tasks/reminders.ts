@@ -290,8 +290,8 @@ export function applyReminder({
     delete card.expired
 
     if (!event.data.grouped) {
-      state.hydraMessages = [
-        ...(state.hydraMessages ?? []),
+      state.titanMessages = [
+        ...(state.titanMessages ?? []),
         {
           ...event.data.message,
           id: event.id,

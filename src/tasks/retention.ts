@@ -1,4 +1,4 @@
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { cardDoneDeadline, doneDeadline } from './retention-rules.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
@@ -37,7 +37,7 @@ export async function hideDone({
           continue
         }
 
-        const decision = hydraEvent({
+        const decision = titanEvent({
           state: writer.state,
           meta: {
             actor: 'othrys',

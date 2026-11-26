@@ -129,7 +129,7 @@ export async function mergeCommand({
     url,
   })
 
-  if (!owner && rule?.merge !== 'hydra' && !mergeApproval({
+  if (!owner && rule?.merge !== 'titan' && !mergeApproval({
     state,
     card,
     url: link.url,
@@ -188,7 +188,7 @@ export async function mergeCommand({
         if (currentCard && !owner && taskLanding({
           state: writer.state,
           card: currentCard,
-        })?.merge !== 'hydra'
+        })?.merge !== 'titan'
           && !mergeApproval({
             state: writer.state,
             card: currentCard,

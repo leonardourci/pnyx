@@ -77,7 +77,7 @@ export type Landing = (typeof LANDINGS)[number]
 // Who merges a project's pull requests: the owner, or Titan once every check is green.
 export const MERGERS = [
   'owner',
-  'hydra',
+  'titan',
 ] as const
 
 export type Merger = (typeof MERGERS)[number]

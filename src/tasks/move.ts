@@ -17,7 +17,7 @@ import { carryCursors, harvestTranscripts } from '#integrations/hooks/harvest.ts
 import { TitanError } from '#store/errors.ts'
 import { projectsFor } from '#projects/read.ts'
 import { matchesProject, sameProjectPath } from '#projects/identity.ts'
-import { hydraDir, hydraIds } from '#app/home-migration.ts'
+import { titanDir, titanIds } from '#app/home-migration.ts'
 import { taskSessions } from '#workers/session-history.ts'
 import { workerQueue } from '#workers/queue.ts'
 import type { Card } from './model.ts'
@@ -52,7 +52,7 @@ const missing = ({
   ref: string
 }) => refuse({
   message: `card not found: ${ref}`,
-  help: `Use othrys board --titan ${titanId}`,
+  help: `Use othrys titan --titan ${titanId}`,
   code: 'NOT_FOUND',
 })
 
@@ -255,7 +255,7 @@ function checkTarget({
 }: {
   to: string
 }): void {
-  if (!hydraIds().includes(to)) {
+  if (!titanIds().includes(to)) {
     throw refuse({
       message: `Titan not found: ${to}`,
       help: 'Choose a destination Titan in the UI',
@@ -324,7 +324,7 @@ function carried({
   })
   const prefix = `${card.id}:`
   const reminded = {
-    ...state.hydraReview?.reminders,
+    ...state.titanReview?.reminders,
     ...state.questionReminders,
   }
 
@@ -436,7 +436,7 @@ export function stageTaskMove({
   source.afterCommit({
     run: () => carryCursors({
       from: source.dir,
-      to: hydraDir({ titanId: to }),
+      to: titanDir({ titanId: to }),
       card: cardId,
     }),
   })
@@ -719,7 +719,7 @@ export function currentHolder({
     seen.add(at)
     at = current.movedOut?.[card]?.to
 
-    if (at && !hydraIds().includes(at)) {
+    if (at && !titanIds().includes(at)) {
       return undefined
     }
 

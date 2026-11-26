@@ -1,7 +1,7 @@
 import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { Ask, Card } from '#tasks/model.ts'
 import { cardLanding, readyForReview, type Link } from './model.ts'
-import { hydraEvent, reportActor } from '#titan/titan.ts'
+import { titanEvent, reportActor } from '#titan/titan.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 
@@ -181,7 +181,7 @@ export function* retireableReviewQuestions({
       continue
     }
 
-    const decision = hydraEvent({
+    const decision = titanEvent({
       state,
       cardId,
       meta: {
@@ -240,7 +240,7 @@ export function reconcileAsks({
     }
 
     const reason = released ? 'Discussion hold released or replaced' : ended ? 'Task ended' : 'Pull request merged or closed'
-    const closed = hydraEvent({
+    const closed = titanEvent({
       state,
       cardId: card.id,
       meta: {
@@ -292,7 +292,7 @@ export function reconcileAsks({
       continue
     }
 
-    const asked = hydraEvent({
+    const asked = titanEvent({
       state,
       cardId: card.id,
       meta: {
@@ -331,7 +331,7 @@ function mergeQuestion({
   id: string
 }): Extract<TitanEvent, { type: 'task.asked' }>['data'] {
   const number = link.url.split('/').at(-1)
-  const report = state.hydraMessages?.findLast(message => message.task === card.id
+  const report = state.titanMessages?.findLast(message => message.task === card.id
     && reportActor({ actor: message.actor }) && !message.ask)
   const line = card.workerLog?.latest
   const useReport = report && (!line || Date.parse(report.at) >= Date.parse(line.at))

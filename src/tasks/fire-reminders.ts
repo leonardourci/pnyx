@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { TitanState } from '#app/model.ts'
-import { hydraConfig } from '#titan/config.ts'
-import { hydraEvent, othrysRunsTitan } from '#titan/titan.ts'
+import { titanConfig } from '#titan/config.ts'
+import { titanEvent, othrysRunsTitan } from '#titan/titan.ts'
 import type { TitanMessage } from '#titan/model.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
@@ -56,7 +56,7 @@ export async function fireReminders({
         card,
         ask,
       } of deferredQuestions({ state: writer.state }).filter(question => question.at <= time)) {
-        const resumed = hydraEvent({
+        const resumed = titanEvent({
           state: writer.state,
           cardId: card.id,
           meta: {
@@ -129,7 +129,7 @@ export async function fireReminders({
           nextAt = Number.isFinite(nextDate.getTime()) ? nextDate.toISOString() : null
         }
 
-        const decision = hydraEvent({
+        const decision = titanEvent({
           state: writer.state,
           meta: {
             at,
@@ -147,7 +147,7 @@ export async function fireReminders({
                 task: card.id,
                 action: 'send',
                 text,
-                hydra: hydraConfig({ state: writer.state }).hydra.id,
+                titan: titanConfig({ state: writer.state }).titan.id,
               },
             },
           },
@@ -181,7 +181,7 @@ export async function fireReminders({
       const message: Omit<TitanMessage, 'id' | 'at' | 'actor'> = {
         action: 'send',
         text: lines.join('\n'),
-        hydra: hydraConfig({ state: writer.state }).hydra.id,
+        titan: titanConfig({ state: writer.state }).titan.id,
       }
 
       if (taskIds.size === 1) {
@@ -192,7 +192,7 @@ export async function fireReminders({
         message.reminderQuestions = pendingQuestions.map(question => question.key)
       }
 
-      const posted = hydraEvent({
+      const posted = titanEvent({
         state: writer.state,
         meta: {
           at,

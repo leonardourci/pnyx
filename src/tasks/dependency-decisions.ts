@@ -2,7 +2,7 @@ import { inform } from '#app/command-notices.ts'
 import type { Decision, TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TITAN_ACTOR, ownerActor } from '#app/actors.ts'
 import { TitanError } from '#store/errors.ts'
 import { isManagedTask } from './select.ts'
@@ -91,7 +91,7 @@ export function decideDependencies({
     return { skipped: 'unchanged' }
   }
 
-  return hydraEvent({
+  return titanEvent({
     state,
     meta,
     cardId: card.id,

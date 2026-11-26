@@ -52,7 +52,7 @@ const EVENT_TYPES: Record<TaskOperation['op'], EventType> = {
   'task.release': 'task.released',
 }
 const WRITE_FLAGS = [
-  'hydra',
+  'titan',
   'actor',
   'reason',
   'details',

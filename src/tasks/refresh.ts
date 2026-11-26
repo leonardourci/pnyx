@@ -18,21 +18,21 @@ export function refreshTasks({
     permissionAttention({ card })
   }
 
-  const hydra = state.cards[TITAN_CARD]
-  const ref = state.config?.hydra.session
+  const titan = state.cards[TITAN_CARD]
+  const ref = state.config?.titan.session
   const session = ref ? state.sessions?.[ref] : undefined
 
-  if (hydra) {
-    if (session && hydra.launch?.via === 'command' && session.launch?.via === 'hooks') {
+  if (titan) {
+    if (session && titan.launch?.via === 'command' && session.launch?.via === 'hooks') {
       session.launch = {
-        ...hydra.launch,
+        ...titan.launch,
         harness: session.agent.provider,
       }
     }
 
-    hydra.sessionIds = session ? [session.id] : []
+    titan.sessionIds = session ? [session.id] : []
     assignDefined({
-      target: hydra,
+      target: titan,
       values: {
         agent: session && { ...session.agent },
         terminal: session?.terminal && { ...session.terminal },
@@ -44,9 +44,9 @@ export function refreshTasks({
         turnEndedSeq: session?.turnEndedSeq,
       },
     })
-    hydra.attention = session?.agent.host === 'othrys'
+    titan.attention = session?.agent.host === 'othrys'
       ? [
-        ...hydra.attention.filter(a => !a.key.startsWith('hook:')),
+        ...titan.attention.filter(a => !a.key.startsWith('hook:')),
         ...sessionAttention({
           state,
           session,
@@ -56,6 +56,6 @@ export function refreshTasks({
         state,
         session,
       }) : []
-    hydra.hidden = true
+    titan.hidden = true
   }
 }

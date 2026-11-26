@@ -2,7 +2,7 @@ import { inform } from '#app/command-notices.ts'
 import { commit, required, type Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { hydraEvent, reportActor } from '#titan/titan.ts'
+import { titanEvent, reportActor } from '#titan/titan.ts'
 import type { TitanState } from '#app/model.ts'
 import type { LandingRule } from './model.ts'
 import { loadTitan } from '#app/store.ts'
@@ -63,7 +63,7 @@ function decideTaskLanding({
     }
   }
 
-  return hydraEvent({
+  return titanEvent({
     state,
     meta,
     cardId: card.id,
@@ -77,7 +77,7 @@ function decideTaskLanding({
   })
 }
 
-// task landing <task> [--landing pr|branch] [--merge owner|hydra] [--clear] sets this task's rule, or prints the one it follows.
+// task landing <task> [--landing pr|branch] [--merge owner|titan] [--clear] sets this task's rule, or prints the one it follows.
 export async function taskLandingCommand({
   titanId,
   ref,

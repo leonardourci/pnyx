@@ -1,7 +1,7 @@
 import { inform } from '#app/command-notices.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TITAN_ACTOR, ownerActor } from '#app/actors.ts'
 import type { TitanState } from '#app/model.ts'
 import { TitanError } from '#store/errors.ts'
@@ -70,7 +70,7 @@ export function decideHold({
   }
 
   if (!release) {
-    return hydraEvent({
+    return titanEvent({
       state,
       meta,
       cardId: card.id,
@@ -81,7 +81,7 @@ export function decideHold({
     })
   }
 
-  const source = state.hydraMessages?.find(entry => entry.id === message)
+  const source = state.titanMessages?.find(entry => entry.id === message)
 
   if (message && !source) {
     throw new TitanError({
@@ -130,7 +130,7 @@ export function decideHold({
     })
   }
 
-  return hydraEvent({
+  return titanEvent({
     state,
     meta,
     cardId: card.id,
