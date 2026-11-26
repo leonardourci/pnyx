@@ -1,5 +1,5 @@
 import type { TitanProject } from '#projects/model.ts'
-import type { Folder, FolderListing } from '#projects/folders.ts'
+import type { FolderEntry, FolderListing } from '#projects/folders.ts'
 import { reference } from '#titan/mentions.ts'
 import type { MentionItem } from './mention-picker.tsx'
 import type { TypedListing } from './path-completion.ts'
@@ -9,7 +9,7 @@ export const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
 const fileItem = ({
   name,
   path,
-}: Folder): MentionItem => ({
+}: FolderEntry): MentionItem => ({
   key: `file:${path}`,
   kind: 'file',
   title: name,

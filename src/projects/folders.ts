@@ -3,24 +3,24 @@ import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { hydraIds, hydrasDir } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
-import { CONTENTS_LIMIT } from './folder-limit.ts'
+import { CONTENTS_LIMIT, RECENT_LIMIT } from './folder-limit.ts'
 import { hiddenUntilDotTyped, startsWithTyped } from './folder-names.ts'
 
 const FOLDER_LIMIT = 50
 
-export interface Folder {
+export interface FolderEntry {
   name: string
   path: string
 }
 export interface FolderListing {
-  folders: Folder[]
-  files?: Folder[]
-  recent: Folder[]
-  selected?: Folder & { empty: boolean }
+  folders: FolderEntry[]
+  files?: FolderEntry[]
+  recent: FolderEntry[]
+  selected?: FolderEntry & { empty: boolean }
   cloneInto?: string
 }
 
-const folder = ({ path }: { path: string }): Folder => ({
+const folderEntry = ({ path }: { path: string }): FolderEntry => ({
   name: basename(path) || path,
   path,
 })
@@ -61,7 +61,7 @@ export async function listFolders({
   try {
     if ((await stat(typed)).isDirectory()) {
       selected = {
-        ...folder({ path: await realpath(typed) }),
+        ...folderEntry({ path: await realpath(typed) }),
         empty: await emptyFolder({ path: typed }),
       }
     }
@@ -69,9 +69,10 @@ export async function listFolders({
 
   const root = selected ? typed : dirname(typed)
   const prefix = selected ? '' : basename(typed)
-  const folders: Folder[] = []
-  const files: Folder[] = []
-  const limit = withFiles ? CONTENTS_LIMIT : FOLDER_LIMIT
+  const folders: FolderEntry[] = []
+  const files: FolderEntry[] = []
+  const entryLimit = withFiles ? CONTENTS_LIMIT : FOLDER_LIMIT
+  const recentLimit = withFiles ? CONTENTS_LIMIT : RECENT_LIMIT
   const entries = await opendir(root)
 
   for await (const entry of entries) {
@@ -100,12 +101,12 @@ export async function listFolders({
       ))
 
     if (directory) {
-      folders.push(folder({ path: child }))
-    } else if (withFiles && files.length < limit) {
-      files.push(folder({ path: child }))
+      folders.push(folderEntry({ path: child }))
+    } else if (withFiles && files.length < entryLimit) {
+      files.push(folderEntry({ path: child }))
     }
 
-    if (folders.length === limit) {
+    if (folders.length === entryLimit) {
       break
     }
   }
@@ -132,7 +133,7 @@ export async function listFolders({
     } catch { /* An unreadable Titan does not hide the others' history. */ }
   }
 
-  const recent: Folder[] = []
+  const recent: FolderEntry[] = []
   // Titan's own agent folders live under Othrys's home; they are never a project to add.
   const othrysFolders = await realpath(hydrasDir()).catch(() => hydrasDir())
 
@@ -141,11 +142,11 @@ export async function listFolders({
       const path = await realpath(cwd)
 
       if ((await stat(path)).isDirectory() && !path.startsWith(`${othrysFolders}${sep}`)) {
-        recent.push(folder({ path }))
+        recent.push(folderEntry({ path }))
       }
     } catch { /* Old working folders can have disappeared. */ }
 
-    if (recent.length === 8) {
+    if (recent.length === recentLimit) {
       break
     }
   }

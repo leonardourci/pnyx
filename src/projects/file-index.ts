@@ -8,6 +8,11 @@ const run = promisify(execFile)
 const FILES_PER_PROJECT = 20_000
 const LIST_BUFFER = 64 * 1024 * 1024
 
+export interface ProjectFiles {
+  path: string
+  files: string[]
+}
+
 interface Entry {
   files?: Promise<string[]>
   watcher?: FSWatcher
@@ -131,7 +136,7 @@ export function createFileIndex() {
     return listing
   }
 
-  const projectFiles = async ({ roots }: { roots: string[] }) => {
+  const projectFiles = async ({ roots }: { roots: string[] }): Promise<ProjectFiles[]> => {
     for (const root of entries.keys()) {
       if (!roots.includes(root)) {
         forget({ root })

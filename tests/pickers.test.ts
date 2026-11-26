@@ -289,7 +289,7 @@ test(
 )
 
 test(
-  'a typed name narrows its folder\'s contents and recent folders, a missing folder lists nothing, and Tab completes only from contents listed in full',
+  'a typed name narrows its folder\'s contents and recent folders before at most eight recent ones show, a missing folder lists nothing, and Tab completes only from contents listed in full',
   () => {
     const entries = ({ names }: { names: string[] }) => names.map(name => ({
       name,
@@ -316,13 +316,19 @@ test(
         ],
       }),
       recent: [
+        ...Array.from(
+          { length: 8 },
+          (
+            _,
+            index,
+          ) => ({
+            name: `guide-${index}`,
+            path: `/work/docs/guide-${index}`,
+          }),
+        ),
         {
           name: 'ui',
           path: '/work/app-web/ui',
-        },
-        {
-          name: 'docs',
-          path: '/work/docs',
         },
       ],
       selected: work,
@@ -359,6 +365,10 @@ test(
       listing: contents,
       name: 'app',
     }).recent.map(folder => folder.path)).toEqual(['/work/app-web/ui'])
+    expect(typedListing({
+      listing: contents,
+      name: '',
+    }).recent).toHaveLength(8)
     expect(completePath({
       typed: '/work/app',
       contents,

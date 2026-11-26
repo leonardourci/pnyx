@@ -1,8 +1,8 @@
-import type { Folder, FolderListing } from '#projects/folders.ts'
-import { CONTENTS_LIMIT } from '#projects/folder-limit.ts'
+import type { FolderEntry, FolderListing } from '#projects/folders.ts'
+import { CONTENTS_LIMIT, RECENT_LIMIT } from '#projects/folder-limit.ts'
 import { hiddenUntilDotTyped, startsWithTyped } from '#projects/folder-names.ts'
 
-export type TypedListing = Pick<FolderListing, 'folders' | 'files' | 'recent'> & { selected?: Folder }
+export type TypedListing = Pick<FolderListing, 'folders' | 'files' | 'recent'> & { selected?: FolderEntry }
 
 export function splitPath({ path }: { path: string }) {
   const slash = path.lastIndexOf('/')
@@ -36,11 +36,14 @@ export function typedListing({
     return {
       folders: [],
       files: [],
-      recent: listing.recent,
+      recent: listing.recent.slice(
+        0,
+        RECENT_LIMIT,
+      ),
     }
   }
 
-  const shown = ({ name: entry }: Folder) => startsWithTyped({
+  const shown = ({ name: entry }: FolderEntry) => startsWithTyped({
     name: entry,
     typed: name,
   }) && !hiddenUntilDotTyped({
@@ -55,12 +58,16 @@ export function typedListing({
     name: folder.path,
     typed: typedFullPath,
   }))
+  const recent = name ? recentUnderTypedName : listing.recent
   const namedFolder = listing.folders.find(folder => folder.name === name)
 
   return {
     folders: listing.folders.filter(shown),
     files: (listing.files ?? []).filter(shown),
-    recent: name ? recentUnderTypedName : listing.recent,
+    recent: recent.slice(
+      0,
+      RECENT_LIMIT,
+    ),
     selected: name ? namedFolder : directory,
   }
 }

@@ -10,16 +10,16 @@ import type { TitanClient } from '#app/server-transport.ts'
 import type { createServerWorkers } from '#app/server-workers.ts'
 import { loadTitan } from '#app/store.ts'
 import type { createThreadSubscriptions } from '#app/thread-subscriptions.ts'
+import type { createFileIndex } from '#projects/file-index.ts'
 import { cliCommand } from './cli-command.ts'
 import { compactCommand } from './compact.ts'
+import { filesCommand } from './files.ts'
 import { hydraAgentCommand } from './hydra-agent.ts'
 import { hydrasCommand } from './hydras.ts'
 import { modelsCommand } from './models.ts'
 import { oracleCommand } from './oracle.ts'
 import { replyCommand } from './reply.ts'
 import { threadCommand } from './thread.ts'
-import { filesCommand } from './files.ts'
-import type { createFileIndex } from '#projects/file-index.ts'
 
 type ThreadSubscriptions = ReturnType<typeof createThreadSubscriptions>
 

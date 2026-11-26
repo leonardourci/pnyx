@@ -1,6 +1,6 @@
 import { FolderChoice, FolderDescription } from './folder-ui.tsx'
 import { useId, useState } from 'react'
-import type { Folder } from '#projects/folders.ts'
+import type { FolderEntry } from '#projects/folders.ts'
 import { Input } from '#web-shared/ui/controls.tsx'
 
 export function FolderSearch({
@@ -12,7 +12,7 @@ export function FolderSearch({
 }: {
   label: string
   value: string
-  folders: Folder[]
+  folders: FolderEntry[]
   disabled: boolean
   onChange({ path }: { path: string }): void
 }) {

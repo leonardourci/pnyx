@@ -11,7 +11,8 @@ import type { TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { createContext,useCallback,useContext,useMemo,useRef,useState,type ReactNode } from 'react'
 import { useKept,useStableActions } from '#web-shared/stable.ts'
 import { useSkillsCatalog } from './skills-catalog.ts'
-import { columnRows,fileRows,projectRows,taskRows,titanRows,type ProjectFiles } from './mention-candidates.ts'
+import { columnRows,fileRows,projectRows,taskRows,titanRows } from './mention-candidates.ts'
+import type { ProjectFiles } from '#projects/file-index.ts'
 import { useCachedList } from '#web-shared/cached-list.ts'
 import { storageKey } from './outbox.ts'
 import type { MentionItem } from './mention-picker.tsx'
@@ -45,6 +46,9 @@ export interface OtherTitan {
 }
 
 const Sources = createContext<ComposerSources | null>(null)
+
+const validProjectFiles = ({ value }: { value: unknown }) => Array.isArray(value)
+  && value.every(project => typeof project?.path === 'string' && Array.isArray(project.files))
 
 function ComposerSourcesProvider({
   sources,
@@ -127,7 +131,7 @@ export function TitanComposerSources({
       name: 'files',
       args: [],
     })).projects as ProjectFiles[],
-    savedCopyValid: ({ value }) => Array.isArray(value),
+    savedCopyValid: validProjectFiles,
   })
   const projectFiles = useMemo(
     () => fileRows({ projects: files.value ?? [] }),

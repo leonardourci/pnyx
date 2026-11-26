@@ -5,6 +5,7 @@ import { liveTask } from '#tasks/select.ts'
 import type { Card } from '#tasks/model.ts'
 import type { TitanProject } from '#projects/model.ts'
 import type { ProjectGroup } from '#projects/groups.ts'
+import type { ProjectFiles } from '#projects/file-index.ts'
 import { isPendingImage, type PlacedChip } from './draft.ts'
 import type { OtherTitan } from './composer-sources.tsx'
 import type { MentionItem } from './mention-picker.tsx'
@@ -135,11 +136,6 @@ export const titanRows = ({ titans }: { titans: OtherTitan[] }): MentionRow[] =>
       }),
     },
   }))
-
-export interface ProjectFiles {
-  path: string
-  files: string[]
-}
 
 const fileRow = ({
   project,
