@@ -172,6 +172,10 @@ test(
       what: 'the turn to end with its own reply',
       check: () => session.answered === 2 && queue({ titanId: titan.id })?.working === false,
     })
+    expect(heard({
+      received: session.received,
+      text: 'and report the coverage',
+    })).toBe(1)
     const page = await titan.page()
     const { thread } = await page.send({
       name: 'thread',
