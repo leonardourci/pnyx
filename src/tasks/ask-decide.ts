@@ -193,7 +193,7 @@ function validateOwnerQuestion({
     missing.push('--question with one plain decision ending in ?')
   }
 
-  const taskLinks = /\[(?:\\[^\r\n]|[^\\\]\r\n])+\]\((?:othrys|pnyx)-task:([^\s)]+)\)/g
+  const taskLinks = /\[(?:\\[^\r\n]|[^\\\]\r\n])+\]\(othrys-task:([^\s)]+)\)/g
   const explanation = context?.replace(
     taskLinks,
     '',
