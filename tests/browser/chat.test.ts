@@ -1291,7 +1291,7 @@ test.each([
   { harness: 'claude' },
   { harness: 'codex' },
 ] as const)(
-  '$harness sends in either chat interrupt the turn and Stop adds no conversation text',
+  '$harness sends in either chat reach the running turn without stopping it, and Stop adds no conversation text',
   async ({ harness }) => {
     const titan = await othrys.titan()
     const { worker } = await titan.startTask({
@@ -1309,6 +1309,7 @@ test.each([
       text: 'Keep working',
       partial: 'Working on it',
       hold: true,
+      folds: true,
     })
     const titanSession = await titan.chat({ text: 'Keep working' })
     const workerTurn = othrys[harness].plan({
@@ -1316,6 +1317,7 @@ test.each([
       match: ({ text }) => text.includes('Keep working too'),
       partial: 'Working too',
       hold: true,
+      folds: true,
     })
     await titan.owner({
       args: [
@@ -1369,18 +1371,11 @@ test.each([
           'Stop worker',
         ],
       ] as const) {
-      const nextTurn = othrys[harness].plan({
-        titan: titan.id,
-        match: ({ text: input }) => input.includes(text),
-        partial: 'New reply',
-        reply: 'Must not finish after Stop',
-        hold: true,
-      })
-      onTestFinished(() => nextTurn.release())
       const conversation = page.locator('[data-titan-workspace][data-active=true]').getByRole(
         'region',
         { name: chat },
       )
+      const answeredBeforeSend = session.answered
       await page.locator('[data-titan-workspace][data-active=true]').getByRole(
         'textbox',
         {
@@ -1391,9 +1386,10 @@ test.each([
         .fill(text)
       await page.keyboard.press('Enter')
       await until({
-        what: 'the new input to reach the interrupted session',
+        what: 'the new input to reach the running turn',
         check: () => session.received.some(input => input.includes(text)),
       })
+      expect(session.answered).toBe(answeredBeforeSend)
       await conversation.getByText(
         text,
         { exact: true },
@@ -1428,7 +1424,6 @@ test.each([
       })
       expect(await conversation.locator('[data-entry-id]').count()).toBe(rows)
       expect(await conversation.locator('.chat-error').count()).toBe(0)
-      expect(await conversation.getByText('Must not finish after Stop').count()).toBe(0)
       expect(await conversation.locator('[aria-label="You"]').filter({ hasText: text })
         .count()).toBe(1)
     }
@@ -1453,23 +1448,11 @@ test.each([
     })
     socket.close()
     const text = `Retry the ${target} input`
-
-    if (target === 'Titan') {
-      const turn = othrys.codex.plan({
-        titan: titan.id,
-        text: 'Keep working before refusal',
-        hold: true,
-      })
-      onTestFinished(() => turn.release())
-      await titan.chat({ text: 'Keep working before refusal' })
-      othrys.codex.refuseNextInterrupt()
-    } else {
-      othrys.codex.plan({
-        titan: titan.id,
-        match: ({ text: input }) => input.includes(text),
-        refuse: true,
-      })
-    }
+    othrys.codex.plan({
+      titan: titan.id,
+      match: ({ text: input }) => input.includes(text),
+      refuse: true,
+    })
 
     const page = await openTitan({
       port: othrys.port(),
@@ -1545,7 +1528,7 @@ test.each([
     await until({
       what: 'the repeated refusal to reach the provider',
       check: () => othrys.codex.sessions.flatMap(session => session.received)
-        .filter(input => input.includes(text)).length === (target === 'Titan' ? 1 : 2),
+        .filter(input => input.includes(text)).length === 2,
     })
     await row.getByRole('alert').filter({ hasText: 'refused the retry' })
       .waitFor()
@@ -1557,7 +1540,7 @@ test.each([
         exact: true,
       },
     ).click()
-    const expectedAttempts = target === 'Titan' ? 2 : 3
+    const expectedAttempts = 3
     await until({
       what: 'the successful Retry turn to finish',
       check: () => {

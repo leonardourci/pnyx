@@ -1496,7 +1496,7 @@ else {
 )
 
 test(
-  'a worker turn a restart cuts resumes in the same session, the owner\'s message interrupts and is delivered once, and the chat shows only that message as the owner\'s, with or without the session named',
+  'a worker turn a restart cuts resumes in the same session, the owner\'s message sent meanwhile reaches it once from its inbox, and the chat shows only that message as the owner\'s, with or without the session named',
   async () => {
     const titan = await othrys.titan()
     const folder = titan.folder({ name: 'migration' })
@@ -1528,12 +1528,6 @@ test(
       ],
     })
     const cut = await titan.agent({ cwd: folder })
-    othrys.claude.plan({
-      titan: titan.id,
-      match: ({ text }) => text.includes('Also migrate the archive'),
-      partial: 'Archive migration',
-      hold: true,
-    })
     await titan.owner({
       args: [
         'reply',
@@ -1543,25 +1537,16 @@ test(
       ],
     })
 
-    await until({
-      what: 'the worker to take the owner input',
-      check: () => cut.received.some(text => text.includes('Also migrate the archive')),
-    })
     await othrys.restart()
     const resumed = await until({
       what: 'the worker to resume after the restart',
       check: () => othrys.claude.sessions.find(session =>
         session.cwd === folder && session.resumed),
     })
-    const inbox = await titan.as({ session: resumed }).run({
-      args: [
-        'task',
-        'inbox',
-        'read',
-        'migration',
-      ],
+    await until({
+      what: 'the resumed worker to receive the unread message from its inbox',
+      check: () => resumed.received.some(message => message.includes('inbox') && message.includes('Also migrate the archive')),
     })
-    expect(JSON.stringify(inbox.messages).split('Also migrate the archive')).toHaveLength(2)
     expect((await titan.as({ session: resumed }).run({
       args: [
         'task',
@@ -2446,7 +2431,7 @@ test(
 )
 
 test(
-  'Stop on a worker keeps delivered owner input and unread Titan steering, marks the card stopped, and permits a worker asking to Stop with a notice',
+  'Stop on a worker cancels the owner\'s unread reply as not delivered but keeps Titan\'s steering, marks the card stopped, and permits a worker asking to Stop with a notice',
   async () => {
     const titan = await othrys.titan()
     const folder = titan.folder({ name: 'stoppable' })
@@ -2485,12 +2470,6 @@ test(
     })
     const titanSession = await titan.chat({ text: 'look at the stoppable task' })
 
-    othrys.claude.plan({
-      titan: titan.id,
-      match: ({ text }) => text.includes('owner follow-up'),
-      partial: 'Following up',
-      hold: true,
-    })
     await titan.owner({
       args: [
         'reply',
@@ -2508,11 +2487,6 @@ test(
       ],
     })
 
-    await until({
-      what: 'the worker to take the owner follow-up before Stop',
-      check: () => worker.received.some(text => text.includes('owner follow-up')),
-    })
-
     const stopped = await titan.as({ session: worker }).run({
       args: [
         'task',
@@ -2524,7 +2498,7 @@ test(
     expect(stopped.stopped).toMatch(/^task-/)
     expect((await titan.task({ key: 'stoppable' })).status).toBe('ended')
     await until({
-      what: 'the owner\'s reply to remain delivered',
+      what: 'the owner\'s reply to read as not delivered',
       check: async () => (await titan.owner({
         args: [
           'task',
@@ -2535,7 +2509,7 @@ test(
         text: string
         receipt?: string
       }) =>
-        entry.text === 'owner follow-up' && entry.receipt === 'delivered'),
+        entry.text === 'owner follow-up' && entry.receipt === 'failed'),
     })
     expect(JSON.stringify((await titan.task({ key: 'stoppable' })).attention)).toContain('interrupted')
 
@@ -2552,7 +2526,7 @@ test(
     expect(times({
       sessions: [worker],
       text: 'owner follow-up',
-    })).toBe(1)
+    })).toBe(0)
     await titan.owner({
       args: [
         'task',
@@ -2674,9 +2648,7 @@ test(
 async function driven({
   session,
   onEnd,
-  owner = false,
 }: {
-  owner?: boolean
   session: HostedSession
   onEnd({ end }: { end(): Promise<void> }): void
 }) {
@@ -2689,7 +2661,6 @@ async function driven({
         id: message.id!,
         text: message.text,
         images: [],
-        ownerMessageId: owner ? message.id : undefined,
       }
     }
   }
@@ -4586,103 +4557,6 @@ test(
         })
       },
     })
-  },
-)
-
-test.each([
-  { opening: false },
-  { opening: true },
-])(
-  'owner input interrupts the previous Codex turn even when its start is pending: $opening',
-  async ({ opening }) => {
-    const codex = fakeCodex()
-    let start = () => {}
-    const starting = new Promise<void>(resolve => {
-      start = resolve
-    })
-    const first = codex.plan({
-      text: 'first owner input',
-      hold: true,
-      acknowledgeStartAfter: starting,
-    })
-    const second = codex.plan({
-      text: 'second owner input',
-      hold: true,
-    })
-    onTestFinished(() => {
-      start()
-      first.release()
-      second.release()
-    })
-    const session = await codexProvider({ spawnCodex: codex.spawnCodex }).open({
-      cwd: process.env.TMPDIR!,
-      settings: {},
-      env: {},
-      signal: new AbortController().signal,
-    })
-    const {
-      input,
-      events,
-    } = await driven({
-      session,
-      owner: true,
-      onEnd: ({ end }) => onTestFinished(end),
-    })
-
-    if (!opening) {
-      start()
-    }
-
-    input.push({
-      id: 'first-owner',
-      text: 'first owner input',
-    })
-    await until({
-      what: 'the first input to reach the agent',
-      check: () => codex.sessions[0]?.received.includes('first owner input'),
-    })
-
-    if (!opening) {
-      await until({
-        what: 'the first turn to start',
-        check: () => session.snapshot().work.runningTurns.length === 1,
-      })
-    }
-
-    input.push({
-      id: 'second-owner',
-      text: 'second owner input',
-    })
-    await until({
-      what: 'the next owner input to be queued',
-      check: () => session.snapshot().work.unsettledInputs.includes('second-owner'),
-    })
-    start()
-    const ended = await until({
-      what: 'the first owner turn to be interrupted',
-      check: () => events.flatMap(event => typeof event === 'object' && event.type === 'turn-ended'
-        && event.outcome.inputIds.includes('first-owner') && event.outcome.status === 'interrupted' ? [event.outcome] : []).at(-1),
-    })
-    const next = await until({
-      what: 'the second input to start its own turn',
-      check: () => events.flatMap(event => typeof event === 'object' && event.type === 'input'
-        && event.receipt.inputId === 'second-owner' && event.receipt.phase === 'confirmed' ? [event.receipt] : []).at(-1),
-    })
-    expect(next.turn).not.toBe(ended.turn)
-    first.release()
-    second.release()
-    await until({
-      what: 'the second owner turn to finish',
-      check: () => events.some(event => typeof event === 'object' && event.type === 'turn-ended'
-        && event.outcome.turn === next.turn && event.outcome.status === 'completed'),
-    })
-    const firstOutcomes = events.filter(event => typeof event === 'object' && event.type === 'turn-ended'
-      && event.outcome.turn === ended.turn)
-    expect(firstOutcomes).toHaveLength(1)
-    expect(codex.sessions[0]?.received).toEqual([
-      'first owner input',
-      'second owner input',
-    ])
   },
 )
 

@@ -63,7 +63,6 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
   let observe: (({ event }: { event: HostedEvent }) => string | void) | undefined
   let stopError: Error | undefined
   let failure: Error | undefined
-  let inputGeneration = 0
   const turnWaiters = new Set<() => void>()
   const readers = new Set<{
     queue: HostedEvent[]
@@ -510,13 +509,7 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
         value,
       }),
     }),
-    interrupt: ({ cancelQueued }) => {
-      if (cancelQueued) {
-        inputGeneration += 1
-      }
-
-      return control({ run: () => interruptTurn({ cancelQueued }) })
-    },
+    interrupt: ({ cancelQueued }) => control({ run: () => interruptTurn({ cancelQueued }) }),
     close() {
       try {
         native.close()
@@ -548,8 +541,6 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
 
       const messages = async function* () {
         for await (const message of input) {
-          const generation = inputGeneration
-          const earlierInput = work.unsettledInputs.length > 0
           work.unsettledInputs.push(message.id)
           emit({
             event: {
@@ -560,43 +551,6 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
               },
             },
           })
-
-          if (message.ownerMessageId && (work.runningTurns.length > 0 || earlierInput)) {
-            emit({ event: 'carried' })
-
-            try {
-              await interruptTurn({ cancelQueued: false })
-            } catch (error) {
-              const stopped = generation !== inputGeneration
-              const reason = error instanceof Error ? error.message : String(error)
-              emit({
-                event: {
-                  type: 'input',
-                  receipt: {
-                    inputId: message.id,
-                    phase: 'refused',
-                    stopped: stopped ? true : undefined,
-                    error: stopped ? undefined : reason,
-                  },
-                },
-              })
-              continue
-            }
-          }
-
-          if (generation !== inputGeneration) {
-            emit({
-              event: {
-                type: 'input',
-                receipt: {
-                  inputId: message.id,
-                  phase: 'refused',
-                  stopped: true,
-                },
-              },
-            })
-            continue
-          }
 
           yield message
         }
