@@ -1,53 +1,8 @@
 import type { TitanProject } from '#projects/model.ts'
-import type { Folder, FolderListing } from '#projects/folders.ts'
-import { hiddenUntilDotTyped, startsWithTyped } from '#projects/folder-names.ts'
+import type { FolderListing } from '#projects/folders.ts'
 import { reference } from '#titan/mentions.ts'
 import type { MentionItem } from './mention-picker.tsx'
-
-type TypedListing = Pick<FolderListing, 'folders' | 'files' | 'recent'> & { selected?: Folder }
-
-export function splitPath({ path }: { path: string }) {
-  const slash = path.lastIndexOf('/')
-
-  if (slash < 0) {
-    return {
-      directory: path,
-      name: '',
-    }
-  }
-
-  return {
-    directory: path.slice(
-      0,
-      slash + 1,
-    ),
-    name: path.slice(slash + 1),
-  }
-}
-
-export function typedListing({
-  listing,
-  name,
-}: {
-  listing: FolderListing
-  name: string
-}): TypedListing {
-  const shown = ({ name: entry }: Folder) => startsWithTyped({
-    name: entry,
-    typed: name,
-  }) && !hiddenUntilDotTyped({
-    name: entry,
-    typed: name,
-  })
-  const namedFolder = listing.folders.find(folder => folder.name === name)
-
-  return {
-    folders: listing.folders.filter(shown),
-    files: (listing.files ?? []).filter(shown),
-    recent: listing.recent,
-    selected: name ? namedFolder : listing.selected,
-  }
-}
+import type { TypedListing } from './path-completion.ts'
 
 export const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
 

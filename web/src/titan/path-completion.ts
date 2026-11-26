@@ -1,6 +1,51 @@
-import type { FolderListing } from '#projects/folders.ts'
+import type { Folder, FolderListing } from '#projects/folders.ts'
 import { CONTENTS_LIMIT } from '#projects/folder-limit.ts'
-import { splitPath, typedListing } from './mention-folders.ts'
+import { hiddenUntilDotTyped, startsWithTyped } from '#projects/folder-names.ts'
+
+export type TypedListing = Pick<FolderListing, 'folders' | 'files' | 'recent'> & { selected?: Folder }
+
+export function splitPath({ path }: { path: string }) {
+  const slash = path.lastIndexOf('/')
+
+  if (slash < 0) {
+    return {
+      directory: path,
+      name: '',
+    }
+  }
+
+  return {
+    directory: path.slice(
+      0,
+      slash + 1,
+    ),
+    name: path.slice(slash + 1),
+  }
+}
+
+export function typedListing({
+  listing,
+  name,
+}: {
+  listing: FolderListing
+  name: string
+}): TypedListing {
+  const shown = ({ name: entry }: Folder) => startsWithTyped({
+    name: entry,
+    typed: name,
+  }) && !hiddenUntilDotTyped({
+    name: entry,
+    typed: name,
+  })
+  const namedFolder = listing.folders.find(folder => folder.name === name)
+
+  return {
+    folders: listing.folders.filter(shown),
+    files: (listing.files ?? []).filter(shown),
+    recent: listing.recent,
+    selected: name ? namedFolder : listing.selected,
+  }
+}
 
 const commonPrefix = ({ names }: { names: string[] }) => names.reduce((
   prefix,
