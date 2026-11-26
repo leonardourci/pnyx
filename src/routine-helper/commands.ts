@@ -191,7 +191,7 @@ export function supervisedCommands<T extends Record<string, Command>>({ commands
 
       try {
         release = commandLease({
-          name: name,
+          name,
           args,
         })
         const result = run(args)
