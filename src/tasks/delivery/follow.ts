@@ -107,7 +107,7 @@ async function tellWorker({
         card: card.id,
         expectedSession: session,
         text,
-        actor: 'pnyx',
+        actor: 'othrys',
         id,
       },
     })
@@ -334,7 +334,7 @@ export async function followPullRequests({
           url: link.url,
           link: observedLink,
           meta: {
-            actor: 'pnyx',
+            actor: 'othrys',
             at,
           },
         })

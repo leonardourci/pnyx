@@ -164,7 +164,7 @@ export async function resumeWaits({
           text,
           source: 'dependency',
           at,
-          actor: 'pnyx',
+          actor: 'othrys',
           queuedFor: steeringClaim({ card }),
           attempts: [],
         }
@@ -175,7 +175,7 @@ export async function resumeWaits({
               cardId: card.id,
               meta: {
                 id,
-                actor: 'pnyx',
+                actor: 'othrys',
                 at,
               },
             }),

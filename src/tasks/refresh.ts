@@ -44,7 +44,7 @@ export function refreshTasks({
         turnEndedSeq: session?.turnEndedSeq,
       },
     })
-    hydra.attention = session?.agent.host === 'pnyx'
+    hydra.attention = session?.agent.host === 'othrys'
       ? [
         ...hydra.attention.filter(a => !a.key.startsWith('hook:')),
         ...sessionAttention({

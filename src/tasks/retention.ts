@@ -40,7 +40,7 @@ export async function hideDone({
         const decision = hydraEvent({
           state: writer.state,
           meta: {
-            actor: 'pnyx',
+            actor: 'othrys',
             at,
           },
           cardId: card.id,

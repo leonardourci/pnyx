@@ -144,7 +144,7 @@ export function moveRefusal({
     })
   }
 
-  if (session && card.agent?.host !== 'pnyx') {
+  if (session && card.agent?.host !== 'othrys') {
     inform({
       task: card.id,
       reason: `Detached ${card.id}'s outside worker; its hooks retain Titan ${hydraId}`,
@@ -274,7 +274,7 @@ export async function releaseWorker({
   card: Card
   actor: string
 }): Promise<void> {
-  if (card.agent?.host !== 'pnyx') {
+  if (card.agent?.host !== 'othrys') {
     return
   }
 
@@ -479,7 +479,7 @@ export function stageTaskMove({
     }
   }
 
-  if (current.agent?.host !== 'pnyx') {
+  if (current.agent?.host !== 'othrys') {
     for (const session of [...current.sessionIds ?? []]) {
       applyDecision({
         writer: source,

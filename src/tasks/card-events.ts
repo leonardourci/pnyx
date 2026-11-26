@@ -172,12 +172,12 @@ export function applyCardEvent({
 
     if (activity === 'ended') {
       card.stoppedAt ??= event.at
-    } else if (typeof activity === 'string' && (source?.adapter === 'hooks' || source?.adapter === 'pnyx' || !card.sessionActivity)) {
+    } else if (typeof activity === 'string' && (source?.adapter === 'hooks' || source?.adapter === 'othrys' || !card.sessionActivity)) {
       delete card.stoppedAt
     }
 
     // A hosted agent's activity comes from the host as its session's own.
-    if ((source?.adapter === 'hooks' || source?.adapter === 'pnyx') && typeof activity === 'string') {
+    if ((source?.adapter === 'hooks' || source?.adapter === 'othrys') && typeof activity === 'string') {
       if (activity !== 'working') {
         if (card.sessionActivity === 'working') {
           card.turnEndedSeq = event.seq

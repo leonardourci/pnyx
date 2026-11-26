@@ -152,7 +152,7 @@ export async function discoverPullRequests({
                 id: `branch:${card.id}:${repository}:${branch}`,
                 seq: writer.state.seq + 1,
                 at: new Date().toISOString(),
-                actor: 'pnyx',
+                actor: 'othrys',
                 cardId: card.id,
                 type: 'task.branch',
                 data: found,
@@ -256,7 +256,7 @@ export async function discoverPullRequests({
                 },
                 meta: {
                   at: new Date().toISOString(),
-                  actor: 'pnyx',
+                  actor: 'othrys',
                 },
               }),
             })

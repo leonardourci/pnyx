@@ -186,7 +186,7 @@ export function* retireableReviewQuestions({
       cardId,
       meta: {
         at,
-        actor: 'pnyx',
+        actor: 'othrys',
         id: `${ask.id}:${cardId}:${state.seq}:review-update`,
       },
       change: {
@@ -246,7 +246,7 @@ export function reconcileAsks({
       meta: {
         id: `${event.id}:${ask.id}:closed`,
         at: event.at,
-        actor: 'pnyx',
+        actor: 'othrys',
         reason,
       },
       change: {
@@ -298,7 +298,7 @@ export function reconcileAsks({
       meta: {
         id: `${event.id}:${link.url}:merge-question`,
         at: event.at,
-        actor: 'pnyx',
+        actor: 'othrys',
       },
       change: {
         type: 'task.asked',

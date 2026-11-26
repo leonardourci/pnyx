@@ -545,7 +545,7 @@ export function askAnswer({
     })
   }
 
-  if (reportActor({ actor }) || actor === 'pnyx') {
+  if (reportActor({ actor }) || actor === 'othrys') {
     inform({
       reason: 'Question answered by an agent',
       clear: 'Review the saved question and its answers in the UI.',

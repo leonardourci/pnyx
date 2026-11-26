@@ -61,7 +61,7 @@ export async function fireReminders({
           cardId: card.id,
           meta: {
             at,
-            actor: 'pnyx',
+            actor: 'othrys',
           },
           change: {
             type: 'task.ask.deferred',
@@ -84,7 +84,7 @@ export async function fireReminders({
               state: writer.state,
               meta: {
                 at,
-                actor: 'pnyx',
+                actor: 'othrys',
                 id,
               },
               cardId: '$board',
@@ -133,7 +133,7 @@ export async function fireReminders({
           state: writer.state,
           meta: {
             at,
-            actor: 'pnyx',
+            actor: 'othrys',
             reason: text,
           },
           cardId: card.id,
@@ -196,7 +196,7 @@ export async function fireReminders({
         state: writer.state,
         meta: {
           at,
-          actor: 'pnyx',
+          actor: 'othrys',
         },
         cardId: '$hydra',
         change: {
