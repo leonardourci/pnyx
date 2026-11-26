@@ -14,7 +14,7 @@ import { AgentPickers } from '#web-workers/agent-pickers.tsx'
 const DONE_SLIDER_MAX = 168
 const REVIEW_SLIDER_MAX = 120
 
-type Save = ({ patch }: { patch: Record<string, unknown> }) => Promise<boolean>
+export type Save = ({ patch }: { patch: Record<string, unknown> }) => Promise<boolean>
 // Reports a slider's value while it moves, so the preview beside it follows.
 type Slide = ({ value }: { value?: number }) => void
 

@@ -57,11 +57,31 @@ const raw = ({
     },
   )
   sent.once(
+    'upgrade',
+    (
+      response,
+      socket,
+    ) => {
+      socket.destroy()
+      resolve({
+        status: response.statusCode!,
+        body: '',
+      })
+    },
+  )
+  sent.once(
     'error',
     reject,
   )
   sent.end()
 })
+
+const WEBSOCKET_UPGRADE = {
+  connection: 'Upgrade',
+  upgrade: 'websocket',
+  'sec-websocket-version': '13',
+  'sec-websocket-key': Buffer.from('othrys-test-key!').toString('base64'),
+}
 
 test(
   'a worker acts as itself: its worker line lands on its own task, and it can move its task with a notice',
@@ -653,5 +673,142 @@ test(
       ],
     })).task.settings.mode).toBe('bypassPermissions')
     expect(await hydra.owner({ args })).toMatchObject({ event: 'none: proposal already resolved or missing' })
+  },
+)
+
+test(
+  'a host name in allowedHosts opens the page and its socket as Host and https Origin, while other names, plain http and other origins stay refused',
+  async () => {
+    const hydra = await othrys.hydra()
+    const name = 'othrys.example.ts.net'
+    const page = `/hydra/${hydra.id}/`
+    const proxied = {
+      host: name,
+      origin: `https://${name}`,
+    }
+    const setHosts = ({ hosts }: { hosts: string[] }) => hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ allowedHosts: hosts }),
+      ],
+    })
+
+    expect((await raw({
+      path: page,
+      headers: proxied,
+    })).status).toBe(403)
+
+    await setHosts({ hosts: [name] })
+    const opened = await until({
+      what: 'the server to accept the allowed host',
+      check: async () => {
+        const response = await raw({
+          path: page,
+          headers: proxied,
+        })
+
+        return response.status === 200 && response
+      },
+    })
+    const token = /<meta name="othrys-token" content="([^"]+)"/.exec(opened.body)?.[1]
+    expect(token).toBe(localToken())
+
+    expect((await raw({
+      path: `${page}ws?token=${token}`,
+      headers: {
+        ...proxied,
+        ...WEBSOCKET_UPGRADE,
+      },
+    })).status).toBe(101)
+    expect((await raw({
+      path: `${page}ws?token=wrong`,
+      headers: {
+        ...proxied,
+        ...WEBSOCKET_UPGRADE,
+      },
+    })).status).toBe(401)
+
+    for (const headers of [
+      { host: 'other.example.ts.net' },
+      {
+        host: name,
+        origin: `http://${name}`,
+      },
+      {
+        host: name,
+        origin: 'https://attacker.example',
+      },
+    ] as Record<string, string>[]) {
+      expect((await raw({
+        path: page,
+        headers,
+      })).status).toBe(403)
+    }
+
+    expect((await hydra.ownerRefused({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ allowedHosts: [`https://${name}`] }),
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+
+    await setHosts({ hosts: [] })
+    await until({
+      what: 'the server to refuse the removed host again',
+      check: async () => (await raw({
+        path: page,
+        headers: proxied,
+      })).status === 403,
+    })
+  },
+)
+
+test(
+  'the page links a web app manifest whose start URL is in scope and whose any and maskable icons are served',
+  async () => {
+    const hydra = await othrys.hydra()
+    const base = `http://127.0.0.1:${othrys.port()}`
+    const html = await (await fetch(`${base}/hydra/${hydra.id}/`)).text()
+    const link = /<link rel="manifest" href="([^"]+)"/.exec(html)?.[1]
+    expect(link).toBeDefined()
+
+    const response = await fetch(new URL(
+      link!,
+      base,
+    ))
+    expect(response.headers.get('content-type')).toBe('application/manifest+json')
+    const manifest = await response.json() as {
+      start_url: string
+      scope: string
+      display: string
+      icons: {
+        src: string
+        sizes: string
+        purpose: string
+      }[]
+    }
+    expect(manifest.start_url.startsWith(manifest.scope)).toBe(true)
+    expect(manifest.display).toBe('standalone')
+    expect(new Set(manifest.icons.map(icon => icon.purpose))).toEqual(new Set([
+      'any',
+      'maskable',
+    ]))
+
+    for (const icon of manifest.icons) {
+      const image = await fetch(new URL(
+        icon.src,
+        base,
+      ))
+      expect(image.headers.get('content-type')).toBe('image/png')
+    }
+
+    expect(manifest.icons.map(icon => icon.sizes)).toEqual(expect.arrayContaining([
+      '192x192',
+      '512x512',
+    ]))
   },
 )

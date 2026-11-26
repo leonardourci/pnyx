@@ -129,49 +129,24 @@ export function createTitanOperations({
   // The owner's Stop ended the running stop and cancelled what waited behind it, so no recap follows.
   let stoppedByOwner = false
 
-  const stoppedFor = ({
-    id,
-    actor,
-  }: {
-    id: string
-    actor?: string
-  }) => {
-    const state = loadTitan({ hydraId }).state
-    const recap = id.startsWith('operation:')
-    const active = state.hydraOperation
-
-    if (actor === 'pnyx' && active?.kind === 'compaction' && recapId === `operation:${active.id}`) {
-      const childId = `${active.id}:inscribe`
-      const child = state.historyMilestones?.find(pass => pass.id === childId)
-
-      if (id === `operation:${childId}` && child?.kind === 'inscribe'
-        && child.state === 'started' && child.parent === active.id) {
-        return false
-      }
-    }
-
-    if (recap && recapId && id !== recapId) {
+  const stoppedFor = ({ id }: { id: string }) => {
+    if (id.startsWith('operation:') && recapId && id !== recapId) {
       return true
     }
 
-    return Boolean(state.hydraOperation) || (recap
-      ? state.hydraAgentChange?.state === 'running' : Boolean(state.hydraAgentChange))
+    return Boolean(loadTitan({ hydraId }).state.hydraOperation)
   }
 
   const startOperation = ({
     id,
     kind,
-    after,
-    independent = false,
   }: {
     id: string
-    after?: number
     kind: TitanOperation['kind']
-    independent?: boolean
   }) => note({
     fn: ({ writer }) => {
       // A second compaction straight after the first, or a restart inside an upgrade, continues the same stop.
-      if (writer.state.hydraOperation && !independent) {
+      if (writer.state.hydraOperation) {
         return
       }
 
@@ -193,15 +168,8 @@ export function createTitanOperations({
         through: writer.state.seq,
       }
 
-      if (writer.state.hydraOperation) {
-        operation.blocking = false
-      }
-
-      if (waiting.length || after !== undefined) {
-        operation.after = Math.min(
-          after ?? Infinity,
-          ...waiting.map(seq => seq - 1),
-        )
+      if (waiting.length) {
+        operation.after = Math.min(...waiting.map(seq => seq - 1))
       }
 
       if (!stoppedSince) {
@@ -236,28 +204,16 @@ export function createTitanOperations({
     error?: string
   }) => {
     const state = loadTitan({ hydraId }).state
-    const active = state.hydraOperation
-    const running = active?.id === id ? active : undefined
-    const milestone = state.historyMilestones?.find(item => item.id === id)
+    const running = state.hydraOperation?.id === id ? state.hydraOperation : undefined
 
-    if (!running && (milestone?.state !== 'started' || milestone.blocking !== false)) {
-      return
-    }
-
-    const kind = running?.kind ?? milestone?.kind
-
-    if (!kind) {
+    if (!running) {
       return
     }
 
     const ended: TitanOperation = {
       id,
-      kind,
+      kind: running.kind,
       state: error ? 'failed' : 'finished',
-    }
-
-    if (!running) {
-      ended.blocking = false
     }
 
     if (error) {
@@ -270,7 +226,7 @@ export function createTitanOperations({
         const state = loadTitan({ hydraId }).state
 
         // Another operation started meanwhile; the recap waits for the last one to end.
-        if (state.hydraOperation || state.hydraAgentChange?.state === 'running') {
+        if (state.hydraOperation) {
           return
         }
 
@@ -295,18 +251,12 @@ export function createTitanOperations({
           state,
           after: since.seq,
         })) {
-          const pendingSwitch = state.hydraAgentChange
-          const recap = error && pendingSwitch
-            ? {
-              text: `<othrys-wake>Compaction failed: ${error}. The agent switch is still waiting for the owner to retry; its queued messages remain held.</othrys-wake>`,
-              carried: [],
-            }
-            : operationRecap({
-              state,
-              operation: since,
-              error,
-              now: Date.now(),
-            })
+          const recap = operationRecap({
+            state,
+            operation: since,
+            error,
+            now: Date.now(),
+          })
           recapId = `operation:${id}`
           await host().hydra({
             id: recapId,

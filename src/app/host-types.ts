@@ -54,21 +54,9 @@ export interface Host {
     id: string
     release?: boolean
     selected?: AgentConfig
-    // False opens a new session with memory only, for an agent that reads the log itself.
-    history?: boolean
     // The owner's messages the text lists, which Titan takes with this input.
     carried?: string[]
   }): Promise<Record<string, unknown>>
-  agentExhausted({ agent }: { agent: AgentConfig }): Promise<boolean>
-  changeAgent({
-    id,
-    choice,
-  }: {
-    id: string
-    choice: 'inscribe' | 'compact' | 'neither'
-  }): Promise<Record<string, unknown>>
-  // Cancels an agent change that waits for the owner and sends its held messages again, so they reach the running agent or ask about the agent chosen now.
-  resendHeldMessages(): Promise<void>
   stop({
     card,
     cancel }

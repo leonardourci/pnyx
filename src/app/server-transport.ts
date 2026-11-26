@@ -39,6 +39,7 @@ export const MIME: Record<string, string> = {
   '.ico': 'image/x-icon',
   '.ttf': 'font/ttf',
   '.txt': 'text/plain; charset=utf-8',
+  '.webmanifest': 'application/manifest+json',
 }
 
 // Each command gets a receipt or an error carrying its id.
@@ -177,10 +178,18 @@ export const allowedRequest = ({
   origin,
   hosts,
   origins,
+  allowedHosts,
 }: {
   host?: string
   origin?: string
   hosts: Set<string>
   origins: Set<string>
-}) => (hosts.has(host) || localHost.test(host))
-  && (origin === undefined || origins.has(origin) || localOrigin.test(origin))
+  allowedHosts: string[]
+}) => {
+  const hostAllowed = hosts.has(host) || localHost.test(host)
+    || allowedHosts.includes(host.toLowerCase())
+  const originAllowed = origin === undefined || origins.has(origin) || localOrigin.test(origin)
+    || allowedHosts.some(name => origin === `https://${name}`)
+
+  return hostAllowed && originAllowed
+}
