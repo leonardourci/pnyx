@@ -1764,7 +1764,7 @@ test(
 )
 
 test(
-  'an instruction Claude folds into a running turn stays read across restart and reaches the worker once',
+  'an instruction Claude folds into a running turn is read again from the transcript after a crash lost its receipt, and reaches the worker once',
   async () => {
     const titan = await othrys.titan()
     const {
@@ -1817,17 +1817,45 @@ test(
         'folded-read',
         '--full',
       ],
-    })).task.steering?.some((message: {
+    })).task.steering?.find((message: {
+      id: string
       text: string
       ack?: { outcome: string }
     }) => message.text === 'Also update the changelog' && message.ack?.outcome === 'read')
-    await until({
+    const instruction = await until({
       what: 'the folded instruction to read as read',
       check: read,
     })
-    await othrys.restart()
+    const task = await titan.task({ key: 'folded-read' })
+    const log = join(
+      process.env.OTHRYS_HOME!,
+      'titans',
+      titan.id,
+      'tasks',
+      task.id,
+      'task.log',
+    )
+
+    const loseFoldedReceipt = () => {
+      const lines = readFileSync(
+        log,
+        'utf8',
+      ).split('\n')
+      const receipt = lines.findIndex(line => line.includes('"type":"task.steering.handled"')
+        && line.includes(instruction.id))
+      expect(receipt).toBeGreaterThan(0)
+      writeFileSync(
+        log,
+        `${lines.slice(
+          0,
+          receipt,
+        ).join('\n')}\n`,
+      )
+    }
+
+    await othrys.restart({ whileStopped: loseFoldedReceipt })
     await until({
-      what: 'the folded instruction to read as read after restart',
+      what: 'the folded read to be rebuilt from the transcript',
       check: read,
     })
     expect(times({
