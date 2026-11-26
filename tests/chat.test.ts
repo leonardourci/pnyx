@@ -1872,11 +1872,11 @@ test(
     const titan = await othrys.titan()
     othrys.claude.plan({
       titan: titan.id,
-      text: '/compact',
-      compacting: true,
+      text: 'draft the notes',
+      partial: 'Draft',
       hold: true,
     })
-    const session = await titan.chat({ text: '/compact' })
+    const session = await titan.chat({ text: 'draft the notes' })
     await titan.owner({
       args: [
         'titan',
@@ -1936,11 +1936,11 @@ test(
     const titan = await othrys.titan()
     othrys.claude.plan({
       titan: titan.id,
-      text: '/compact',
-      compacting: true,
+      text: 'draft the notes',
+      partial: 'Draft',
       hold: true,
     })
-    const session = await titan.chat({ text: '/compact' })
+    const session = await titan.chat({ text: 'draft the notes' })
     await titan.owner({
       args: [
         'titan',
