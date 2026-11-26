@@ -1,27 +1,11 @@
 import type { TitanProject } from '#projects/model.ts'
-import type { FolderEntry, FolderListing } from '#projects/folders.ts'
+import type { FolderListing } from '#projects/folders.ts'
 import { reference } from '#titan/mentions.ts'
+import { fileItem } from './mention-candidates.ts'
 import type { MentionItem } from './mention-picker.tsx'
 import type { TypedListing } from './path-completion.ts'
 
 export const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
-
-const fileItem = ({
-  name,
-  path,
-}: FolderEntry): MentionItem => ({
-  key: `file:${path}`,
-  kind: 'file',
-  title: name,
-  detail: path,
-  icons: ['file'],
-  group: 'Files',
-  insert: reference({
-    kind: 'file',
-    value: path,
-    label: name,
-  }),
-})
 
 // What the @ picker offers beyond this Titan's own projects.
 export function folderSuggestions({

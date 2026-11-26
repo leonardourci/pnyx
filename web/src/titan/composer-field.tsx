@@ -185,23 +185,32 @@ export function ComposerField({
     connected: mentioning,
     files: typedPath,
   })
-  const listingWhileNextLoads = useRef<FolderListing | undefined>(undefined)
+  const listingWhileNextLoads = useRef<{
+    listing?: FolderListing
+    name: string
+  }>({ name: '' })
 
   if (folders) {
-    listingWhileNextLoads.current = folders.listing
+    listingWhileNextLoads.current = {
+      listing: folders.listing,
+      name: typedName,
+    }
   }
 
-  const shownListing = listingWhileNextLoads.current
+  const {
+    listing: shownListing,
+    name: shownName,
+  } = listingWhileNextLoads.current
   const listingOfTypedFolder = folders?.listing
   const pathListing = useMemo(
     () => shownListing && typedPath ? typedListing({
       listing: shownListing,
-      name: typedName,
+      name: shownName,
     }) : shownListing,
     [
       shownListing,
       typedPath,
-      typedName,
+      shownName,
     ],
   )
   const cloneUrl = CLONE_URL.test(typed) ? typed : ''

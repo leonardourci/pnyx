@@ -33,6 +33,8 @@ const warn = ({
   error,
 })
 
+const nestedRepository = ({ path }: { path: string }) => path.endsWith('/')
+
 async function listFiles({ root }: { root: string }): Promise<string[]> {
   try {
     const { stdout } = await run(
@@ -48,7 +50,8 @@ async function listFiles({ root }: { root: string }): Promise<string[]> {
       ],
       { maxBuffer: LIST_BUFFER },
     )
-    const files = new Set(stdout.split('\0').filter(Boolean))
+    const listed = stdout.split('\0')
+    const files = new Set(listed.filter(path => path !== '' && !nestedRepository({ path })))
 
     return [...files].sort().slice(
       0,
@@ -87,27 +90,28 @@ export function createFileIndex() {
     )
 
     try {
-      entry.watcher = watch(
+      const watcher = watch(
         root,
         { recursive: true },
         () => {
           entry.files = undefined
         },
       )
-      // ponytail: a watcher that fails stops caching, so every read lists the files again.
-      entry.watcher.on(
+      const stopCachingAfterWatchFailure = (error: Error) => {
+        warn({
+          operation: 'files.watch',
+          root,
+          error,
+        })
+        watcher.close()
+        entry.watcher = undefined
+        entry.files = undefined
+      }
+      watcher.on(
         'error',
-        error => {
-          warn({
-            operation: 'files.watch',
-            root,
-            error,
-          })
-          entry.watcher?.close()
-          entry.watcher = undefined
-          entry.files = undefined
-        },
+        stopCachingAfterWatchFailure,
       )
+      entry.watcher = watcher
     } catch (error) {
       warn({
         operation: 'files.watch',

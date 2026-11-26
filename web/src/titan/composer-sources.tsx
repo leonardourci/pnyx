@@ -14,7 +14,6 @@ import { useSkillsCatalog } from './skills-catalog.ts'
 import { columnRows,fileRows,projectRows,taskRows,titanRows } from './mention-candidates.ts'
 import type { ProjectFiles } from '#projects/file-index.ts'
 import { useCachedList } from '#web-shared/cached-list.ts'
-import { storageKey } from './outbox.ts'
 import type { MentionItem } from './mention-picker.tsx'
 import { slashRows,type SlashItem } from './slash-menu.tsx'
 
@@ -46,9 +45,6 @@ export interface OtherTitan {
 }
 
 const Sources = createContext<ComposerSources | null>(null)
-
-const validProjectFiles = ({ value }: { value: unknown }) => Array.isArray(value)
-  && value.every(project => typeof project?.path === 'string' && Array.isArray(project.files))
 
 function ComposerSourcesProvider({
   sources,
@@ -124,16 +120,15 @@ export function TitanComposerSources({
   const attached = (state.projects ?? []).filter(project => !project.detached)
   const projectPaths = attached.map(project => project.path)
   const files = useCachedList<ProjectFiles[]>({
-    key: storageKey({ key: `files:${JSON.stringify(projectPaths)}` }),
+    key: `files:${JSON.stringify(projectPaths)}`,
     connected,
     open: mentionMenuOpen,
     fetch: async () => (await command({
       name: 'files',
       args: [],
     })).projects as ProjectFiles[],
-    savedCopyValid: validProjectFiles,
   })
-  const projectFiles = useMemo(
+  const projectFileRows = useMemo(
     () => fileRows({ projects: files.value ?? [] }),
     [files.value],
   )
@@ -204,7 +199,7 @@ export function TitanComposerSources({
     () => ({
       projects: projects ?? [],
       mentionRows,
-      fileRows: projectFiles,
+      fileRows: projectFileRows,
       slashRows: commands,
       taskReferences: references,
       openTask: actions.openTask,
@@ -218,7 +213,7 @@ export function TitanComposerSources({
     [
       projects,
       mentionRows,
-      projectFiles,
+      projectFileRows,
       commands,
       references,
       actions,

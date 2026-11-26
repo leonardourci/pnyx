@@ -280,7 +280,7 @@ test(
 )
 
 test(
-  '@ offers project files, and a typed path shows its folder\'s contents filtered as the name is typed',
+  '@ offers project files, a typed path shows its folder\'s contents filtered as the name is typed, and the rows shown stay while the next folder loads',
   async () => {
     const hydra = await othrys.hydra()
     const path = await createProject({
@@ -331,5 +331,25 @@ test(
     await composer.fill(`@${path}/RE`)
     await options.filter({ hasText: 'README.md' }).waitFor()
     expect(listings.length).toBe(asked)
+
+    await composer.fill(`@${path}/src`)
+    await options.filter({ hasText: 'README.md' }).waitFor({ state: 'detached' })
+    await page.evaluate(() => {
+      new MutationObserver(() => {
+        if (document.body.textContent.includes('README.md')) {
+          document.body.dataset.parentListed = 'true'
+        }
+      }).observe(
+        document.body,
+        {
+          subtree: true,
+          childList: true,
+          characterData: true,
+        },
+      )
+    })
+    await composer.fill(`@${path}/src/`)
+    await options.filter({ hasText: 'report-builder.ts' }).waitFor()
+    expect(await page.locator('body').getAttribute('data-parent-listed')).toBeNull()
   },
 )

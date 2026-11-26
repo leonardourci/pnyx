@@ -5,6 +5,7 @@ import { filterRows, prepareRow } from '#titan/suggestion-matches.ts'
 import { completePath, typedListing } from '#web-titan/path-completion.ts'
 import { startOthrys, until, type Othrys } from './setup/othrys.ts'
 import { createProject } from './setup/projects.ts'
+import { git } from './setup/upgrade.ts'
 
 let othrys: Othrys
 
@@ -174,7 +175,7 @@ interface FilesAnswer {
 }
 
 test(
-  'files lists each attached project\'s files without ignored ones, and again after a file appears',
+  'files lists each attached project\'s files without ignored ones or nested repositories, and again after a file appears',
   async () => {
     const hydra = await othrys.hydra()
     const path = await createProject({
@@ -197,6 +198,22 @@ test(
         path,
         'build',
         'out.js',
+      ),
+      '',
+    )
+    git({
+      cwd: path,
+      args: [
+        'init',
+        '-q',
+        'vendor',
+      ],
+    })
+    writeFileSync(
+      join(
+        path,
+        'vendor',
+        'lib.js',
       ),
       '',
     )
@@ -264,10 +281,15 @@ test(
     )
 
     const listing = async ({ files }: { files: boolean }) => {
-      const query = new URLSearchParams({
-        path: `${folder}/`,
-        ...files ? { files: '1' } : {},
-      })
+      const query = new URLSearchParams({ path: `${folder}/` })
+
+      if (files) {
+        query.set(
+          'files',
+          '1',
+        )
+      }
+
       const response = await fetch(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/folders?${query}`)
 
       return await response.json() as {

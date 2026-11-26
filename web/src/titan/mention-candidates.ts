@@ -6,6 +6,7 @@ import type { Card } from '#tasks/model.ts'
 import type { TitanProject } from '#projects/model.ts'
 import type { ProjectGroup } from '#projects/groups.ts'
 import type { ProjectFiles } from '#projects/file-index.ts'
+import type { FolderEntry } from '#projects/folders.ts'
 import { isPendingImage, type PlacedChip } from './draft.ts'
 import type { OtherTitan } from './composer-sources.tsx'
 import type { MentionItem } from './mention-picker.tsx'
@@ -137,34 +138,40 @@ export const titanRows = ({ titans }: { titans: OtherTitan[] }): MentionRow[] =>
     },
   }))
 
+export const fileItem = ({
+  name,
+  path,
+}: FolderEntry): MentionItem => ({
+  key: `file:${path}`,
+  kind: 'file',
+  title: name,
+  detail: path,
+  icons: ['file'],
+  group: 'Files',
+  insert: reference({
+    kind: 'file',
+    value: path,
+    label: name,
+  }),
+})
+
 const fileRow = ({
   project,
   file,
 }: {
   project: ProjectFiles
   file: string
-}) => {
-  const path = `${project.path}/${file}`
-  const name = file.slice(file.lastIndexOf('/') + 1)
-
-  return prepareRow<MentionItem>({
-    item: {
-      key: `file:${path}`,
-      kind: 'file',
-      title: name,
-      detail: projectTitle({ project: project.path }),
-      excerpt: file,
-      icons: ['file'],
-      group: 'Files',
-      insert: reference({
-        kind: 'file',
-        value: path,
-        label: name,
-      }),
-    },
-    fallback: file,
-  })
-}
+}) => prepareRow<MentionItem>({
+  item: {
+    ...fileItem({
+      name: file.slice(file.lastIndexOf('/') + 1),
+      path: `${project.path}/${file}`,
+    }),
+    detail: projectTitle({ project: project.path }),
+    excerpt: file,
+  },
+  fallback: file,
+})
 
 export const fileRows = ({ projects }: { projects: ProjectFiles[] }): MentionRow[] => projects
   .flatMap(project => project.files.map(file => fileRow({

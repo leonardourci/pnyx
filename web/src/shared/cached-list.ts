@@ -12,17 +12,42 @@ interface Entry {
   list: CachedList<unknown>
   listeners: Set<() => void>
   reading?: Promise<void>
+  saved: boolean
 }
+
+type SavedCopyCheck = ({ value }: { value: unknown }) => boolean
 
 const EMPTY: CachedList<never> = { reloading: false }
 const entries = new Map<string, Entry>()
+
+function savedList({
+  key,
+  savedCopyValid,
+}: {
+  key: string
+  savedCopyValid: SavedCopyCheck
+}): CachedList<unknown> {
+  const saved = stored<unknown>({
+    key,
+    fallback: undefined,
+  })
+
+  if (saved === undefined || !savedCopyValid({ value: saved })) {
+    return EMPTY
+  }
+
+  return {
+    value: saved,
+    reloading: false,
+  }
+}
 
 function entryFor({
   key,
   savedCopyValid,
 }: {
   key: string
-  savedCopyValid({ value }: { value: unknown }): boolean
+  savedCopyValid?: SavedCopyCheck
 }): Entry {
   const known = entries.get(key)
 
@@ -30,16 +55,13 @@ function entryFor({
     return known
   }
 
-  const saved = stored<unknown>({
-    key,
-    fallback: undefined,
-  })
   const entry: Entry = {
-    list: saved !== undefined && savedCopyValid({ value: saved }) ? {
-      value: saved,
-      reloading: false,
-    } : EMPTY,
+    list: savedCopyValid ? savedList({
+      key,
+      savedCopyValid,
+    }) : EMPTY,
     listeners: new Set(),
+    saved: savedCopyValid !== undefined,
   }
   entries.set(
     key,
@@ -62,7 +84,7 @@ function publish({
 
   entry.list = list
 
-  if (changed) {
+  if (changed && entry.saved) {
     save({
       key,
       value: list.value,
@@ -143,7 +165,7 @@ export function useCachedList<T>({
   connected: boolean
   open: boolean
   fetch({ refresh }: { refresh: boolean }): Promise<T>
-  savedCopyValid({ value }: { value: unknown }): boolean
+  savedCopyValid?: SavedCopyCheck
 }): CachedList<T> & { reload(): void } {
   const entry = entryFor({
     key,
