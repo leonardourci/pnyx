@@ -59,7 +59,7 @@ export function messageRecords({
     const actorRole = ownerActor({ actor: event.actor }) ? 'owner' : event.actor
     let entry: ThreadEntry
 
-    if (card === TITAN_CARD && event.type === 'hydra.message'
+    if (card === TITAN_CARD && event.type === 'titan.message'
       && event.data.kind !== 'divider' && !reportActor({ actor: event.actor })) {
       entry = {
         id: event.id,

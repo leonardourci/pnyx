@@ -9,7 +9,7 @@ export function otherTitanNames({ id }: { id: string }): string[] {
       try {
         return [
           hydraConfig({
-            state: loadTitan({ hydraId: other }).state,
+            state: loadTitan({ titanId: other }).state,
             id: other,
           }).name,
         ]

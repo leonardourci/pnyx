@@ -5,7 +5,7 @@ import { TITAN_CARD } from './identity.ts'
 export async function hydraQuestion({ args }: { args: string[] }) {
   const {
     values,
-    hydraId,
+    titanId,
   } = parse({
     args,
     options: {
@@ -33,7 +33,7 @@ export async function hydraQuestion({ args }: { args: string[] }) {
       ...values,
       to: 'owner',
     },
-    hydraId,
+    titanId,
     meta: meta({ values }),
   })
 }

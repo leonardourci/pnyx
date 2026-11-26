@@ -41,9 +41,9 @@ function removalTarget({
     })
   }
 
-  const state = loadTitan({ hydraId: id }).state
+  const state = loadTitan({ titanId: id }).state
   const hasSurvivor = ids.some(otherId => otherId !== id
-    && !loadTitan({ hydraId: otherId }).state.config?.removing)
+    && !loadTitan({ titanId: otherId }).state.config?.removing)
 
   if (!state.config?.removing && !hasSurvivor) {
     inform({
@@ -73,7 +73,7 @@ async function prepareRemoval({
     id,
     state,
   })
-  const pool = await hydraPool({ hydraId: id })
+  const pool = await hydraPool({ titanId: id })
   const cards = Object.values(state.cards)
   const previousCopies = cards.flatMap(card => card.copy ? [card.copy.path] : [])
   const recorded = new Set(previousCopies)
@@ -140,7 +140,7 @@ function removalCopies({
     }
 
     protectedCopiesFolder({
-      hydraId: id,
+      titanId: id,
       root: copy.path,
       preserveSurvivors: false,
     })
@@ -153,20 +153,20 @@ export async function removeTitanCommand({ args }: { args: string[] }): Promise<
   const {
     values,
     positionals,
-    hydraId: selectedTitan,
+    titanId: selectedTitan,
   } = parse({
     args,
     options: WRITE,
     positionals: 2,
   })
-  const hydraId = requestEnv().OTHRYS_TITAN ?? selectedTitan
+  const titanId = requestEnv().OTHRYS_TITAN ?? selectedTitan
   const id = required({
     value: positionals[1],
     what: 'Titan id',
   })
   const state = removalTarget({
     id,
-    caller: hydraId,
+    caller: titanId,
   })
   const actor = meta({ values })
   const plan = await prepareRemoval({
@@ -221,15 +221,15 @@ export async function removeTitanCommand({ args }: { args: string[] }): Promise<
   requireRemovalIdle()
 
   await withWriter({
-    hydraId: id,
+    titanId: id,
     removal: true,
     fn: ({ writer }) => {
       const pending = hydraEvent({
         state: writer.state,
         meta: actor,
-        cardId: '$board',
+        cardId: '$all',
         change: {
-          type: 'board.configured',
+          type: 'titan.configured',
           data: {
             ...hydraConfig({
               state: writer.state,
@@ -251,7 +251,7 @@ export async function removeTitanCommand({ args }: { args: string[] }): Promise<
 }
 
 export async function finishTitanRemoval({ id }: { id: string }): Promise<Output> {
-  const state = loadTitan({ hydraId: id }).state
+  const state = loadTitan({ titanId: id }).state
 
   if (!state.config?.removing || state.config.removed) {
     return { removed: id }
@@ -277,15 +277,15 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
 
   const refuseChangedWork = async () => {
     await withWriter({
-      hydraId: id,
+      titanId: id,
       removal: true,
       fn: ({ writer }) => {
         const decision = hydraEvent({
           state: writer.state,
           meta: actor,
-          cardId: '$board',
+          cardId: '$all',
           change: {
-            type: 'board.configured',
+            type: 'titan.configured',
             data: {
               ...hydraConfig({
                 state: writer.state,
@@ -344,7 +344,7 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
   removing.add(id)
 
   try {
-    await close({ hydraId: id })
+    await close({ titanId: id })
     const plan = await prepareRemoval({
       id,
       state,
@@ -362,7 +362,7 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
     }
 
     for (const copy of plan.copies) {
-      protectedCopiesFolder({ hydraId: id })
+      protectedCopiesFolder({ titanId: id })
 
       if (!existsSync(copy.path)) {
         continue
@@ -370,7 +370,7 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
 
       await verify({ path: copy.path })
       protectedCopiesFolder({
-        hydraId: id,
+        titanId: id,
         root: copy.path,
         preserveSurvivors: false,
       })
@@ -399,12 +399,12 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
     }
 
     await removeTitanPool({
-      hydraId: id,
+      titanId: id,
       verify,
     })
 
     await withWriter({
-      hydraId: id,
+      titanId: id,
       removal: true,
       fn: ({ writer }) => {
         for (const project of writer.state.projects ?? []) {
@@ -417,7 +417,7 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
             meta: actor,
             cardId: '$projects',
             change: {
-              type: 'hydra.project',
+              type: 'titan.project',
               data: {
                 before: project,
                 after: {
@@ -437,9 +437,9 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
         const decision = hydraEvent({
           state: writer.state,
           meta: actor,
-          cardId: '$board',
+          cardId: '$all',
           change: {
-            type: 'board.configured',
+            type: 'titan.configured',
             data: {
               ...hydraConfig({
                 state: writer.state,
@@ -462,6 +462,6 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
   } finally {
     removing.delete(id)
 
-    hydraRemoval.finished?.({ hydraId: id })
+    hydraRemoval.finished?.({ titanId: id })
   }
 }

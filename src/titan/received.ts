@@ -69,7 +69,7 @@ export function failTitanInput({
         at,
       },
       change: {
-        type: 'hydra.input',
+        type: 'titan.input',
         data: {
           message: input,
           state: 'failed',

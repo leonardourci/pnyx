@@ -19,11 +19,11 @@ export interface NativeSource {
 }
 
 export function nativeSources({
-  hydraId,
+  titanId,
   state,
   card,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   card: string
 }): NativeSource[] {
@@ -34,7 +34,7 @@ export function nativeSources({
   }
 
   const oldestFirst = threadSources({
-    hydraId,
+    titanId,
     state,
     card: threadCard,
   }).reverse()

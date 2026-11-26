@@ -39,7 +39,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   const {
     values,
     positionals,
-    hydraId,
+    titanId,
   } = parse({
     args,
     options: {
@@ -76,11 +76,11 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
     return {
       hydras: await Promise.all(hydras.map(async id => {
-        let { state } = loadTitan({ hydraId: id })
+        let { state } = loadTitan({ titanId: id })
 
         if (!state.config?.removing) {
-          await hideDone({ hydraId: id })
-          state = loadTitan({ hydraId: id }).state
+          await hideDone({ titanId: id })
+          state = loadTitan({ titanId: id }).state
         }
 
         const config = hydraConfig({
@@ -102,14 +102,14 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   const id = action !== 'create'
-    ? hydraId
+    ? titanId
     : required({
       value: positionals[1],
       what: 'Titan id',
     })
-  hydraDir({ hydraId: id })
+  hydraDir({ titanId: id })
 
-  if (loadTitan({ hydraId: id }).state.config?.removed) {
+  if (loadTitan({ titanId: id }).state.config?.removed) {
     throw new TitanError({
       message: `Titan was removed: ${id}`,
       code: 'NOT_FOUND',
@@ -117,7 +117,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'show') {
-    const state = loadTitan({ hydraId: id }).state
+    const state = loadTitan({ titanId: id }).state
     const hydra = structuredClone(hydraConfig({
       state,
       id,
@@ -156,7 +156,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   const m = meta({ values })
   const shared = sharedSettingFlags({
     values,
-    hydraId: id,
+    titanId: id,
   })
   const hydraFlags = Object.keys(values).some(flag => values[flag] !== undefined
     && !SETTING_FLAGS.includes(flag) && !(flag in WRITE))
@@ -167,12 +167,12 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   const committed = onlySettings ? undefined : await commit({
-    hydraId: id,
+    titanId: id,
     create: action === 'create',
     meta: m,
     intent: {
-      type: 'board.configured',
-      card: '$board',
+      type: 'titan.configured',
+      card: '$all',
     },
     prepare: ({ writer }) => {
       if (!values.session) {
@@ -347,9 +347,9 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       return hydraEvent({
         state,
         meta: m,
-        cardId: '$board',
+        cardId: '$all',
         change: {
-          type: 'board.configured',
+          type: 'titan.configured',
           data,
         },
       })
@@ -362,7 +362,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
   const saved = await saveSettings({
     // A combined edit gets one chat notice from its Titan receipt.
-    hydraId: onlySettings ? id : undefined,
+    titanId: onlySettings ? id : undefined,
     patch: shared,
     meta: {
       ...m,
@@ -438,7 +438,7 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
     positionals,
-    hydraId,
+    titanId,
   } = parse({
     args,
     options: TITAN_OPTIONS,
@@ -449,7 +449,7 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
     requireStopAuthority({ meta: meta({ values }) })
 
     return askHost({
-      hydraId,
+      titanId,
       body: {
         action: positionals[0],
         message: required({
@@ -464,7 +464,7 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
   if (positionals[0] === 'message') {
     return messageLookup({
       values,
-      hydraId,
+      titanId,
       task: values.task as string | undefined,
     })
   }
@@ -473,14 +473,14 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
     return await hydraInscribe({
       values,
       positionals,
-      hydraId,
+      titanId,
     })
   }
 
   if (positionals[0] === 'resize') {
     return await hydraResize({
       values,
-      hydraId,
+      titanId,
     })
   }
 
@@ -488,13 +488,13 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
     return await hydraMemory({
       values,
       positionals,
-      hydraId,
+      titanId,
     })
   }
 
   if (positionals[0] === 'start') {
     return startTitan({
-      hydraId,
+      titanId,
       via: values.via as string | undefined,
       harness: values.harness as string | undefined,
       prompt: values.prompt as string | undefined,
@@ -506,7 +506,7 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
   if (positionals[0] === 'messages') {
     return hydraMessages({
       values,
-      hydraId,
+      titanId,
     })
   }
 
@@ -525,8 +525,8 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
       })
     }
 
-    return readServer({ hydraId }).then(server => server ? askHost({
-      hydraId,
+    return readServer({ titanId }).then(server => server ? askHost({
+      titanId,
       body: {
         action,
         card: values.task,
@@ -545,7 +545,7 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
 
   return hydraSend({
     values,
-    hydraId,
+    titanId,
   })
 }
 

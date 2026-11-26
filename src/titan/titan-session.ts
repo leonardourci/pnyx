@@ -74,7 +74,7 @@ export function agentNotices<T extends Record<string, Command>>({
       ]
 
       // A hosted Titan without --titan still writes to its own chat.
-      const hydraId = typeof values.hydra === 'string' ? values.hydra : env.OTHRYS_TITAN || DEFAULT_TITAN
+      const titanId = typeof values.hydra === 'string' ? values.hydra : env.OTHRYS_TITAN || DEFAULT_TITAN
 
       if (hydra && agentNoticeCommand({
         name,
@@ -103,7 +103,7 @@ export function agentNotices<T extends Record<string, Command>>({
           const fields = args.filter(arg => arg.startsWith('--') && !(arg.slice(2).split('=')[0]! in WRITE))
             .map(arg => arg.slice(2).split('=')[0])
           await settingsNotice({
-            hydraId,
+            titanId,
             meta: {
               actor: 'hydra',
               at: new Date().toISOString(),

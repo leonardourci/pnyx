@@ -462,10 +462,10 @@ function digestHash({ text }: { text: string }): string {
 
 function previousCheckpoint({
   text,
-  hydraId,
+  titanId,
 }: {
   text?: string
-  hydraId: string
+  titanId: string
 }): {
   parts: Record<string, string>
 } | undefined {
@@ -498,7 +498,7 @@ function previousCheckpoint({
     return
   }
 
-  if (!('hydra' in value) || value.hydra !== hydraId) {
+  if (!('hydra' in value) || value.hydra !== titanId) {
     return
   }
 
@@ -525,7 +525,7 @@ function previousCheckpoint({
 }
 
 export function hydraDigest({
-  hydraId,
+  titanId,
   records,
   state,
   owner,
@@ -536,9 +536,9 @@ export function hydraDigest({
   checkpointed = false,
   onlyTasks,
   now = new Date().toISOString(),
-  conditions = learningConditions({ states: { [hydraId]: state } }),
+  conditions = learningConditions({ states: { [titanId]: state } }),
 }: {
-  hydraId: string
+  titanId: string
   records: string
   state: TitanState
   owner: Memory
@@ -565,7 +565,7 @@ export function hydraDigest({
   })
   const checkpointBefore = previousCheckpoint({
     text: previousDigest,
-    hydraId,
+    titanId,
   })
   const before = checkpointBefore?.parts.totals ? checkpointBefore : undefined
   const hashes: Record<string, string> = {}
@@ -644,7 +644,7 @@ export function hydraDigest({
   if (checkpointed) {
     const encoded = Buffer.from(JSON.stringify({
       v: DIGEST_CHECKPOINT_VERSION,
-      hydra: hydraId,
+      hydra: titanId,
       parts: hashes,
     })).toString('base64url')
     checkpoint = ` checkpoint="${encoded}"`
@@ -652,11 +652,11 @@ export function hydraDigest({
 
   const config = hydraConfig({
     state,
-    id: hydraId,
+    id: titanId,
   })
   const lines = [
-    `<othrys-digest hydra="${hydraId}"${checkpoint}>`,
-    `Titan ${hydraId} ("${config.name}"). ${records}`,
+    `<othrys-digest hydra="${titanId}"${checkpoint}>`,
+    `Titan ${titanId} ("${config.name}"). ${records}`,
   ]
 
   if (before) {

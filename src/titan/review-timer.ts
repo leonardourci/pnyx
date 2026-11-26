@@ -76,14 +76,14 @@ function timedReview({
 }
 
 export function startReviewTimer({
-  hydraId,
+  titanId,
   wake,
   now = Date.now,
   interval = schedule,
   busy = () => false,
-  state: shared = () => loadTitan({ hydraId }).state,
+  state: shared = () => loadTitan({ titanId }).state,
 }: {
-  hydraId: string
+  titanId: string
   wake(): void
   now?(): number
   interval?({
@@ -115,7 +115,7 @@ export function startReviewTimer({
 
       try {
         await fireReminders({
-          hydraId,
+          titanId,
           at: new Date(now()).toISOString(),
           state,
         })
@@ -123,7 +123,7 @@ export function startReviewTimer({
         log({
           level: 'error',
           operation: 'reminders',
-          hydraId,
+          titanId,
           error,
         })
       }
@@ -141,7 +141,7 @@ export function startReviewTimer({
       }
 
       const reviewed = await memoryReview({
-        hydraId,
+        titanId,
         now: new Date(time).toISOString(),
       })
 
@@ -159,7 +159,7 @@ export function startReviewTimer({
       }
 
       const recorded = await withWriter({
-        hydraId,
+        titanId,
         fn: ({ writer }) => {
           const current = writer.state
           const previous = current.hydraReview?.at
@@ -199,7 +199,7 @@ export function startReviewTimer({
             },
             cardId: TITAN_CARD,
             change: {
-              type: 'hydra.review',
+              type: 'titan.review',
               data: {
                 block: review.block,
                 reminders: [],
@@ -226,7 +226,7 @@ export function startReviewTimer({
       log({
         level: 'error',
         operation: 'review',
-        hydraId,
+        titanId,
         error,
       })
     } finally {

@@ -3,10 +3,10 @@ import { hydraFiles, taskFiles } from '#store/file-home.ts'
 import { othrysHome } from '#store/paths.ts'
 
 export function recordFiles({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task?: string
 }): {
   hydra: string
@@ -17,11 +17,11 @@ export function recordFiles({
   const home = othrysHome()
   const dir = hydraFiles({
     home,
-    hydra: hydraId,
+    hydra: titanId,
   })
   const records = task ? taskFiles({
     home,
-    hydra: hydraId,
+    hydra: titanId,
     task,
   }) : join(
     dir,
@@ -50,11 +50,11 @@ export function recordFiles({
 }
 
 export function recordContext({
-  hydraId,
+  titanId,
   task,
 }: Parameters<typeof recordFiles>[0]): string {
   const files = recordFiles({
-    hydraId,
+    titanId,
     task,
   })
 

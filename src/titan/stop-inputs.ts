@@ -33,7 +33,7 @@ export function stopTitanInputs({
         actor: 'othrys',
       },
       change: {
-        type: 'hydra.input-stopped',
+        type: 'titan.input-stopped',
         data: { messages },
       },
     }),

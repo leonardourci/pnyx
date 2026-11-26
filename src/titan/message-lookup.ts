@@ -234,13 +234,13 @@ function lookahead({ messages }: { messages: Generator<MessageRecord> }) {
 
 export function lookupMessages({
   thread,
-  hydraId,
+  titanId,
   card = TITAN_CARD,
   snapshot,
   selection = {},
 }: {
   thread: LookupThread
-  hydraId: string
+  titanId: string
   card?: string
   snapshot: number
   selection?: MessageSelection
@@ -309,7 +309,7 @@ export function lookupMessages({
 
   const cursor = selection.cursor ? decodeCursor({ value: selection.cursor }) : undefined
 
-  if (cursor && (cursor.hydra !== hydraId || cursor.card !== card || cursor.snapshot > snapshot)) {
+  if (cursor && (cursor.hydra !== titanId || cursor.card !== card || cursor.snapshot > snapshot)) {
     invalid({ message: 'This cursor belongs to another Titan, thread or unavailable snapshot' })
   }
 
@@ -610,7 +610,7 @@ export function lookupMessages({
   }) =>
     beyondPage[direction] ? encodeCursor({
       cursor: {
-        hydra: hydraId,
+        hydra: titanId,
         card,
         snapshot,
         key: keyOf({ message }),
@@ -621,7 +621,7 @@ export function lookupMessages({
     }) : undefined
 
   return {
-    hydra: hydraId,
+    hydra: titanId,
     thread: card === TITAN_CARD ? 'hydra' : card,
     snapshot,
     anchor: anchor?.id,

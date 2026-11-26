@@ -24,20 +24,20 @@ export const MESSAGE_LOOKUP_OPTIONS: Options = {
 }
 
 function lookupThread({
-  hydraId,
+  titanId,
   state,
   card,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   card: string
 }): LookupThread {
   const sources = nativeSources({
-    hydraId,
+    titanId,
     state,
     card,
   })
-  const types = [card === TITAN_CARD ? 'hydra.message' : 'card.replied']
+  const types = [card === TITAN_CARD ? 'titan.message' : 'card.replied']
 
   return {
     window: ({
@@ -46,7 +46,7 @@ function lookupThread({
       toward,
     }) => {
       const read = messageWindow({
-        hydraId,
+        titanId,
         sources,
         cardId: card,
         types,
@@ -69,7 +69,7 @@ function lookupThread({
     locate: ({ id }) => {
       if (id.startsWith('reply:')) {
         return replySeq({
-          hydraId,
+          titanId,
           card,
           reply: id.slice('reply:'.length),
         })
@@ -83,7 +83,7 @@ function lookupThread({
 
       if (entry) {
         return eventPositions({
-          hydraId,
+          titanId,
           entries: [
             {
               id,
@@ -94,12 +94,12 @@ function lookupThread({
       }
 
       return eventSeq({
-        hydraId,
+        titanId,
         id,
       })
     },
     around: ({ time }) => seqsAround({
-      hydraId,
+      titanId,
       time,
     }),
   }
@@ -107,25 +107,25 @@ function lookupThread({
 
 export function messageLookup({
   values,
-  hydraId,
+  titanId,
   task,
 }: {
   values: Record<string, string | boolean | undefined>
-  hydraId: string
+  titanId: string
   task?: string
 }): Output {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const card = task === undefined ? TITAN_CARD : findCard({
     state,
     ref: task,
   }).id
   const page = lookupMessages({
     thread: lookupThread({
-      hydraId,
+      titanId,
       state,
       card,
     }),
-    hydraId,
+    titanId,
     card,
     snapshot: state.seq,
     selection: {
@@ -166,7 +166,7 @@ export function messageLookup({
     card,
   ]
   const continuation = ({ cursor }: { cursor: string }) =>
-    `othrys ${command.join(' ')} --titan ${hydraId} --cursor ${cursor} --budget ${page.budget} --limit ${page.limit}`
+    `othrys ${command.join(' ')} --titan ${titanId} --cursor ${cursor} --budget ${page.budget} --limit ${page.limit}`
   const help: string[] = []
 
   if (page.older) {

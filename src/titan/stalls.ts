@@ -27,7 +27,7 @@ export type StallItem = WakeReason & {
 
 // Stalled workers, ended waits and unconfirmed replies: the checks that wake Titan when nothing else would.
 export function createStallChecks({
-  hydraId,
+  titanId,
   stallDelay,
   busyDelay,
   stallRepeatMax,
@@ -40,7 +40,7 @@ export function createStallChecks({
   wakeMain,
   wakeStart,
 }: {
-  hydraId: string
+  titanId: string
   stallDelay: number
   busyDelay: number
   stallRepeatMax: number
@@ -75,7 +75,7 @@ export function createStallChecks({
       log({
         level: 'error',
         operation: 'stall check',
-        hydraId,
+        titanId,
         error,
       })
     }
@@ -207,7 +207,7 @@ export function createStallChecks({
   }
 
   const wakeOnStall = async () => {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const hydraCard = state.cards[TITAN_CARD]
     const session = state.config?.hydra.session
 
@@ -294,7 +294,7 @@ export function createStallChecks({
         kind: item.kind,
         detail: alarm({ stall: item }),
       }),
-    })).join('\n')}\n${recordContext({ hydraId })} Its requests and agents show what waits. If it waits on the owner, tell them in one line of reply text unless an earlier reply or its question card already did. Otherwise answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared or the owner was already told.\n${decisionsText({
+    })).join('\n')}\n${recordContext({ titanId })} Its requests and agents show what waits. If it waits on the owner, tell them in one line of reply text unless an earlier reply or its question card already did. Otherwise answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared or the owner was already told.\n${decisionsText({
       state,
       now,
       pick: picked ? {

@@ -49,7 +49,7 @@ export function applyContextNotes({
   state: TitanState
   event: TitanEvent
 }): void {
-  if (event.type === 'hydra.context-delivered') {
+  if (event.type === 'titan.context-delivered') {
     const delivered = event.data.ids
     state.contextNotes = (state.contextNotes ?? []).filter(note => delivered
       ? !delivered.includes(note.id)
@@ -61,7 +61,7 @@ export function applyContextNotes({
   const add = ({
     id = event.id,
     text,
-    task = event.type === 'hydra.message' ? event.data.task : event.cardId,
+    task = event.type === 'titan.message' ? event.data.task : event.cardId,
     ownerAnswer = false,
     report = false,
   }: {
@@ -106,7 +106,7 @@ export function applyContextNotes({
   }
 
   if (reportActor({ actor: event.actor })) {
-    if (event.type === 'hydra.message') {
+    if (event.type === 'titan.message') {
       add({
         text: event.data.text,
         report: true,
@@ -177,7 +177,7 @@ export function applyContextNotes({
     add({ text: `${card.title}: worker resume queued. ${event.data.message.text}` })
   }
 
-  if (event.type === 'hydra.helper-finished') {
+  if (event.type === 'titan.helper-finished') {
     const batch = state.helper?.runs[event.data.batch]
 
     for (const note of state.contextNotes ?? []) {
@@ -190,7 +190,7 @@ export function applyContextNotes({
     }
   }
 
-  if (event.type === 'hydra.helper-finished' && !event.data.error) {
+  if (event.type === 'titan.helper-finished' && !event.data.error) {
     for (const outcome of event.data.outcomes) {
       if (needsMain({ outcome }) || outcome.status === 'still_waiting') {
         continue
@@ -233,7 +233,7 @@ export function applyContextNotes({
     if (ownerMessage) {
       ownerAnswered = true
     }
-  } else if (event.type === 'hydra.message' && event.data.task) {
+  } else if (event.type === 'titan.message' && event.data.task) {
     task = event.data.task
     question = event.data.answers
     answer = event.data.text

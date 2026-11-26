@@ -510,21 +510,21 @@ type LoggedMessage = TitanEvent
 // order across those Titans, so the reply cursor stays one increasing number; a task that
 // never moved keeps its seqs.
 function threadEvents({
-  hydraId,
+  titanId,
   card,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
 }): LoggedMessage[] {
   const history = movedHistory({
-    hydraId,
+    titanId,
     task: card.id,
     types: ['card.replied'],
     matches: ({ event }) => event.type === 'card.replied' && Boolean(event.data.text)
       && event.cardId === card.id,
   })
 
-  const moved = history.some(entry => entry.hydra !== hydraId)
+  const moved = history.some(entry => entry.hydra !== titanId)
 
   return history.reverse().map((
     { event },
@@ -544,7 +544,7 @@ export function threadAction({
 }): boolean {
   const task = state.cards[event.cardId]
 
-  return event.actor === 'hydra' && event.type !== 'hydra.message'
+  return event.actor === 'hydra' && event.type !== 'titan.message'
     && task !== undefined && !isManagedTask({ card: task })
 }
 
@@ -564,12 +564,12 @@ type ThreadSource = {
 }
 
 export function threadSources({
-  hydraId,
+  titanId,
   state,
   card,
   selectedSession,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   card: Card
   selectedSession?: boolean
@@ -584,7 +584,7 @@ export function threadSources({
   if (task) {
     const members = [
       ...taskSessions({
-        hydraId,
+        titanId,
         ids: new Set([card.id]),
       }),
     ]
@@ -811,7 +811,7 @@ function readNative({
 }
 
 type ThreadRead = {
-  hydraId: string
+  titanId: string
   state: TitanState
   card: Card
   before?: string
@@ -821,7 +821,7 @@ type ThreadRead = {
 
 // A conversation page from the task's transcript and saved events, with a log line for how long the read took.
 export function readThread({
-  hydraId,
+  titanId,
   state,
   card,
   before,
@@ -830,7 +830,7 @@ export function readThread({
 }: ThreadRead): ThreadPage {
   const started = performance.now()
   const page = readThreadPage({
-    hydraId,
+    titanId,
     state,
     card,
     before,
@@ -840,7 +840,7 @@ export function readThread({
   log({
     operation: 'history.read',
     name: before === undefined ? 'latest' : 'older',
-    hydraId,
+    titanId,
     taskId: card.id,
     count: page.entries.length,
     ms: performance.now() - started,
@@ -851,7 +851,7 @@ export function readThread({
 
 function readThreadPage(
   {
-    hydraId,
+    titanId,
     state,
     card,
     before,
@@ -885,13 +885,13 @@ function readThreadPage(
   const tools = allTraces || card.id === TITAN_CARD || selected.tools
   const thinking = allTraces || selected.thinking
   const sources = threadSources({
-    hydraId,
+    titanId,
     state,
     card,
     selectedSession,
   })
   const logged = threadEvents({
-    hydraId,
+    titanId,
     card,
   })
   const echoes = replyEchoes({
@@ -1120,9 +1120,9 @@ function readThreadPage(
   if (card.id === TITAN_CARD) {
     const firstAt = page[0]?.item.at
     const beforeAt = excludedAt.toSorted()[0]
-    const events = firstAt === undefined ? [] : readEvents({ hydraId }).filter(event =>
+    const events = firstAt === undefined ? [] : readEvents({ titanId }).filter(event =>
       event.at >= firstAt && (beforeAt === undefined || event.at <= beforeAt)
-      && ((event.type === 'card.replied' && event.data.text) || (event.actor === 'hydra' && event.type !== 'hydra.message')))
+      && ((event.type === 'card.replied' && event.data.text) || (event.actor === 'hydra' && event.type !== 'titan.message')))
     result.actions = events.filter(event => threadAction({
       event,
       state,

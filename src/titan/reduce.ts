@@ -15,13 +15,13 @@ export function applyTitan({
   state: TitanState
   event: TitanEvent
 }): boolean {
-  if (event.type === 'hydra.agent-used') {
+  if (event.type === 'titan.agent-used') {
     state.hydraAgent = structuredClone(event.data)
 
     return true
   }
 
-  if (event.type === 'hydra.delivered') {
+  if (event.type === 'titan.delivered') {
     const session = state.sessions?.[event.data.session]
 
     if (session) {
@@ -34,7 +34,7 @@ export function applyTitan({
     return true
   }
 
-  if (event.type === 'hydra.agent-change') {
+  if (event.type === 'titan.agent-change') {
     const change = event.data
 
     if (change.state === 'finished') {
@@ -72,7 +72,7 @@ export function applyTitan({
     return true
   }
 
-  if (event.type === 'hydra.operation') {
+  if (event.type === 'titan.operation') {
     if (event.data.kind === 'inscribe' || event.data.blocking === false) {
       return true
     }
@@ -110,7 +110,7 @@ export function applyTitan({
     return true
   }
 
-  if (event.type === 'hydra.input-stopped') {
+  if (event.type === 'titan.input-stopped') {
     for (const message of state.hydraMessages ?? []) {
       if (event.data.messages.includes(message.id) && !message.received) {
         message.stopped = true
@@ -120,7 +120,7 @@ export function applyTitan({
     return true
   }
 
-  if (event.type === 'hydra.input') {
+  if (event.type === 'titan.input') {
     const message = state.hydraMessages?.find(item => item.id === event.data.message)
 
     if (message && !message.received) {
@@ -135,7 +135,7 @@ export function applyTitan({
     return true
   }
 
-  if (event.type === 'hydra.received') {
+  if (event.type === 'titan.received') {
     const message = state.hydraMessages?.find(item => item.id === event.data.message)
 
     if (message) {
@@ -147,7 +147,7 @@ export function applyTitan({
     return true
   }
 
-  if (event.type === 'hydra.status') {
+  if (event.type === 'titan.status') {
     state.hydraStatus = {
       ...structuredClone(event.data),
       seq: event.seq,
@@ -156,7 +156,7 @@ export function applyTitan({
     return true
   }
 
-  if (event.type === 'hydra.review') {
+  if (event.type === 'titan.review') {
     const reminders = { ...state.hydraReview?.reminders }
 
     for (const key of event.data.reminders) {
@@ -174,7 +174,7 @@ export function applyTitan({
     return true
   }
 
-  if (event.type === 'board.configured') {
+  if (event.type === 'titan.configured') {
     state.config = structuredClone(event.data)
     Reflect.deleteProperty(
       state.config,
@@ -227,11 +227,11 @@ export function applyTitan({
   }
 
   // Kinds are Titan settings; saving one does not choose the Titan.
-  if (event.type === 'board.agents') {
+  if (event.type === 'titan.agents') {
     state.config = cloneValue({
       value: hydraConfig({
         state,
-        id: event.boardId,
+        id: event.titanId,
       }),
     })
     state.config.agents = structuredClone(event.data.agents)
@@ -240,7 +240,7 @@ export function applyTitan({
     return true
   }
 
-  if (event.type === 'hydra.message') {
+  if (event.type === 'titan.message') {
     if (event.data.reminderQuestions) {
       const reminders = { ...state.questionReminders }
 

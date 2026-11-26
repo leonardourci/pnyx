@@ -8,12 +8,12 @@ import { hydraConfig } from './config.ts'
 const NOTICE_LENGTH = 180
 
 export async function settingsNotice({
-  hydraId,
+  titanId,
   meta,
   changeId,
   text,
 }: {
-  hydraId: string
+  titanId: string
   meta: Meta
   changeId: string
   text: string
@@ -23,7 +23,7 @@ export async function settingsNotice({
   }
 
   await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       const decision = hydraEvent({
         state: writer.state,
@@ -34,12 +34,12 @@ export async function settingsNotice({
           actor: 'othrys',
         },
         change: {
-          type: 'hydra.message',
+          type: 'titan.message',
           data: {
             action: 'send',
             hydra: hydraConfig({
               state: writer.state,
-              id: hydraId,
+              id: titanId,
             }).hydra.id,
             text: text.replaceAll(
               /\s+/g,

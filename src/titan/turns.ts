@@ -53,24 +53,24 @@ import { sessionId, withoutInterrupted } from '#workers/session-attachments.ts'
 import { copyTagged } from '#workers/tagged-updates.ts'
 
 function conversationContext({
-  hydraId,
+  titanId,
   state,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
 }): string {
   const context = compactionContext({ state })
 
   return [
     context.summary,
-    recordContext({ hydraId }),
+    recordContext({ titanId }),
     'Read the recorded conversation after the saved summary before acting. Preserve message identities and order.',
   ].filter(Boolean).join('\n\n')
 }
 
 // Titan's turns: admitting and starting one, the context its session opens with, and what Titan's live session does as a turn starts, finishes or ends.
 export function createTitanTurns({
-  hydraId,
+  titanId,
   live,
   queuedTitan,
   closing,
@@ -103,7 +103,7 @@ export function createTitanTurns({
   armWake,
   models,
 }: {
-  hydraId: string
+  titanId: string
   live: Map<string, Live>
   queuedTitan: Set<string>
   closing(): boolean
@@ -171,7 +171,7 @@ export function createTitanTurns({
   let entering = 0
 
   const hydraBusy = () => {
-    const agent = loadTitan({ hydraId }).state.cards[TITAN_CARD]?.agent
+    const agent = loadTitan({ titanId }).state.cards[TITAN_CARD]?.agent
 
     return entering > 0 || Boolean(agent && live.get(sessionId({ agent }))?.activity === 'working')
   }
@@ -219,7 +219,7 @@ export function createTitanTurns({
 
   const helperBatchesPresented = new Set<string>()
   const hydraInstructions = () =>
-    `You are Titan for Othrys Titan "${hydraId}". Your contract is AGENTS.md in your current folder; follow it. Use othrys with --titan ${hydraId}; OTHRYS_ACTOR=hydra is already set. Projects attach later; your current folder belongs to Titan.`
+    `You are Titan for Othrys Titan "${titanId}". Your contract is AGENTS.md in your current folder; follow it. Use othrys with --titan ${titanId}; OTHRYS_ACTOR=hydra is already set. Projects attach later; your current folder belongs to Titan.`
 
   let memoryStamp: string | undefined
 
@@ -235,14 +235,14 @@ export function createTitanTurns({
     onlyTasks?: string[]
   } = {}) => {
     const owner = await ownerMemory({})
-    const ownerWrite = writableOwnerMemory({ hydraId }).memory
-    const state = loadTitan({ hydraId }).state
+    const ownerWrite = writableOwnerMemory({ titanId }).memory
+    const state = loadTitan({ titanId }).state
     const readable = projectsFor({ state })
 
     if (onlyTasks) {
       return hydraDigest({
-        records: recordContext({ hydraId }),
-        hydraId,
+        records: recordContext({ titanId }),
+        titanId,
         state,
         owner,
         ownerWrite,
@@ -258,11 +258,11 @@ export function createTitanTurns({
       items,
     ] = await Promise.all([
       projectDigest({
-        hydraId,
+        titanId,
         readable,
       }),
       setupCheck({
-        hydraId,
+        titanId,
         readable,
       }),
     ])
@@ -277,11 +277,11 @@ export function createTitanTurns({
     }
 
     return hydraDigest({
-      records: recordContext({ hydraId }),
+      records: recordContext({ titanId }),
       previousDigest,
       checkpointed,
       conditions: memoryConditions(),
-      hydraId,
+      titanId,
       state,
       owner,
       ownerWrite,
@@ -292,11 +292,11 @@ export function createTitanTurns({
 
   const memoryChangeNote = async () => {
     const owner = await ownerMemory({})
-    const ownerWrite = writableOwnerMemory({ hydraId }).memory
-    const state = loadTitan({ hydraId }).state
+    const ownerWrite = writableOwnerMemory({ titanId }).memory
+    const state = loadTitan({ titanId }).state
     const readable = projectsFor({ state })
     const projects = await projectDigest({
-      hydraId,
+      titanId,
       readable,
     })
     const stamp = JSON.stringify({
@@ -325,10 +325,10 @@ export function createTitanTurns({
           previousDigest,
           compacted,
         }) => {
-          const state = loadTitan({ hydraId }).state
+          const state = loadTitan({ titanId }).state
           const sendsConversation = compacted || (opensNewSession && !contextSent)
           const conversation = sendsConversation ? conversationContext({
-            hydraId,
+            titanId,
             state,
           }) : ''
           contextSent = true
@@ -415,7 +415,7 @@ export function createTitanTurns({
       return Promise.resolve({ state: 'queued' })
     }
 
-    const queuedState = loadTitan({ hydraId }).state
+    const queuedState = loadTitan({ titanId }).state
 
     if (queuedState.hydraMessages?.find(message => message.id === id)?.stopped) {
       return Promise.resolve({ state: 'cancelled' })
@@ -446,7 +446,7 @@ export function createTitanTurns({
         return { state: 'queued' }
       }
 
-      let state = loadTitan({ hydraId }).state
+      let state = loadTitan({ titanId }).state
 
       if (generation !== stopGeneration) {
         return stoppedBefore({
@@ -470,7 +470,7 @@ export function createTitanTurns({
 
       const config = hydraConfig({
         state,
-        id: hydraId,
+        id: titanId,
       })
 
       if (deliveryId in state.eventIds) {
@@ -564,7 +564,7 @@ export function createTitanTurns({
           folder: loginFolder({ account }),
         } : undefined
         const settings = agentSettings({ agent: candidate })
-        const cwd = hydraAgentFolder({ hydraId })
+        const cwd = hydraAgentFolder({ titanId })
         prepareTitanFolder({ folder: cwd })
         let card = previous
         const previousAgent = card?.agent
@@ -597,7 +597,7 @@ export function createTitanTurns({
           })
         }
 
-        state = loadTitan({ hydraId }).state
+        state = loadTitan({ titanId }).state
         card = state.cards[TITAN_CARD]
         const sameIdentity = card?.agent?.provider === provider
           && card.agent.account === main
@@ -713,7 +713,7 @@ export function createTitanTurns({
             })
             const current = hydraConfig({
               state: writer.state,
-              id: hydraId,
+              id: titanId,
             })
             const session = sessionId({ agent: ref })
             // The configuration changes only when Titan's session does; otherwise a small event marks the turn.
@@ -725,10 +725,10 @@ export function createTitanTurns({
               },
               cardId: TITAN_CARD,
               change: writer.state.config?.hydra.session === session ? {
-                type: 'hydra.delivered',
+                type: 'titan.delivered',
                 data: { session },
               } : {
-                type: 'board.configured',
+                type: 'titan.configured',
                 data: {
                   ...current,
                   hydra: {
@@ -751,7 +751,7 @@ export function createTitanTurns({
                 cardId: TITAN_CARD,
                 meta,
                 change: {
-                  type: 'hydra.agent-used',
+                  type: 'titan.agent-used',
                   data: requestedAgent,
                 },
               }),
@@ -767,7 +767,7 @@ export function createTitanTurns({
           session: prepared,
         })
         prepared = undefined
-        const down = loadTitan({ hydraId }).state.hydraStatus
+        const down = loadTitan({ titanId }).state.hydraStatus
 
         if (down?.state === 'down') {
           await back({
@@ -781,7 +781,7 @@ export function createTitanTurns({
         const memoryNote = waking ? await memoryChangeNote() : ''
         const recap = takeRecap({ id })
 
-        const helperState = loadTitan({ hydraId }).state
+        const helperState = loadTitan({ titanId }).state
         const helperLines = outcomeLines({ state: helperState })
         let helperText = ''
         // Main holds the tasks whose outcomes or hand-backs it is given, as it holds a wake's tasks.
@@ -828,12 +828,12 @@ export function createTitanTurns({
           `${memoryNote}\n${REPLY_RULES}`,
         ) : text)
         const continuingTurn = joinsTurn && running?.activity === 'working'
-        const contextState = loadTitan({ hydraId }).state
+        const contextState = loadTitan({ titanId }).state
         const pendingNotes = contextState.contextNotes ?? []
         const notes = continuingTurn || compactCommand({ text }) ? [] : pendingNotes
         const context = contextNoteBlock({
           notes,
-          records: recordContext({ hydraId }),
+          records: recordContext({ titanId }),
           state: contextState,
         })
 
@@ -900,8 +900,8 @@ export function createTitanTurns({
         } catch (error) {
           log({
             level: 'error',
-            operation: 'hydra.turn',
-            hydraId,
+            operation: 'titan.turn',
+            titanId,
             correlationId: id,
             error,
           })
@@ -924,8 +924,8 @@ export function createTitanTurns({
         } catch (error) {
           log({
             level: 'error',
-            operation: 'hydra.wake-wait',
-            hydraId,
+            operation: 'titan.wake-wait',
+            titanId,
             correlationId: id,
             error,
           })
@@ -942,7 +942,7 @@ export function createTitanTurns({
   }
 
   const startedByOwner = ({ answers }: { answers: string[] }) => {
-    const messages = loadTitan({ hydraId }).state.hydraMessages ?? []
+    const messages = loadTitan({ titanId }).state.hydraMessages ?? []
     const opener = ({ message }: { message: TitanMessage }) =>
       answers.includes(message.id)
     const ownerMessage = ({ message }: { message: TitanMessage }) =>
@@ -971,7 +971,7 @@ export function createTitanTurns({
       }),
     })
     finishReading()
-    const messages = loadTitan({ hydraId }).state.hydraMessages ?? []
+    const messages = loadTitan({ titanId }).state.hydraMessages ?? []
     const ownerInput = messages.some(message => answering.includes(message.id)
     && ownerActor({ actor: message.actor }))
 
@@ -1031,7 +1031,7 @@ export function createTitanTurns({
               actor: 'othrys',
             },
             change: {
-              type: 'hydra.context-delivered',
+              type: 'titan.context-delivered',
               data: {
                 through: Math.max(...contextPresented.values()),
                 ids: [...contextPresented.keys()],
@@ -1055,7 +1055,7 @@ export function createTitanTurns({
               actor: 'othrys',
             },
             change: {
-              type: 'hydra.helper-acknowledged',
+              type: 'titan.helper-acknowledged',
               data: {
                 batches,
                 through: outcomesPresented,

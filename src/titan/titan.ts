@@ -25,7 +25,7 @@ export function hydraEvent({
     return { skipped: 'duplicate' }
   }
 
-  const revision = cardId === '$projects' ? state.projectsRevision ?? 0 : cardId === '$board' ? state.configRevision ?? 0 : state.cards[cardId]?.revision ?? 0
+  const revision = cardId === '$projects' ? state.projectsRevision ?? 0 : cardId === '$all' ? state.configRevision ?? 0 : state.cards[cardId]?.revision ?? 0
 
   if (meta.ifRevision !== undefined && meta.ifRevision !== revision) {
     throw new TitanError({

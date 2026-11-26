@@ -4,14 +4,14 @@ import { TitanError } from '#store/errors.ts'
 import { startCommand } from '#workers/start-command.ts'
 
 export async function startTitan({
-  hydraId,
+  titanId,
   via,
   harness,
   prompt,
   folder,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   via?: string
   harness?: string
   prompt?: string
@@ -29,7 +29,7 @@ export async function startTitan({
   }
 
   return startCommand({
-    hydraId,
+    titanId,
     role: 'hydra',
     prompt,
     folder,

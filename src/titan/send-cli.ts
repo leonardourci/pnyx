@@ -19,10 +19,10 @@ import { failTitanInput } from './received.ts'
 
 export async function hydraSend({
   values,
-  hydraId,
+  titanId,
 }: {
   values: Record<string, string | boolean | undefined>
-  hydraId: string
+  titanId: string
 }): Promise<Output> {
   const m = meta({ values })
 
@@ -41,11 +41,11 @@ export async function hydraSend({
   // Read before the Titan writer, so the shared registry lock is never taken inside it.
   const effective = effectiveDispatch()
   const result = await commit({
-    hydraId,
+    titanId,
     meta: m,
     intent: {
-      type: 'hydra.message',
-      card: ref ?? '$board',
+      type: 'titan.message',
+      card: ref ?? '$all',
     },
     decide: ({ state }) => {
       const task = ref ? findCard({
@@ -90,9 +90,9 @@ export async function hydraSend({
       const decision = hydraEvent({
         state,
         meta: m,
-        cardId: task?.id ?? '$board',
+        cardId: task?.id ?? '$all',
         change: {
-          type: 'hydra.message',
+          type: 'titan.message',
           data: {
             ...(task ? { task: task.id } : {}),
             action,
@@ -102,7 +102,7 @@ export async function hydraSend({
             ...(context ? { context } : {}),
             hydra: hydraConfig({
               state,
-              id: hydraId,
+              id: titanId,
             }).hydra.id,
           },
         },
@@ -120,7 +120,7 @@ export async function hydraSend({
     return result
   }
 
-  const message = loadTitan({ hydraId }).state.hydraMessages
+  const message = loadTitan({ titanId }).state.hydraMessages
     ?.find(message => message.id === result.message)
 
   if (!message) {
@@ -131,13 +131,13 @@ export async function hydraSend({
     return result
   }
 
-  if (!await readServer({ hydraId })) {
+  if (!await readServer({ titanId })) {
     return result
   }
 
   if (result.duplicate) {
     const claimed = await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const current = writer.state.hydraMessages?.find(input => input.id === message.id)
 
@@ -155,7 +155,7 @@ export async function hydraSend({
               at: m.at,
             },
             change: {
-              type: 'hydra.input',
+              type: 'titan.input',
               data: {
                 message: message.id,
                 state: 'retrying',
@@ -175,7 +175,7 @@ export async function hydraSend({
 
   try {
     const hosted = await askHost({
-      hydraId,
+      titanId,
       body: {
         action: 'hydra',
         id: message.id,
@@ -191,7 +191,7 @@ export async function hydraSend({
     }
   } catch (error) {
     await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => failTitanInput({
         writer,
         input: message.id,
@@ -205,12 +205,12 @@ export async function hydraSend({
 
 export function hydraMessages({
   values,
-  hydraId,
+  titanId,
 }: {
   values: Record<string, string | boolean | undefined>
-  hydraId: string
+  titanId: string
 }): Output {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const after = integer({
     value: values.after,
     flag: '--after',
@@ -233,10 +233,10 @@ export function hydraMessages({
   const events = []
 
   for (const event of scanEvents({
-    hydraId,
+    titanId,
     after,
     types: [
-      'hydra.message',
+      'titan.message',
       'task.reminder-due',
     ],
   })) {
@@ -256,11 +256,11 @@ export function hydraMessages({
   return {
     hydra: hydraConfig({
       state,
-      id: hydraId,
+      id: titanId,
     }).hydra.id,
     messages: events.length
       ? events.map(e => {
-        if (e.type !== 'hydra.message' && e.type !== 'task.reminder-due') {
+        if (e.type !== 'titan.message' && e.type !== 'task.reminder-due') {
           throw new Error(`Unexpected ${e.type} in Titan messages`)
         }
 

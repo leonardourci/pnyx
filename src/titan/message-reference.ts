@@ -24,12 +24,12 @@ const shellArgument = ({ value }: { value: string }) => `'${value.replaceAll(
 export function messageLookupCommand({
   reference,
   at,
-  hydraId,
+  titanId,
   card = TITAN_CARD,
 }: {
   reference?: string
   at?: string
-  hydraId?: string
+  titanId?: string
   card?: string
 }): string | undefined {
   if (!reference && !at?.match(/^\d{4}-\d{2}-\d{2}T/)) {
@@ -38,7 +38,7 @@ export function messageLookupCommand({
 
   const command = card === TITAN_CARD ? 'hydra message' : `task messages ${shellArgument({ value: card })}`
   const selector = reference ? `--id ${shellArgument({ value: reference })}` : `--at ${shellArgument({ value: at! })}`
-  const hydra = hydraId ? ` --titan ${shellArgument({ value: hydraId })}` : ''
+  const hydra = titanId ? ` --titan ${shellArgument({ value: titanId })}` : ''
 
   return `othrys ${command} ${selector} --before ${COMMENT_CONTEXT_MESSAGES} --after ${COMMENT_CONTEXT_MESSAGES}${hydra}`
 }

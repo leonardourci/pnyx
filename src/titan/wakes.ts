@@ -65,7 +65,7 @@ const WAKE_UPDATE_CHARS = 6000
 const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, or a failure or blocker you cannot clear, including a failed retry the owner must act on) always gets a reply.`
 
 export function wakeText({
-  hydraId,
+  titanId,
   state,
   now,
   reasons,
@@ -76,7 +76,7 @@ export function wakeText({
   reportSeqs,
   pick,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   now: number
   reasons: string[]
@@ -170,7 +170,7 @@ export function wakeText({
     })
     const scope = pick ? 'Only handle the granted tasks and selected updates listed below.'
       : 'Act on these pending reports when they need you.'
-    lines.push(`Read native records under ${JSON.stringify(dirname(recordFiles({ hydraId }).hydra))}. ${scope}`)
+    lines.push(`Read native records under ${JSON.stringify(dirname(recordFiles({ titanId }).hydra))}. ${scope}`)
 
     const pendingEvents = new Map<string, string>()
 
@@ -180,7 +180,7 @@ export function wakeText({
       const ids = new Set(pending.map(note => note.id))
 
       for (const event of scanChanges({
-        hydraId,
+        titanId,
         after: first - 1,
       })) {
         if (event.seq > last) {
@@ -188,7 +188,7 @@ export function wakeText({
         }
 
         if (ids.has(event.id)) {
-          const file = event.type === 'hydra.message' || event.cardId === TITAN_CARD
+          const file = event.type === 'titan.message' || event.cardId === TITAN_CARD
             ? 'titan.log' : `tasks/${event.cardId}/task.log`
           pendingEvents.set(
             event.id,
@@ -354,11 +354,11 @@ export function wakeCursor({
 }
 
 export function findTitanTurnToResume({
-  hydraId,
+  titanId,
   state,
   agent,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   agent: AgentRef
 }): {
@@ -368,11 +368,11 @@ export function findTitanTurnToResume({
 } | undefined {
   const cached = state.sessions?.[sessionId({ agent })]?.hydraTurn
   const legacyTurn = cached ? undefined : scanChanges({
-    hydraId,
+    titanId,
     cardId: TITAN_CARD,
     types: [
-      'hydra.delivered',
-      'board.configured',
+      'titan.delivered',
+      'titan.configured',
     ],
     descending: true,
   }).find(event => {
@@ -380,16 +380,16 @@ export function findTitanTurnToResume({
       return false
     }
 
-    return event.type === 'hydra.delivered'
+    return event.type === 'titan.delivered'
       ? event.data.session === sessionId({ agent })
-      : event.type === 'board.configured' && event.data.hydra?.session === sessionId({ agent })
+      : event.type === 'titan.configured' && event.data.hydra?.session === sessionId({ agent })
   })
 
   const cutTitanTurn = cached ?? legacyTurn
   const resumes = cached?.resumes ?? (legacyTurn ? resumesInARow({
     turn: legacyTurn,
     read: ({ seq }) => readChanges({
-      hydraId,
+      titanId,
       seqs: [seq],
     })[0],
   }) : 0)
@@ -406,7 +406,7 @@ export function findTitanTurnToResume({
 
   const finishedThrough = cached?.finishedThrough || undefined
   const lastFinishedTurn = finishedThrough ? undefined : scanChanges({
-    hydraId,
+    titanId,
     cardId: TITAN_CARD,
     types: [
       'session.observed',
@@ -426,8 +426,8 @@ export function findTitanTurnToResume({
     '',
   )
   const source = readChanges({
-    hydraId,
-    types: ['hydra.message'],
+    titanId,
+    types: ['titan.message'],
     ids: [sourceId],
   })[0]
   const lastFinishedTurnSeq = Math.min(
@@ -437,11 +437,11 @@ export function findTitanTurnToResume({
   const unansweredMessages: string[] = []
 
   for (const event of scanChanges({
-    hydraId,
-    types: ['hydra.message'],
+    titanId,
+    types: ['titan.message'],
     after: lastFinishedTurnSeq,
   })) {
-    if (event.type !== 'hydra.message' || !ownerActor({ actor: event.actor })) {
+    if (event.type !== 'titan.message' || !ownerActor({ actor: event.actor })) {
       continue
     }
 
@@ -473,7 +473,7 @@ export function findTitanTurnToResume({
   return {
     resumeAttemptId,
     wakeThrough: Number(wakeThroughSeq ?? 0),
-    resumeMessage: `<othrys-wake>An Othrys server restart cut your last turn before you answered ${interruptedWork}. ${recordContext({ hydraId })} Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[
+    resumeMessage: `<othrys-wake>An Othrys server restart cut your last turn before you answered ${interruptedWork}. ${recordContext({ titanId })} Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[
       ...ownerReads,
       decisionsText({
         state,

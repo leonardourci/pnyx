@@ -9,7 +9,7 @@ import { operationLabel } from './operation-label.ts'
 export const HISTORY_BUDGET = 6000
 
 export interface HistoryMilestone extends TitanOperation {
-  receipts?: Extract<TitanEvent, { type: 'hydra.operation' }>[]
+  receipts?: Extract<TitanEvent, { type: 'titan.operation' }>[]
   seq: number
   through: number
   summary?: string
@@ -210,7 +210,7 @@ export function applyHistory({
 }): void {
   const milestones = state.historyMilestones ?? []
 
-  if (event.type === 'hydra.agent-change' && event.data.state === 'finished' && event.data.summary !== undefined) {
+  if (event.type === 'titan.agent-change' && event.data.state === 'finished' && event.data.summary !== undefined) {
     const change = event.data
     let id = change.operation
     const active = state.hydraOperation
@@ -237,7 +237,7 @@ export function applyHistory({
 
   let operation: TitanOperation
 
-  if (event.type === 'hydra.operation') {
+  if (event.type === 'titan.operation') {
     operation = event.data
   } else if (event.type === 'session.compaction' && event.cardId === TITAN_CARD && event.data.kind === 'status') {
     const native = event.data.operation
@@ -276,7 +276,7 @@ export function applyHistory({
     seq: event.seq,
   }
 
-  if (event.type === 'hydra.operation' && operation.kind === 'inscribe') {
+  if (event.type === 'titan.operation' && operation.kind === 'inscribe') {
     milestone.receipts = [
       ...previous?.receipts ?? [],
       structuredClone(event),

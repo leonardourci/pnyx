@@ -55,7 +55,7 @@ export function operationEvent({
       id: eventId ?? `operation:${operation.id}:${operation.state}`,
     },
     change: {
-      type: 'hydra.operation',
+      type: 'titan.operation',
       data,
     },
   })
@@ -107,14 +107,14 @@ function operationRecap({
 }
 
 export function createTitanOperations({
-  hydraId,
+  titanId,
   queuedTitan,
   at,
   note,
   armWake,
   host,
 }: {
-  hydraId: string
+  titanId: string
   queuedTitan: Set<string>
   at(): string
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): Promise<void>
@@ -134,7 +134,7 @@ export function createTitanOperations({
       return true
     }
 
-    return Boolean(loadTitan({ hydraId }).state.hydraOperation)
+    return Boolean(loadTitan({ titanId }).state.hydraOperation)
   }
 
   const startOperation = ({
@@ -203,7 +203,7 @@ export function createTitanOperations({
     id: string
     error?: string
   }) => {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const running = state.hydraOperation?.id === id ? state.hydraOperation : undefined
 
     if (!running) {
@@ -223,7 +223,7 @@ export function createTitanOperations({
     const recap = () => background({
       name: 'Titan back after a stop',
       run: async () => {
-        const state = loadTitan({ hydraId }).state
+        const state = loadTitan({ titanId }).state
 
         // Another operation started meanwhile; the recap waits for the last one to end.
         if (state.hydraOperation) {
@@ -301,7 +301,7 @@ export function createTitanOperations({
 }
 
 export function createTitanOutage({
-  hydraId,
+  titanId,
   retryDelays,
   closing,
   at,
@@ -309,7 +309,7 @@ export function createTitanOutage({
   record,
   host,
 }: {
-  hydraId: string
+  titanId: string
   retryDelays: number[]
   closing(): boolean
   at(): string
@@ -342,7 +342,7 @@ export function createTitanOutage({
       id: `back:${down.seq}`,
       actor: 'othrys',
       ...recapText({
-        state: loadTitan({ hydraId }).state,
+        state: loadTitan({ titanId }).state,
         since: down.since,
         after: down.after ?? down.seq,
         now: Date.now(),
@@ -377,7 +377,7 @@ export function createTitanOutage({
             meta,
             cardId: TITAN_CARD,
             change: {
-              type: 'hydra.status',
+              type: 'titan.status',
               data: {
                 state: 'up',
                 since: meta.at,
@@ -392,7 +392,7 @@ export function createTitanOutage({
             meta,
             cardId: TITAN_CARD,
             change: {
-              type: 'hydra.message',
+              type: 'titan.message',
               data: {
                 action: 'send',
                 hydra,
@@ -417,7 +417,7 @@ export function createTitanOutage({
   // The recap turn tries the start again; a Titan that is up, or no longer Othrys's to run, needs no retry.
   const retryStart = () => {
     retryTimer = undefined
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const status = state.hydraStatus
 
     if (closing() || status?.state !== 'down' || !othrysRunsTitan({ state })) {
@@ -448,7 +448,7 @@ export function createTitanOutage({
 
   const takeRecap = ({ id }: { id: string }) => {
     const recap = outage && id === `back:${outage.seq}` ? recapText({
-      state: loadTitan({ hydraId }).state,
+      state: loadTitan({ titanId }).state,
       since: outage.since,
       after: outage.after ?? outage.seq,
       now: Date.now(),
@@ -520,7 +520,7 @@ export function createTitanOutage({
               },
               cardId: TITAN_CARD,
               change: {
-                type: 'hydra.status',
+                type: 'titan.status',
                 data: {
                   state: 'down',
                   since: now,
@@ -554,7 +554,7 @@ export function createTitanOutage({
               },
               cardId: TITAN_CARD,
               change: {
-                type: 'hydra.message',
+                type: 'titan.message',
                 data: {
                   action: 'send',
                   hydra,

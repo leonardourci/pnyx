@@ -22,7 +22,7 @@ export interface MessageWindow {
 // they hold more than NATIVE_LIMIT messages the range halves, keeping the end the caller walks from: toward 'hi' the
 // positions after lo, toward 'lo' the positions before hi.
 export function messageWindow({
-  hydraId,
+  titanId,
   sources,
   cardId,
   types,
@@ -30,7 +30,7 @@ export function messageWindow({
   hi,
   toward = 'hi',
 }: {
-  hydraId: string
+  titanId: string
   sources: NativeSource[]
   cardId?: string
   types: string[]
@@ -42,11 +42,11 @@ export function messageWindow({
 
   while (!read) {
     const start = lo > 0 ? eventTime({
-      hydraId,
+      titanId,
       seq: lo,
     }) : undefined
     const end = eventTime({
-      hydraId,
+      titanId,
       seq: hi,
     })
 
@@ -80,14 +80,14 @@ export function messageWindow({
   }
 
   const events = readEvents({
-    hydraId,
+    titanId,
     cardId,
     types,
     after: lo,
     before: hi + 1,
   })
   const found = eventPositions({
-    hydraId,
+    titanId,
     entries: read.map(entry => ({
       id: positionKey({ entry }),
       at: entry.at,

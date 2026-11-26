@@ -269,7 +269,7 @@ function ordinaryReasons({
     return []
   }
 
-  if (event.type === 'hydra.review') {
+  if (event.type === 'titan.review') {
     return event.data.wake !== false && othrysRunsTitan({ state }) ? [{ kind: 'timed review' }] : []
   }
 
@@ -277,7 +277,7 @@ function ordinaryReasons({
     return slotFree({ state })
   }
 
-  if (event.type === 'hydra.message') {
+  if (event.type === 'titan.message') {
     const {
       task,
       ask,
@@ -453,7 +453,7 @@ function changesReadiness({
 
       return beforeBlocking !== afterBlocking
     }
-    case 'hydra.message':
+    case 'titan.message':
       return Boolean(event.data.answers)
     case 'card.replied':
       return event.data.accepted === true
@@ -544,7 +544,7 @@ export function eventReasons({
     return reasons
   }
 
-  const affected = event.type === 'hydra.message' ? event.data.task : event.cardId
+  const affected = event.type === 'titan.message' ? event.data.task : event.cardId
 
   if (!affected) {
     return reasons

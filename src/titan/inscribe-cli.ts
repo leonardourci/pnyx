@@ -10,21 +10,21 @@ import { operationEvent } from './operations.ts'
 export async function hydraInscribe({
   values,
   positionals,
-  hydraId,
+  titanId,
 }: {
   values: Record<string, string | boolean | undefined>
   positionals: string[]
-  hydraId: string
+  titanId: string
 }): Promise<Output> {
   const action = positionals[1]
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const m = meta({ values })
   const savedSeq = m.id ? state.eventIds[m.id] : undefined
   const saved = savedSeq === undefined ? undefined : readChanges({
-    hydraId,
+    titanId,
     ids: [m.id!],
   })[0]
-  const savedOperation = saved?.type === 'hydra.operation' && saved.data.kind === 'inscribe' ? saved.data.id : undefined
+  const savedOperation = saved?.type === 'titan.operation' && saved.data.kind === 'inscribe' ? saved.data.id : undefined
   const running = state.historyMilestones?.findLast(item => item.kind === 'inscribe' && item.state === 'started')
   const requestedId = values.key === undefined ? running?.id ?? randomUUID() : String(values.key)
   const operationId = savedOperation ?? requestedId
@@ -40,10 +40,10 @@ export async function hydraInscribe({
     id: m.id ?? `operation:${operationId}:${operationState}`,
   }
   const result = await commit({
-    hydraId,
+    titanId,
     meta: eventMeta,
     intent: {
-      type: 'hydra.operation',
+      type: 'titan.operation',
       card: TITAN_CARD,
     },
     decide: ({ state }) => operationEvent({
@@ -59,7 +59,7 @@ export async function hydraInscribe({
       }),
     }),
   })
-  const updated = loadTitan({ hydraId }).state
+  const updated = loadTitan({ titanId }).state
   const operation = updated.historyMilestones?.find(item => item.id === operationId)
 
   if (!operation) {
@@ -70,6 +70,6 @@ export async function hydraInscribe({
     ...result,
     milestone: operationId,
     through: operation.through,
-    records: recordContext({ hydraId }),
+    records: recordContext({ titanId }),
   }
 }

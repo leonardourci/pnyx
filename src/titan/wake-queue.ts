@@ -15,7 +15,7 @@ import { wakeId, WAKE_ID } from './wake-ids.ts'
 
 // Titan's unread changes and when it is woken for them: its check turns, the read cursor, and the updates the routine helper takes instead.
 export function createWakeQueue({
-  hydraId,
+  titanId,
   wakeDelay,
   live,
   queuedTitan,
@@ -26,7 +26,7 @@ export function createWakeQueue({
   helperOpen,
   host,
 }: {
-  hydraId: string
+  titanId: string
   wakeDelay: number
   live: Map<string, Live>
   queuedTitan: Set<string>
@@ -105,7 +105,7 @@ export function createWakeQueue({
       && reportActor({ actor: message.actor }))
 
     return wakeText({
-      hydraId,
+      titanId,
       state,
       now: Date.now(),
       reasons: [...new Set(seqs.flatMap(seq => wakeReasonsAt.get(seq) ?? []))],
@@ -131,7 +131,7 @@ export function createWakeQueue({
       && ((update.seq > after && update.seq <= wakeThrough) || parked.has(update.seq)))
     const seqs = new Set(unread.map(update => update.seq))
     const routed = new Map(seqs.size ? readChanges({
-      hydraId,
+      titanId,
       seqs: [...seqs],
     })
       .flatMap(event => {
@@ -145,7 +145,7 @@ export function createWakeQueue({
             event.seq,
             {
               task,
-              question: event.type === 'hydra.message' && !!event.data.ask,
+              question: event.type === 'titan.message' && !!event.data.ask,
             },
           ],
         ] as const : []
@@ -225,7 +225,7 @@ export function createWakeQueue({
 
   const fireWake = async () => {
     wakeTimer = undefined
-    const current = loadTitan({ hydraId }).state
+    const current = loadTitan({ titanId }).state
 
     if (closing() || !othrysRunsTitan({ state: current })) {
       return
@@ -238,7 +238,7 @@ export function createWakeQueue({
         fallback: wakeStart ?? 0,
       }),
     })
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const session = state.config?.hydra.session
     const card = state.cards[TITAN_CARD]
     const after = wakeCursor({
@@ -313,7 +313,7 @@ export function createWakeQueue({
     }
 
     const text = wakeText({
-      hydraId,
+      titanId,
       state,
       now: Date.now(),
       reasons: [...new Set(batch.flatMap(update => wakeReasonsAt.get(update.seq) ?? []))],
@@ -321,7 +321,7 @@ export function createWakeQueue({
       check: batch.some(update => !reportSeqs.has(update.seq)) || !reports.length,
       review: reviewText,
       reviewId: reviewText && review ? readChanges({
-        hydraId,
+        titanId,
         seqs: [review.seq],
       })[0]?.id : undefined,
     })
@@ -371,7 +371,7 @@ export function createWakeQueue({
 
   const handBack = () => {
     readThrough = wakeCursor({
-      state: loadTitan({ hydraId }).state,
+      state: loadTitan({ titanId }).state,
       fallback: wakeStart ?? 0,
     })
     queued()
@@ -411,12 +411,12 @@ export function createWakeQueue({
     )
 
     if (!updates.some(update => update.seq === seq)) {
-      const state = loadTitan({ hydraId }).state
+      const state = loadTitan({ titanId }).state
       const kinds = event ? eventReasons({
         state,
         event,
       }).map(reason => reason.kind) : []
-      const report = event?.type === 'hydra.message'
+      const report = event?.type === 'titan.message'
       updates.push({
         seq,
         card: report ? event.data.task ?? card : card,
@@ -433,7 +433,7 @@ export function createWakeQueue({
   }
 
   const queue: Host['queue'] = () => {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
 
     return {
       waiting: [
