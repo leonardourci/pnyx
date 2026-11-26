@@ -53,8 +53,8 @@ export function createTitanConnection() {
   const scopes = new Map<string, Scope>()
   const requests = new Map<string, Request>()
   const listeners = new Set<() => void>()
-  const creationKey = `pnyx:${namespace}:hydra-creations`
-  const selectedKey = `pnyx:${namespace}:selected-creation`
+  const creationKey = `othrys:${namespace}:hydra-creations`
+  const selectedKey = `othrys:${namespace}:selected-creation`
   const creations = new Map<string, Creation>()
   let selected = initialId
   let socket: WebSocket | null = null

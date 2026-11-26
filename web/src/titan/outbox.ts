@@ -13,7 +13,7 @@ export function storageKey({
 }): string {
   const hydraId = given ?? (typeof document === 'undefined' ? '' : document.querySelector<HTMLMetaElement>('meta[name=othrys-hydra]')?.content)
 
-  return `pnyx:${hydraId ?? ''}:${key}`
+  return `othrys:${hydraId ?? ''}:${key}`
 }
 
 export function moveTitanStorage({
@@ -30,11 +30,11 @@ export function moveTitanStorage({
   }
 
   try {
-    const prefix = `pnyx:${from}:`
+    const prefix = `othrys:${from}:`
 
     for (const key of Object.keys(storage).filter(key => key.startsWith(prefix))) {
       const value = storage.getItem(key)
-      const target = `pnyx:${to}:${key.slice(prefix.length)}`
+      const target = `othrys:${to}:${key.slice(prefix.length)}`
 
       if (value !== null && storage.getItem(target) === null) {
         storage.setItem(

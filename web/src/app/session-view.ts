@@ -32,7 +32,7 @@ export function sessionViewKey({
 }) {
   const installation = document.querySelector<HTMLMetaElement>('meta[name=othrys-installation]')?.content
 
-  return `pnyx:view:${JSON.stringify([
+  return `othrys:view:${JSON.stringify([
     location.origin,
     installation,
     scope,

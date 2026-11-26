@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { CARD_SIZING } from '#web-shared/card-sizing.ts'
 
-const PRESENTATION_KEY = 'pnyx:task-presentation'
+const PRESENTATION_KEY = 'othrys:task-presentation'
 const TASK_MODAL_CHANGED = 'othrys:task-modal-changed'
 const CHAT_ONLY_CHANGED = 'othrys:task-chat-only-changed'
 
@@ -244,7 +244,7 @@ export function useTaskModal({
       history.pushState(
         {
           ...history.state,
-          pnyxTaskModal: id,
+          othrysTaskModal: id,
         },
         '',
         url,
@@ -252,7 +252,7 @@ export function useTaskModal({
       dispatchEvent(new Event(TASK_MODAL_CHANGED))
     },
     closeModal: () => {
-      if (history.state?.pnyxTaskModal === id) {
+      if (history.state?.othrysTaskModal === id) {
         history.back()
       } else {
         const url = new URL(location.href)
