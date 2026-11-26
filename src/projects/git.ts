@@ -464,7 +464,7 @@ export async function clearDefaultUpstreams({
   for (const line of config.out.split('\n')) {
     const match = /^branch\.(.+)\.(remote|merge) (.*)$/.exec(line)
 
-    if (match && (/^(?:othrys|pnyx)\//.test(match[1]) || branches.includes(match[1]))) {
+    if (match && (/^othrys\//.test(match[1]) || branches.includes(match[1]))) {
       const [
         ,
         branch,
