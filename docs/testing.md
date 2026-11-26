@@ -93,7 +93,7 @@ Rules:
 - `hooks.test.ts`: outside sessions reporting through the installed hook, with the server up or down.
 - `oracle.test.ts`: search, its project and date filters and what it never reads.
 - `paging.test.ts`: chat pages and a card's Activity pages.
-- `pickers.test.ts`: `models --refresh` asking the harness again and keeping its list when that fails, and how suggestion lists rank their matches and mark each matched character once, `files` listing each project's files without ignored ones and again after they change, a folder listing that names every entry when asked for files, and how a typed name narrows that listing and when Tab completes from it.
+- `pickers.test.ts`: `models --refresh` asking the harness again and keeping its list when that fails, and how suggestion lists rank their matches and mark each matched character once, `files` listing each project's files without ignored ones and again after they change, a folder listing that names every entry when asked for files, and how a typed name narrows that listing and its recent folders, that a missing folder lists nothing, and when Tab completes from it.
 - `projects.test.ts`: task copies, both landing rules and the merge gate.
 - `handoffs.test.ts`: queued worker handoffs, checkout refusals and crash recovery in a separate scratch home.
 - `settings.test.ts`: the settings every Titan shares.

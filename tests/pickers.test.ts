@@ -289,12 +289,17 @@ test(
 )
 
 test(
-  'a typed name narrows its folder\'s contents, and Tab completes only from contents listed in full',
+  'a typed name narrows its folder\'s contents and recent folders, a missing folder lists nothing, and Tab completes only from contents listed in full',
   () => {
     const entries = ({ names }: { names: string[] }) => names.map(name => ({
       name,
       path: `/work/${name}`,
     }))
+    const work = {
+      name: 'work',
+      path: '/work',
+      empty: false,
+    }
     const contents = {
       folders: entries({
         names: [
@@ -310,7 +315,17 @@ test(
           'apply.md',
         ],
       }),
-      recent: [],
+      recent: [
+        {
+          name: 'ui',
+          path: '/work/app-web/ui',
+        },
+        {
+          name: 'docs',
+          path: '/work/docs',
+        },
+      ],
+      selected: work,
     }
 
     const shown = ({ name }: { name: string }) => {
@@ -340,10 +355,27 @@ test(
       '.cache',
       '.env',
     ])
+    expect(typedListing({
+      listing: contents,
+      name: 'app',
+    }).recent.map(folder => folder.path)).toEqual(['/work/app-web/ui'])
     expect(completePath({
       typed: '/work/app',
       contents,
     })).toBe('/work/app-')
+
+    const parentOfMissing = {
+      folders: entries({ names: ['app-api'] }),
+      recent: [],
+    }
+    expect(typedListing({
+      listing: parentOfMissing,
+      name: '',
+    }).folders).toEqual([])
+    expect(completePath({
+      typed: '/work/app/',
+      contents: parentOfMissing,
+    })).toBeUndefined()
 
     const capped = {
       folders: entries({
@@ -359,6 +391,7 @@ test(
         ),
       }),
       recent: [],
+      selected: work,
     }
     expect(typedListing({
       listing: capped,

@@ -20,11 +20,19 @@ export function useFolders({
     listing?: FolderListing
     error?: string
   }>()
-  const query = new URLSearchParams({
+  const params = new URLSearchParams({
     path,
     repository,
-    ...files ? { files: '1' } : {},
-  }).toString()
+  })
+
+  if (files) {
+    params.set(
+      'files',
+      '1',
+    )
+  }
+
+  const query = params.toString()
   useEffect(
     () => {
       if (!connected) {

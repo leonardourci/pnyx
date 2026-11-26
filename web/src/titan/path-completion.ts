@@ -30,6 +30,16 @@ export function typedListing({
   listing: FolderListing
   name: string
 }): TypedListing {
+  const directory = listing.selected
+
+  if (!directory) {
+    return {
+      folders: [],
+      files: [],
+      recent: listing.recent,
+    }
+  }
+
   const shown = ({ name: entry }: Folder) => startsWithTyped({
     name: entry,
     typed: name,
@@ -37,13 +47,21 @@ export function typedListing({
     name: entry,
     typed: name,
   })
+  const typedFullPath = `${directory.path.replace(
+    /\/$/,
+    '',
+  )}/${name}`
+  const recentUnderTypedName = listing.recent.filter(folder => startsWithTyped({
+    name: folder.path,
+    typed: typedFullPath,
+  }))
   const namedFolder = listing.folders.find(folder => folder.name === name)
 
   return {
     folders: listing.folders.filter(shown),
     files: (listing.files ?? []).filter(shown),
-    recent: listing.recent,
-    selected: name ? namedFolder : listing.selected,
+    recent: name ? recentUnderTypedName : listing.recent,
+    selected: name ? namedFolder : directory,
   }
 }
 
@@ -72,8 +90,9 @@ export function completePath({
   typed: string
   contents: FolderListing
 }): string | undefined {
-  // A full listing may leave out matches, so their common prefix could complete too far.
-  if (contents.folders.length >= CONTENTS_LIMIT) {
+  const foldersLeftOut = contents.folders.length >= CONTENTS_LIMIT
+
+  if (foldersLeftOut) {
     return undefined
   }
 
