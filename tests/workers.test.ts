@@ -2055,6 +2055,76 @@ test(
 )
 
 test(
+  'an instruction whose saved receipt a crash lost is read again from the transcript and not sent twice',
+  async () => {
+    const titan = await othrys.titan()
+    const {
+      folder,
+    } = await titan.startTask({ key: 'lost-read' })
+    const task = await titan.task({ key: 'lost-read' })
+    await titan.owner({
+      args: [
+        'reply',
+        task.id,
+        '--text',
+        'Trim the import logs',
+      ],
+    })
+    const read = async () => (await titan.owner({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        task.id,
+        '--all',
+      ],
+    })).messages.some((message: {
+      text: string
+      ack?: { outcome: string }
+    }) => message.text === 'Trim the import logs' && message.ack?.outcome === 'read')
+    await until({
+      what: 'the harness to take the instruction',
+      check: read,
+    })
+    const log = join(
+      process.env.OTHRYS_HOME!,
+      'titans',
+      titan.id,
+      'tasks',
+      task.id,
+      'task.log',
+    )
+
+    const loseReceipt = () => {
+      const lines = readFileSync(
+        log,
+        'utf8',
+      ).split('\n')
+      const receipt = lines.findIndex(line => line.includes('"type":"task.steering.handled"'))
+      expect(receipt).toBeGreaterThan(0)
+      writeFileSync(
+        log,
+        `${lines.slice(
+          0,
+          receipt,
+        ).join('\n')}\n`,
+      )
+    }
+
+    await othrys.restart({ whileStopped: loseReceipt })
+
+    await until({
+      what: 'the read to be rebuilt from the transcript',
+      check: read,
+    })
+    expect(times({
+      sessions: othrys.claude.sessions.filter(session => session.cwd === folder),
+      text: 'Trim the import logs',
+    })).toBe(1)
+  },
+)
+
+test(
   'a Codex worker gets each owner message once, shows it delivered in its task chat, and resumes the same thread after a restart',
   async () => {
     const titan = await othrys.titan()
