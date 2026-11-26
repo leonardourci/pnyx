@@ -1,4 +1,4 @@
-import { hydraConfig } from './config.ts'
+import { titanConfig } from './config.ts'
 import { TITAN_CARD } from './identity.ts'
 import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -6,7 +6,7 @@ import { isRoutineMessage, type TitanMessage } from './model.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { ownerActor } from '#app/actors.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
-import { hydraInputDispatched } from './received.ts'
+import { titanInputDispatched } from './received.ts'
 
 const STARTED_RECEIPTS = 32
 
@@ -17,20 +17,20 @@ export function undeliveredMessagesSince({
   state: TitanState
   after: number
 }) {
-  const hydra = hydraConfig({ state }).hydra.id
+  const titan = titanConfig({ state }).titan.id
   const sentSince = ({ message }: { message: TitanMessage }) =>
     (state.eventIds[message.id] ?? 0) > after
 
-  return (state.hydraMessages ?? []).filter(message => message.hydra === hydra
+  return (state.titanMessages ?? []).filter(message => message.titan === titan
     && !isRoutineMessage({ message }) && !message.stopped && !message.failure
-    && sentSince({ message }) && !hydraInputDispatched({
+    && sentSince({ message }) && !titanInputDispatched({
     state,
     message,
   }))
 }
 
 function heldMessages({ state }: { state: TitanState }) {
-  const operation = state.hydraOperation
+  const operation = state.titanOperation
 
   if (!operation) {
     return []
@@ -42,7 +42,7 @@ function heldMessages({ state }: { state: TitanState }) {
   })
 }
 
-function hydraQueueView({
+function titanQueueView({
   state,
   card,
 }: {
@@ -51,7 +51,7 @@ function hydraQueueView({
 }) {
   const compacting = activeCompaction({ card })
   const upgrades = state.upgrades ?? []
-  const stopped = state.hydraOperation
+  const stopped = state.titanOperation
   const waiting = heldMessages({ state })
   const held = new Set([
     ...card?.compaction?.inputs.map(input => input.id) ?? [],
@@ -69,7 +69,7 @@ function hydraQueueView({
   const holding = Boolean(compacting) || upgrading || Boolean(stopped)
   const upgradeRunning = upgrades.some(operation => operation.state === 'running')
 
-  const cancelled = new Set(state.hydraMessages?.filter(message => message.stopped)
+  const cancelled = new Set(state.titanMessages?.filter(message => message.stopped)
     .map(message => message.id))
   const compactInputs = [
     ...(card?.compaction?.inputs.filter(input => ownerActor({ actor: input.actor })
@@ -78,7 +78,7 @@ function hydraQueueView({
       id: operation.id,
       text: UPGRADE_COMMAND,
       actor: 'web',
-      route: 'hydra' as const,
+      route: 'titan' as const,
       at: operation.queuedAt,
     })),
     ...waiting.filter(message => ownerActor({ actor: message.actor })).map(message => ({
@@ -86,7 +86,7 @@ function hydraQueueView({
       text: message.text,
       actor: message.actor,
       at: message.at,
-      route: 'hydra' as const,
+      route: 'titan' as const,
     })),
 
   ]
@@ -116,18 +116,18 @@ function hydraQueueView({
 }
 
 // Othrys is running a turn of this Titan's agent now.
-export function hydraWorking({ state }: { state: TitanState }) {
+export function titanWorking({ state }: { state: TitanState }) {
   const card = state.cards[TITAN_CARD]
 
   return (card?.sessionActivity ?? card?.activity) === 'working'
 }
 
-export function hydraChatQueue({ state }: { state: TitanState }) {
-  const config = hydraConfig({ state })
+export function titanChatQueue({ state }: { state: TitanState }) {
+  const config = titanConfig({ state })
   const card = state.cards[TITAN_CARD]
-  const messages = (state.hydraMessages ?? []).filter(message => message.hydra === config.hydra.id)
-  const working = hydraWorking({ state })
-  const view = hydraQueueView({
+  const messages = (state.titanMessages ?? []).filter(message => message.titan === config.titan.id)
+  const working = titanWorking({ state })
+  const view = titanQueueView({
     state,
     card,
   })
@@ -140,7 +140,7 @@ export function hydraChatQueue({ state }: { state: TitanState }) {
   while (index >= 0 && started.length < STARTED_RECEIPTS) {
     const message = messages[index]!
 
-    if (ownerActor({ actor: message.actor }) && hydraInputDispatched({
+    if (ownerActor({ actor: message.actor }) && titanInputDispatched({
       state,
       message,
     })) {
@@ -159,4 +159,4 @@ export function hydraChatQueue({ state }: { state: TitanState }) {
   }
 }
 
-export type TitanChatQueue = ReturnType<typeof hydraChatQueue>
+export type TitanChatQueue = ReturnType<typeof titanChatQueue>

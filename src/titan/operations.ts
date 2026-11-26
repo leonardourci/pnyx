@@ -1,7 +1,7 @@
 import { assignDefined } from '#workers/session-attachments.ts'
 import type { Decision, TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
-import { hydraEvent, othrysRunsTitan } from './titan.ts'
+import { titanEvent, othrysRunsTitan } from './titan.ts'
 import { TITAN_CARD } from './identity.ts'
 import { isRoutineMessage, type TitanOperation } from './model.ts'
 import { outageMinutes, recapText } from './wakes.ts'
@@ -14,7 +14,7 @@ import { loadTitan } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
 import { ownerActor } from '#app/actors.ts'
 import { TitanError } from '#store/errors.ts'
-import { failTitanInput, hydraDeliveryId, hydraInputDispatched } from './received.ts'
+import { failTitanInput, titanDeliveryId, titanInputDispatched } from './received.ts'
 import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
 import type { AgentRef } from '#workers/model.ts'
@@ -47,7 +47,7 @@ export function operationEvent({
     },
   })
 
-  return hydraEvent({
+  return titanEvent({
     state,
     cardId: TITAN_CARD,
     meta: {
@@ -68,8 +68,8 @@ const arrivedSince = ({
 }: {
   state: TitanState
   after: number
-}) => (state.hydraMessages ?? []).some(message => (state.eventIds[message.id] ?? 0) > after
-  && !hydraInputDispatched({
+}) => (state.titanMessages ?? []).some(message => (state.eventIds[message.id] ?? 0) > after
+  && !titanInputDispatched({
     state,
     message,
   }) && !message.stopped && !message.failure
@@ -84,7 +84,7 @@ function operationRecap({
   now,
 }: {
   state: TitanState
-  operation: NonNullable<TitanState['hydraOperation']>
+  operation: NonNullable<TitanState['titanOperation']>
   error?: string
   now: number
 }): ReturnType<typeof recapText> {
@@ -119,12 +119,12 @@ export function createTitanOperations({
   at(): string
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): Promise<void>
   armWake(): void
-  host(): Pick<Host, 'hydra'>
+  host(): Pick<Host, 'titan'>
 }) {
   // One machinery for whatever stops Titan for a while: it records the start and the end, holds nothing of its own,
   // and when it ends Titan's first turn is the recap of what arrived meanwhile.
   // The first of back-to-back operations: the recap after the last one covers everything since it began.
-  let stoppedSince: NonNullable<TitanState['hydraOperation']> | undefined
+  let stoppedSince: NonNullable<TitanState['titanOperation']> | undefined
   let recapId: string | undefined
   // The owner's Stop ended the running stop and cancelled what waited behind it, so no recap follows.
   let stoppedByOwner = false
@@ -134,7 +134,7 @@ export function createTitanOperations({
       return true
     }
 
-    return Boolean(loadTitan({ titanId }).state.hydraOperation)
+    return Boolean(loadTitan({ titanId }).state.titanOperation)
   }
 
   const startOperation = ({
@@ -146,13 +146,13 @@ export function createTitanOperations({
   }) => note({
     fn: ({ writer }) => {
       // A second compaction straight after the first, or a restart inside an upgrade, continues the same stop.
-      if (writer.state.hydraOperation) {
+      if (writer.state.titanOperation) {
         return
       }
 
       if (recapId && Object.hasOwn(
         writer.state.eventIds,
-        hydraDeliveryId({ message: { id: recapId } }),
+        titanDeliveryId({ message: { id: recapId } }),
       )) {
         stoppedSince = undefined
       }
@@ -204,7 +204,7 @@ export function createTitanOperations({
     error?: string
   }) => {
     const state = loadTitan({ titanId }).state
-    const running = state.hydraOperation?.id === id ? state.hydraOperation : undefined
+    const running = state.titanOperation?.id === id ? state.titanOperation : undefined
 
     if (!running) {
       return
@@ -226,7 +226,7 @@ export function createTitanOperations({
         const state = loadTitan({ titanId }).state
 
         // Another operation started meanwhile; the recap waits for the last one to end.
-        if (state.hydraOperation) {
+        if (state.titanOperation) {
           return
         }
 
@@ -258,7 +258,7 @@ export function createTitanOperations({
             now: Date.now(),
           })
           recapId = `operation:${id}`
-          await host().hydra({
+          await host().titan({
             id: recapId,
             actor: 'othrys',
             ...recap,
@@ -332,13 +332,13 @@ export function createTitanOutage({
   let retries = 0
 
   // The outage a queued recap turn reports; its text is built when the turn starts, so it leaves out messages answered first.
-  let outage: NonNullable<TitanState['hydraStatus']> | undefined
+  let outage: NonNullable<TitanState['titanStatus']> | undefined
 
   // One recap per outage: its id names the down event, so a retried or repeated recap starts at most one turn.
-  const recapTurn = ({ down }: { down: NonNullable<TitanState['hydraStatus']> }) => background({
+  const recapTurn = ({ down }: { down: NonNullable<TitanState['titanStatus']> }) => background({
     name: 'Titan recap',
     retry: planRetry,
-    run: () => host().hydra({
+    run: () => host().titan({
       id: `back:${down.seq}`,
       actor: 'othrys',
       ...recapText({
@@ -354,11 +354,11 @@ export function createTitanOutage({
   const back = async ({
     down,
     turn,
-    hydra,
+    titan,
   }: {
-    down: NonNullable<TitanState['hydraStatus']>
+    down: NonNullable<TitanState['titanStatus']>
     turn: string
-    hydra: string
+    titan: string
   }) => {
     clearTimeout(retryTimer)
     retryTimer = undefined
@@ -372,7 +372,7 @@ export function createTitanOutage({
         }
         applyDecision({
           writer,
-          decision: hydraEvent({
+          decision: titanEvent({
             state: writer.state,
             meta,
             cardId: TITAN_CARD,
@@ -387,7 +387,7 @@ export function createTitanOutage({
         })
         applyDecision({
           writer,
-          decision: hydraEvent({
+          decision: titanEvent({
             state: writer.state,
             meta,
             cardId: TITAN_CARD,
@@ -395,7 +395,7 @@ export function createTitanOutage({
               type: 'titan.message',
               data: {
                 action: 'send',
-                hydra,
+                titan,
                 text: `Titan is back after ${outageMinutes({
                   since: down.since,
                   now,
@@ -418,7 +418,7 @@ export function createTitanOutage({
   const retryStart = () => {
     retryTimer = undefined
     const state = loadTitan({ titanId }).state
-    const status = state.hydraStatus
+    const status = state.titanStatus
 
     if (closing() || status?.state !== 'down' || !othrysRunsTitan({ state })) {
       return
@@ -467,13 +467,13 @@ export function createTitanOutage({
     previous,
     id,
     actor,
-    hydra,
+    titan,
   }: {
     error: unknown
     previous?: Card
     id: string
     actor: string
-    hydra: string
+    titan: string
   }) => {
     const reason = (error as Error).message
     // An outside agent is not Othrys's to start, so it is refused once rather than retried.
@@ -484,7 +484,7 @@ export function createTitanOutage({
     // Finished rather than interrupted, so a retry or the next wake starts Titan again; a cut turn's attention still waits for the owner.
     await write({
       fn: ({ writer }) => {
-        const down = writer.state.hydraStatus?.state === 'down'
+        const down = writer.state.titanStatus?.state === 'down'
         const now = at()
 
         if (previous?.agent?.host === 'othrys') {
@@ -512,7 +512,7 @@ export function createTitanOutage({
         if (retried && !down) {
           applyDecision({
             writer,
-            decision: hydraEvent({
+            decision: titanEvent({
               state: writer.state,
               meta: {
                 at: now,
@@ -546,7 +546,7 @@ export function createTitanOutage({
         } else if (!down) {
           applyDecision({
             writer,
-            decision: hydraEvent({
+            decision: titanEvent({
               state: writer.state,
               meta: {
                 at: now,
@@ -557,7 +557,7 @@ export function createTitanOutage({
                 type: 'titan.message',
                 data: {
                   action: 'send',
-                  hydra,
+                  titan,
                   text: detail,
                 },
               },

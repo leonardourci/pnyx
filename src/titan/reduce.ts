@@ -6,7 +6,7 @@ import { refreshTasks } from '#tasks/refresh.ts'
 import { touch } from '#tasks/touch.ts'
 import { operationLabel } from './operation-label.ts'
 import { TITAN_CARD } from './identity.ts'
-import { hydraConfig } from './config.ts'
+import { titanConfig } from './config.ts'
 
 export function applyTitan({
   state,
@@ -16,7 +16,7 @@ export function applyTitan({
   event: TitanEvent
 }): boolean {
   if (event.type === 'titan.agent-used') {
-    state.hydraAgent = structuredClone(event.data)
+    state.titanAgent = structuredClone(event.data)
 
     return true
   }
@@ -38,11 +38,11 @@ export function applyTitan({
     const change = event.data
 
     if (change.state === 'finished') {
-      delete state.hydraAgentChange
-      state.hydraAgent = structuredClone(change.next)
+      delete state.titanAgentChange
+      state.titanAgent = structuredClone(change.next)
 
       if (change.summary !== undefined) {
-        state.hydraContext = {
+        state.titanContext = {
           after: event.seq,
           summary: change.summary,
           previousSession: change.previousSession,
@@ -50,8 +50,8 @@ export function applyTitan({
       }
 
       if (change.kind === 'agent') {
-        state.hydraMessages = [
-          ...(state.hydraMessages ?? []),
+        state.titanMessages = [
+          ...(state.titanMessages ?? []),
           {
             id: event.id,
             action: 'send',
@@ -59,14 +59,14 @@ export function applyTitan({
             text: `Switched to ${change.next.model ?? change.next.harness}`,
             at: event.at,
             actor: 'othrys',
-            hydra: hydraConfig({ state }).hydra.id,
+            titan: titanConfig({ state }).titan.id,
           },
         ]
       }
     } else if (change.state === 'cancelled') {
-      delete state.hydraAgentChange
+      delete state.titanAgentChange
     } else {
-      state.hydraAgentChange = structuredClone(change)
+      state.titanAgentChange = structuredClone(change)
     }
 
     return true
@@ -78,22 +78,22 @@ export function applyTitan({
     }
 
     if (event.data.state === 'started') {
-      state.hydraOperation = {
+      state.titanOperation = {
         id: event.data.id,
         kind: event.data.kind,
         since: event.at,
         seq: event.data.after ?? event.seq,
       }
-    } else if (state.hydraOperation?.id === event.data.id) {
-      delete state.hydraOperation
+    } else if (state.titanOperation?.id === event.data.id) {
+      delete state.titanOperation
 
       // A compaction and an upgrade draw their own milestone lines.
       if (event.data.kind === 'compaction' || event.data.kind === 'upgrade') {
         return true
       }
 
-      state.hydraMessages = [
-        ...(state.hydraMessages ?? []),
+      state.titanMessages = [
+        ...(state.titanMessages ?? []),
         {
           id: event.id,
           action: 'send',
@@ -102,7 +102,7 @@ export function applyTitan({
           at: event.at,
           actor: 'othrys',
           // The chat shows the messages of the Titan it is configured as.
-          hydra: hydraConfig({ state }).hydra.id,
+          titan: titanConfig({ state }).titan.id,
         },
       ]
     }
@@ -111,7 +111,7 @@ export function applyTitan({
   }
 
   if (event.type === 'titan.input-stopped') {
-    for (const message of state.hydraMessages ?? []) {
+    for (const message of state.titanMessages ?? []) {
       if (event.data.messages.includes(message.id) && !message.received) {
         message.stopped = true
       }
@@ -121,7 +121,7 @@ export function applyTitan({
   }
 
   if (event.type === 'titan.input') {
-    const message = state.hydraMessages?.find(item => item.id === event.data.message)
+    const message = state.titanMessages?.find(item => item.id === event.data.message)
 
     if (message && !message.received) {
       if (event.data.state === 'failed') {
@@ -136,7 +136,7 @@ export function applyTitan({
   }
 
   if (event.type === 'titan.received') {
-    const message = state.hydraMessages?.find(item => item.id === event.data.message)
+    const message = state.titanMessages?.find(item => item.id === event.data.message)
 
     if (message) {
       message.received = event.data.at
@@ -148,7 +148,7 @@ export function applyTitan({
   }
 
   if (event.type === 'titan.status') {
-    state.hydraStatus = {
+    state.titanStatus = {
       ...structuredClone(event.data),
       seq: event.seq,
     }
@@ -157,13 +157,13 @@ export function applyTitan({
   }
 
   if (event.type === 'titan.review') {
-    const reminders = { ...state.hydraReview?.reminders }
+    const reminders = { ...state.titanReview?.reminders }
 
     for (const key of event.data.reminders) {
       reminders[key] = event.at
     }
 
-    state.hydraReview = {
+    state.titanReview = {
       at: event.at,
       seq: event.seq,
       block: event.data.block,
@@ -181,7 +181,7 @@ export function applyTitan({
       'readPoleis',
     )
     state.configured = true
-    const session = event.data.hydra.session
+    const session = event.data.titan.session
 
     if (session && event.id.endsWith(':hosted')) {
       const observed = state.sessions?.[session]
@@ -194,9 +194,9 @@ export function applyTitan({
       }
     }
 
-    if (session && !state.hydraSessions?.includes(session)) {
-      state.hydraSessions = [
-        ...state.hydraSessions ?? [],
+    if (session && !state.titanSessions?.includes(session)) {
+      state.titanSessions = [
+        ...state.titanSessions ?? [],
         session,
       ]
     }
@@ -217,9 +217,9 @@ export function applyTitan({
       updatedSeq: event.seq,
       updatedAt: event.at,
     }
-    const hydra = state.cards[TITAN_CARD]!
-    hydra.title = event.data.hydra.name
-    hydra.hidden = true
+    const titan = state.cards[TITAN_CARD]!
+    titan.title = event.data.titan.name
+    titan.hidden = true
     state.keys[TITAN_CARD] = TITAN_CARD
     refreshTasks({ state })
 
@@ -229,7 +229,7 @@ export function applyTitan({
   // Kinds are Titan settings; saving one does not choose the Titan.
   if (event.type === 'titan.agents') {
     state.config = cloneValue({
-      value: hydraConfig({
+      value: titanConfig({
         state,
         id: event.titanId,
       }),
@@ -257,8 +257,8 @@ export function applyTitan({
       at: event.at,
       actor: event.actor,
     }
-    state.hydraMessages = [
-      ...(state.hydraMessages ?? []),
+    state.titanMessages = [
+      ...(state.titanMessages ?? []),
       message,
     ]
     const card = event.data.task ? state.cards[event.data.task] : undefined

@@ -31,7 +31,7 @@ const TITAN_NAMES = [
 ] as const
 
 // The Titan mark: the icon of a Titan that has none of its own.
-export const TITAN_MARK = 'hydra'
+export const TITAN_MARK = 'titan'
 
 export const TITAN_NAME_MAX = 40
 

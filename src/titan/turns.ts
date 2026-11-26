@@ -3,14 +3,14 @@ import { projectsFor } from '#projects/read.ts'
 
 import { createDigestContext } from './digest-context.ts'
 import { stopTitanInputs } from './stop-inputs.ts'
-import { hydraDeliveryId } from './received.ts'
+import { titanDeliveryId } from './received.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { contextNoteBlock, contextTurnNotes, contextReportStatus, type ContextNote } from './context-notes.ts'
-import { agentSettings, hydraCandidate, runsDifferently, startsFromSummary, withAccount } from './agent-choice.ts'
+import { agentSettings, titanCandidate, runsDifferently, startsFromSummary, withAccount } from './agent-choice.ts'
 import { compactionContext } from './history.ts'
-import { hydraConfig } from './config.ts'
-import { hydraDigest } from './digest.ts'
-import { QUIET_REPLY, hydraEvent, reportActor } from './titan.ts'
+import { titanConfig } from './config.ts'
+import { titanDigest } from './digest.ts'
+import { QUIET_REPLY, titanEvent, reportActor } from './titan.ts'
 import { TITAN_CARD } from './identity.ts'
 import { taskMention } from './mentions.ts'
 import type { TitanMessage } from './model.ts'
@@ -22,7 +22,7 @@ import { ownerActor } from '#app/actors.ts'
 import { log } from '#app/diagnostics.ts'
 import { TITAN_COMMANDS } from '#app/command-registry.ts'
 import { applyDecision } from '#app/decision.ts'
-import { hydraAgentFolder } from '#app/home-migration.ts'
+import { titanAgentFolder } from '#app/home-migration.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { loadTitan } from '#app/store.ts'
 import type { TitanState } from '#app/model.ts'
@@ -136,7 +136,7 @@ export function createTitanTurns({
     provider: string
     taskId?: string
   }): Provider
-  environment({ hydra }: { hydra?: boolean }): NodeJS.ProcessEnv
+  environment({ titan }: { titan?: boolean }): NodeJS.ProcessEnv
   open({
     card,
     session,
@@ -164,13 +164,13 @@ export function createTitanTurns({
   armWake: ReturnType<typeof createWakeQueue>['armWake']
   models: Host['models']
 }) {
-  let hydraTurn = Promise.resolve()
+  let titanTurn = Promise.resolve()
   let wakeTurn = Promise.resolve()
   let waitingWakes = 0
   // Inputs in the chain: one may still be opening Titan's session before its turn counts as working.
   let entering = 0
 
-  const hydraBusy = () => {
+  const titanBusy = () => {
     const agent = loadTitan({ titanId }).state.cards[TITAN_CARD]?.agent
 
     return entering > 0 || Boolean(agent && live.get(sessionId({ agent }))?.activity === 'working')
@@ -178,7 +178,7 @@ export function createTitanTurns({
 
   // No deadline: a turn has none, and like the wait inside the chain this one ends only when the turn does or Othrys stops.
   const turnEnd = async () => {
-    while (!closing() && hydraBusy()) {
+    while (!closing() && titanBusy()) {
       await new Promise(resolve => setTimeout(
         resolve,
         TITAN_TURN_POLL_MS,
@@ -218,8 +218,8 @@ export function createTitanTurns({
   }
 
   const helperBatchesPresented = new Set<string>()
-  const hydraInstructions = () =>
-    `You are Titan for Othrys Titan "${titanId}". Your contract is AGENTS.md in your current folder; follow it. Use othrys with --titan ${titanId}; OTHRYS_ACTOR=hydra is already set. Projects attach later; your current folder belongs to Titan.`
+  const titanInstructions = () =>
+    `You are Titan for Othrys Titan "${titanId}". Your contract is AGENTS.md in your current folder; follow it. Use othrys with --titan ${titanId}; OTHRYS_ACTOR=titan is already set. Projects attach later; your current folder belongs to Titan.`
 
   let memoryStamp: string | undefined
 
@@ -240,7 +240,7 @@ export function createTitanTurns({
     const readable = projectsFor({ state })
 
     if (onlyTasks) {
-      return hydraDigest({
+      return titanDigest({
         records: recordContext({ titanId }),
         titanId,
         state,
@@ -271,12 +271,12 @@ export function createTitanTurns({
       memoryStamp = JSON.stringify({
         owner,
         ownerWrite,
-        hydra: state.hydraMemory,
+        titan: state.titanMemory,
         projects,
       })
     }
 
-    return hydraDigest({
+    return titanDigest({
       records: recordContext({ titanId }),
       previousDigest,
       checkpointed,
@@ -302,7 +302,7 @@ export function createTitanTurns({
     const stamp = JSON.stringify({
       owner,
       ownerWrite,
-      hydra: state.hydraMemory,
+      titan: state.titanMemory,
       projects,
     })
     const changed = memoryStamp !== undefined && memoryStamp !== stamp
@@ -312,12 +312,12 @@ export function createTitanTurns({
   }
 
   // Titan runs Othrys's own CLI without asking; every other prompt waits in Titan's chat.
-  const hydraSession = ({ agent }: { agent?: AgentRef }) => {
+  const titanSession = ({ agent }: { agent?: AgentRef }) => {
     const opensNewSession = agent === undefined
     let contextSent = false
 
     return {
-      instructions: hydraInstructions(),
+      instructions: titanInstructions(),
       allow: TITAN_COMMANDS,
       context: createDigestContext({
         agent,
@@ -371,7 +371,7 @@ export function createTitanTurns({
     return { state: 'cancelled' as const }
   }
 
-  const hydra: Host['hydra'] = async ({
+  const titan: Host['titan'] = async ({
     text,
     original,
     actor,
@@ -417,19 +417,19 @@ export function createTitanTurns({
 
     const queuedState = loadTitan({ titanId }).state
 
-    if (queuedState.hydraMessages?.find(message => message.id === id)?.stopped) {
+    if (queuedState.titanMessages?.find(message => message.id === id)?.stopped) {
       return Promise.resolve({ state: 'cancelled' })
     }
 
     const keepsLastAgent = !ownerActor({ actor }) && !startsFromSummary({ state: queuedState })
     const chosenAgent = withAccount({
-      agent: selected ?? (keepsLastAgent ? queuedState.hydraAgent : undefined) ?? hydraCandidate({
+      agent: selected ?? (keepsLastAgent ? queuedState.titanAgent : undefined) ?? titanCandidate({
         state: queuedState,
         dispatch: effectiveDispatch().dispatch,
       }),
     })
-    const message = queuedState.hydraMessages?.find(message => message.id === id) ?? { id }
-    const deliveryId = hydraDeliveryId({
+    const message = queuedState.titanMessages?.find(message => message.id === id) ?? { id }
+    const deliveryId = titanDeliveryId({
       message,
       release,
     })
@@ -460,7 +460,7 @@ export function createTitanTurns({
       }
 
       // Removed from the queue while it waited in the chain.
-      if (state.hydraMessages?.find(message => message.id === id)?.stopped) {
+      if (state.titanMessages?.find(message => message.id === id)?.stopped) {
         return { state: 'cancelled' }
       }
 
@@ -468,7 +468,7 @@ export function createTitanTurns({
         return { state: 'queued' }
       }
 
-      const config = hydraConfig({
+      const config = titanConfig({
         state,
         id: titanId,
       })
@@ -478,7 +478,7 @@ export function createTitanTurns({
       }
 
       const previous = state.cards[TITAN_CARD]
-      const ranWith = state.hydraAgent ?? (previous?.agent ? {
+      const ranWith = state.titanAgent ?? (previous?.agent ? {
         harness: harnessOf({ provider: previous.agent.provider }),
         account: previous.agent.account ?? harnessAccount({
           effective: effectiveDispatch(),
@@ -564,7 +564,7 @@ export function createTitanTurns({
           folder: loginFolder({ account }),
         } : undefined
         const settings = agentSettings({ agent: candidate })
-        const cwd = hydraAgentFolder({ titanId })
+        const cwd = titanAgentFolder({ titanId })
         prepareTitanFolder({ folder: cwd })
         let card = previous
         const previousAgent = card?.agent
@@ -624,20 +624,20 @@ export function createTitanTurns({
             cwd,
             agent,
             settings,
-            ...hydraSession({ agent }),
+            ...titanSession({ agent }),
             env: agent?.loginFolder ? accountEnvironment({
               account: {
                 provider: candidate.harness,
                 folder: agent.loginFolder,
               },
-              env: environment({ hydra: true }),
+              env: environment({ titan: true }),
             }) : dispatch ? accountEnvironment({
               account: {
                 provider: dispatch.provider,
                 folder: dispatch.folder,
               },
-              env: environment({ hydra: true }),
-            }) : environment({ hydra: true }),
+              env: environment({ titan: true }),
+            }) : environment({ titan: true }),
             signal: controller.signal,
             spawned: children.spawned,
           })
@@ -711,28 +711,28 @@ export function createTitanTurns({
                 meta,
               }),
             })
-            const current = hydraConfig({
+            const current = titanConfig({
               state: writer.state,
               id: titanId,
             })
             const session = sessionId({ agent: ref })
             // The configuration changes only when Titan's session does; otherwise a small event marks the turn.
-            const delivery = hydraEvent({
+            const delivery = titanEvent({
               state: writer.state,
               meta: {
                 ...meta,
                 id: deliveryId,
               },
               cardId: TITAN_CARD,
-              change: writer.state.config?.hydra.session === session ? {
+              change: writer.state.config?.titan.session === session ? {
                 type: 'titan.delivered',
                 data: { session },
               } : {
                 type: 'titan.configured',
                 data: {
                   ...current,
-                  hydra: {
-                    ...current.hydra,
+                  titan: {
+                    ...current.titan,
                     session,
                   },
                 },
@@ -746,7 +746,7 @@ export function createTitanTurns({
 
             applyDecision({
               writer,
-              decision: hydraEvent({
+              decision: titanEvent({
                 state: writer.state,
                 cardId: TITAN_CARD,
                 meta,
@@ -767,13 +767,13 @@ export function createTitanTurns({
           session: prepared,
         })
         prepared = undefined
-        const down = loadTitan({ titanId }).state.hydraStatus
+        const down = loadTitan({ titanId }).state.titanStatus
 
         if (down?.state === 'down') {
           await back({
             down,
             turn: id,
-            hydra: config.hydra.id,
+            titan: config.titan.id,
           })
         }
 
@@ -885,15 +885,15 @@ export function createTitanTurns({
           previous,
           id,
           actor,
-          hydra: config.hydra.id,
+          titan: config.titan.id,
         })
       }
     }
 
     const enter = () => {
-      const previous = hydraTurn
+      const previous = titanTurn
       entering += 1
-      hydraTurn = (async () => {
+      titanTurn = (async () => {
         try {
           await previous
           await run()
@@ -913,7 +913,7 @@ export function createTitanTurns({
     }
 
     // An Othrys wake waits for the running turn outside the chain, so owner messages sent meanwhile still join that turn.
-    if (actor === 'othrys' && (waitingWakes > 0 || hydraBusy())) {
+    if (actor === 'othrys' && (waitingWakes > 0 || titanBusy())) {
       waitingWakes += 1
       const previous = wakeTurn
       wakeTurn = (async () => {
@@ -942,7 +942,7 @@ export function createTitanTurns({
   }
 
   const startedByOwner = ({ answers }: { answers: string[] }) => {
-    const messages = loadTitan({ titanId }).state.hydraMessages ?? []
+    const messages = loadTitan({ titanId }).state.titanMessages ?? []
     const opener = ({ message }: { message: TitanMessage }) =>
       answers.includes(message.id)
     const ownerMessage = ({ message }: { message: TitanMessage }) =>
@@ -971,7 +971,7 @@ export function createTitanTurns({
       }),
     })
     finishReading()
-    const messages = loadTitan({ titanId }).state.hydraMessages ?? []
+    const messages = loadTitan({ titanId }).state.titanMessages ?? []
     const ownerInput = messages.some(message => answering.includes(message.id)
     && ownerActor({ actor: message.actor }))
 
@@ -1023,7 +1023,7 @@ export function createTitanTurns({
       if (contextPresented.size && outcome?.status === 'completed') {
         applyDecision({
           writer,
-          decision: hydraEvent({
+          decision: titanEvent({
             state: writer.state,
             cardId: TITAN_CARD,
             meta: {
@@ -1047,7 +1047,7 @@ export function createTitanTurns({
       if (batches.length || outcomesPresented > (writer.state.helper?.delivered ?? 0)) {
         applyDecision({
           writer,
-          decision: hydraEvent({
+          decision: titanEvent({
             state: writer.state,
             cardId: TITAN_CARD,
             meta: {
@@ -1089,8 +1089,8 @@ export function createTitanTurns({
       stopGeneration += 1
     },
     digest,
-    hydraSession,
-    hydra,
+    titanSession,
+    titan,
     startedByOwner,
     turnFinished,
     activityChanged: turnEnded,

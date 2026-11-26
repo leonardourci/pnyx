@@ -7,7 +7,7 @@ import { TITAN_CARD } from './identity.ts'
 import { inscribeOperation } from './history.ts'
 import { operationEvent } from './operations.ts'
 
-export async function hydraInscribe({
+export async function titanInscribe({
   values,
   positionals,
   titanId,

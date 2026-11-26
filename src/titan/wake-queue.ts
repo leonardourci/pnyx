@@ -70,7 +70,7 @@ export function createWakeQueue({
       tasks,
     )
 
-    return host().hydra({
+    return host().titan({
       id,
       actor: 'othrys',
       text,
@@ -100,7 +100,7 @@ export function createWakeQueue({
     seqs: number[]
   }) => {
     const chosen = new Set(seqs)
-    const reports = (state.hydraMessages ?? [])
+    const reports = (state.titanMessages ?? [])
       .filter(message => chosen.has(state.eventIds[message.id] ?? -1)
       && reportActor({ actor: message.actor }))
 
@@ -239,7 +239,7 @@ export function createWakeQueue({
       }),
     })
     const state = loadTitan({ titanId }).state
-    const session = state.config?.hydra.session
+    const session = state.config?.titan.session
     const card = state.cards[TITAN_CARD]
     const after = wakeCursor({
       state,
@@ -265,7 +265,7 @@ export function createWakeQueue({
 
     if (!batch.length) {
       if (helperPending()) {
-        return host().hydra({
+        return host().titan({
           id: `helper-outcomes:${state.seq}`,
           actor: 'othrys',
           text: '<othrys-wake>The routine helper left outcomes or handed a batch back. Handle the pending records below; relay owner outcomes in one plain line each with full links.</othrys-wake>',
@@ -292,7 +292,7 @@ export function createWakeQueue({
 
     // Progress is never queued, so main's reports are every unread message the helper does not hold.
     const held = new Set(activeHelperBatches({ state }).flatMap(batch => batch.seqs))
-    const reports = (state.hydraMessages ?? []).filter(message => {
+    const reports = (state.titanMessages ?? []).filter(message => {
       const seq = state.eventIds[message.id]
 
       if (seq === undefined || !reportActor({ actor: message.actor })) {
@@ -305,7 +305,7 @@ export function createWakeQueue({
         || (unread && !held.has(seq) && !helperSeqs.has(seq) && !parked.has(seq))
     })
     const reportSeqs = new Set(reports.map(message => state.eventIds[message.id]))
-    const review = state.hydraReview
+    const review = state.titanReview
     let reviewText: string | undefined
 
     if (review && review.seq > after && review.seq <= through) {

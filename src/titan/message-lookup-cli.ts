@@ -158,7 +158,7 @@ export function messageLookup({
     },
   })
   const command = card === TITAN_CARD ? [
-    'hydra',
+    'titan',
     'message',
   ] : [
     'task',

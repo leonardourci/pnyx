@@ -5,7 +5,7 @@ import { WAKE_TURN, WAKE_HANDLED } from './wake-ids.ts'
 import { sessionFields } from '#workers/session-facts.ts'
 import type { TitanState } from '#app/model.ts'
 import { decisionsBlock } from '#tasks/decisions.ts'
-import { QUIET_REPLY, hydraDelivery, reportActor } from './titan.ts'
+import { QUIET_REPLY, titanDelivery, reportActor } from './titan.ts'
 import type { TitanMessage } from './model.ts'
 import { clip } from './digest.ts'
 import { ownerActor } from '#app/actors.ts'
@@ -14,7 +14,7 @@ import type { AgentRef } from '#workers/model.ts'
 import { readChanges, scanChanges } from '#app/event-log.ts'
 import { TITAN_CARD } from './identity.ts'
 import { MAX_RESUMES, resumesInARow } from '#workers/host.ts'
-import { hydraInputDispatched } from './received.ts'
+import { titanInputDispatched } from './received.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import type { TitanChatQueue } from './chat-queue.ts'
 
@@ -125,7 +125,7 @@ export function wakeText({
 
     if (pick) {
       for (const message of reports) {
-        lines.push(sealed({ text: hydraDelivery({ message }) }))
+        lines.push(sealed({ text: titanDelivery({ message }) }))
       }
     }
   }
@@ -170,7 +170,7 @@ export function wakeText({
     })
     const scope = pick ? 'Only handle the granted tasks and selected updates listed below.'
       : 'Act on these pending reports when they need you.'
-    lines.push(`Read native records under ${JSON.stringify(dirname(recordFiles({ titanId }).hydra))}. ${scope}`)
+    lines.push(`Read native records under ${JSON.stringify(dirname(recordFiles({ titanId }).titan))}. ${scope}`)
 
     const pendingEvents = new Map<string, string>()
 
@@ -219,7 +219,7 @@ export function wakeText({
     lines.push(`Pending reports: ${JSON.stringify(savedReports)}`)
 
     if (reviewOverflow) {
-      lines.push(`Read the full hydra.review record ${JSON.stringify(reviewId)} in titan.log.`)
+      lines.push(`Read the full titan.review record ${JSON.stringify(reviewId)} in titan.log.`)
     }
   }
 
@@ -268,12 +268,12 @@ export function recapText({
     since,
     now,
   })
-  const sent = (state.hydraMessages ?? []).filter(message =>
+  const sent = (state.titanMessages ?? []).filter(message =>
     (state.eventIds[message.id] ?? 0) > after)
   // A message whose turn started has been read; worker reports reach Titan in their own wake.
   const unread = sent.filter(message => !message.stopped && !message.failure
     && ownerActor({ actor: message.actor })
-    && !hydraInputDispatched({
+    && !titanInputDispatched({
       state,
       message,
     }))
@@ -366,7 +366,7 @@ export function findTitanTurnToResume({
   resumeMessage: string
   wakeThrough: number
 } | undefined {
-  const cached = state.sessions?.[sessionId({ agent })]?.hydraTurn
+  const cached = state.sessions?.[sessionId({ agent })]?.titanTurn
   const legacyTurn = cached ? undefined : scanChanges({
     titanId,
     cardId: TITAN_CARD,
@@ -382,7 +382,7 @@ export function findTitanTurnToResume({
 
     return event.type === 'titan.delivered'
       ? event.data.session === sessionId({ agent })
-      : event.type === 'titan.configured' && event.data.hydra?.session === sessionId({ agent })
+      : event.type === 'titan.configured' && event.data.titan?.session === sessionId({ agent })
   })
 
   const cutTitanTurn = cached ?? legacyTurn

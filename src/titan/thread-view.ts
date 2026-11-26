@@ -3,12 +3,12 @@ import type { TitanState } from '#app/model.ts'
 import type { ThreadPage } from './transcripts-read.ts'
 import { TITAN_CARD } from './identity.ts'
 import { joinMessageParts } from './history.ts'
-import { hydraConversation } from './conversation.ts'
+import { titanConversation } from './conversation.ts'
 import { injectedInstructions, quietReply } from './chat-messages.ts'
-import { hydraChatQueue } from './chat-queue.ts'
+import { titanChatQueue } from './chat-queue.ts'
 import { othrysRunsTitan } from './titan.ts'
 
-export function hydraThreadView({
+export function titanThreadView({
   state,
   page,
   tools,
@@ -37,8 +37,8 @@ export function hydraThreadView({
   const {
     working,
     held,
-  } = hydraChatQueue({ state })
-  const conversation = hydraConversation({
+  } = titanChatQueue({ state })
+  const conversation = titanConversation({
     messages,
     transcript,
     provider: card?.agent?.provider,
@@ -73,11 +73,11 @@ export function createTitanThreadView({
   page: base,
   tools,
   thinking,
-}: Parameters<typeof hydraThreadView>[0]) {
-  let previous: ReturnType<typeof hydraThreadView> | undefined
+}: Parameters<typeof titanThreadView>[0]) {
+  let previous: ReturnType<typeof titanThreadView> | undefined
   let identity: string | undefined
 
-  return ({ page }: { page: ThreadPage }): ReturnType<typeof hydraThreadView> => {
+  return ({ page }: { page: ThreadPage }): ReturnType<typeof titanThreadView> => {
     const merged = mergeThreadPages({
       before: base,
       latest: page,
@@ -97,7 +97,7 @@ export function createTitanThreadView({
 
     if (!previous || nextIdentity !== identity) {
       identity = nextIdentity
-      previous = hydraThreadView({
+      previous = titanThreadView({
         state,
         page: merged,
         tools,

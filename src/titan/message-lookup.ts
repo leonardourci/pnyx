@@ -32,7 +32,7 @@ interface Key {
 }
 
 interface Cursor {
-  hydra: string
+  titan: string
   card: string
   snapshot: number
   // The message the page stopped at, which the next page leaves out.
@@ -112,7 +112,7 @@ function decodeCursor({ value }: { value: string }): Cursor {
 
   const key = cursor?.key as Partial<Key> | undefined
 
-  if (!cursor || typeof cursor !== 'object' || typeof cursor.hydra !== 'string' || typeof cursor.card !== 'string'
+  if (!cursor || typeof cursor !== 'object' || typeof cursor.titan !== 'string' || typeof cursor.card !== 'string'
     || !Number.isSafeInteger(cursor.snapshot) || cursor.snapshot < 0
     || !key || typeof key !== 'object' || !Number.isSafeInteger(key.seq) || typeof key.at !== 'string'
     || typeof key.id !== 'string'
@@ -309,7 +309,7 @@ export function lookupMessages({
 
   const cursor = selection.cursor ? decodeCursor({ value: selection.cursor }) : undefined
 
-  if (cursor && (cursor.hydra !== titanId || cursor.card !== card || cursor.snapshot > snapshot)) {
+  if (cursor && (cursor.titan !== titanId || cursor.card !== card || cursor.snapshot > snapshot)) {
     invalid({ message: 'This cursor belongs to another Titan, thread or unavailable snapshot' })
   }
 
@@ -610,7 +610,7 @@ export function lookupMessages({
   }) =>
     beyondPage[direction] ? encodeCursor({
       cursor: {
-        hydra: titanId,
+        titan: titanId,
         card,
         snapshot,
         key: keyOf({ message }),
@@ -621,8 +621,8 @@ export function lookupMessages({
     }) : undefined
 
   return {
-    hydra: titanId,
-    thread: card === TITAN_CARD ? 'hydra' : card,
+    titan: titanId,
+    thread: card === TITAN_CARD ? 'titan' : card,
     snapshot,
     anchor: anchor?.id,
     messages: page.map(message => outputMessage({ message })),

@@ -2,7 +2,7 @@ import { parse, WRITE, meta } from '#app/cli-support.ts'
 import { askCommand } from '#tasks/asks.ts'
 import { TITAN_CARD } from './identity.ts'
 
-export async function hydraQuestion({ args }: { args: string[] }) {
+export async function titanQuestion({ args }: { args: string[] }) {
   const {
     values,
     titanId,

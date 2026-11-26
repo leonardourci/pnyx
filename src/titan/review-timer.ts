@@ -1,12 +1,12 @@
 import { log } from '#app/diagnostics.ts'
 import { memoryReview } from '#memory/review.ts'
 import { TITAN_CARD } from './identity.ts'
-import { hydraEvent, othrysRunsTitan } from './titan.ts'
+import { titanEvent, othrysRunsTitan } from './titan.ts'
 import { INTERRUPTED } from '#workers/session-attachments.ts'
 import type { TitanState } from '#app/model.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { boardReview, MINUTE_MS } from './review.ts'
+import { titanReview, MINUTE_MS } from './review.ts'
 import { seenAt } from '#workers/presence.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { readSettings } from '#settings/store.ts'
@@ -46,7 +46,7 @@ function timedReview({
   state: TitanState
   now: number
 }) {
-  const review = boardReview({
+  const review = titanReview({
     memory,
     state,
     now,
@@ -62,7 +62,7 @@ function timedReview({
       flag.task,
       flag.reminder ?? flag.detail,
     ]))
-  const previousFlags = new Set(state.hydraReview?.flags ?? [])
+  const previousFlags = new Set(state.titanReview?.flags ?? [])
   // An idle Titan whose flags are unchanged, such as a stale `left-off`, has nothing to record.
   const unchanged = flags.length === previousFlags.size
     && flags.every(flag => previousFlags.has(flag))
@@ -129,7 +129,7 @@ export function startReviewTimer({
       }
 
       const minutes = readSettings().settings.reviewMinutes
-      const last = state.hydraReview?.at
+      const last = state.titanReview?.at
       const due = Math.max(
         last ? Date.parse(last) : started,
         emptyAt,
@@ -162,7 +162,7 @@ export function startReviewTimer({
         titanId,
         fn: ({ writer }) => {
           const current = writer.state
-          const previous = current.hydraReview?.at
+          const previous = current.titanReview?.at
           const cadence = readSettings().settings.reviewMinutes * MINUTE_MS
           const deadline = Math.max(
             previous ? Date.parse(previous) : started,
@@ -191,7 +191,7 @@ export function startReviewTimer({
             return false
           }
 
-          const decision = hydraEvent({
+          const decision = titanEvent({
             state: writer.state,
             meta: {
               at: new Date(time).toISOString(),

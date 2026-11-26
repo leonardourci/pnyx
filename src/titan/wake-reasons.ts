@@ -141,7 +141,7 @@ export function mergeApproved({
     projects: state.projects ?? [],
   })
 
-  return rule?.merge === 'hydra'
+  return rule?.merge === 'titan'
 }
 
 const checksDetail = ({ link }: { link: Link }) =>

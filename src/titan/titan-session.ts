@@ -1,4 +1,4 @@
-import { canonicalCommandName, parseCommandArgs } from '#app/command-aliases.ts'
+import { parseArgs } from 'node:util'
 import { inform } from '#app/command-notices.ts'
 import { TASK_OPTIONS } from '#app/task-cli.ts'
 import { TITAN_OPTIONS } from './cli.ts'
@@ -31,14 +31,14 @@ export function agentNotices<T extends Record<string, Command>>({
 
       if (name === 'task') {
         commandOptions = TASK_OPTIONS
-      } else if (name === 'hydra') {
+      } else if (name === 'titan') {
         commandOptions = TITAN_OPTIONS
       }
 
       const {
         values,
         positionals,
-      } = parseCommandArgs({
+      } = parseArgs({
         args,
         options: {
           ...WRITE,
@@ -66,7 +66,7 @@ export function agentNotices<T extends Record<string, Command>>({
         strict: false,
         allowPositionals: true,
       })
-      const hydra = env.OTHRYS_ACTOR === TITAN_ACTOR || values.actor === TITAN_ACTOR
+      const titan = env.OTHRYS_ACTOR === TITAN_ACTOR || values.actor === TITAN_ACTOR
 
       const actionArgs = [
         ...positionals,
@@ -74,9 +74,9 @@ export function agentNotices<T extends Record<string, Command>>({
       ]
 
       // A hosted Titan without --titan still writes to its own chat.
-      const titanId = typeof values.hydra === 'string' ? values.hydra : env.OTHRYS_TITAN || DEFAULT_TITAN
+      const titanId = typeof values.titan === 'string' ? values.titan : env.OTHRYS_TITAN || DEFAULT_TITAN
 
-      if (hydra && agentNoticeCommand({
+      if (titan && agentNoticeCommand({
         name,
         args: actionArgs,
       })) {
@@ -88,8 +88,8 @@ export function agentNotices<T extends Record<string, Command>>({
 
       const result = run(args)
 
-      if (!hydra || ![
-        'hydra',
+      if (!titan || ![
+        'titan',
         'project',
       ].includes(name) || positionals[0] !== 'set') {
         return result
@@ -105,7 +105,7 @@ export function agentNotices<T extends Record<string, Command>>({
           await settingsNotice({
             titanId,
             meta: {
-              actor: 'hydra',
+              actor: 'titan',
               at: new Date().toISOString(),
             },
             changeId: `event:${event.id}`,
@@ -127,7 +127,7 @@ export function agentNotices<T extends Record<string, Command>>({
     ]) => [
       name,
       wrap({
-        name: canonicalCommandName({ name }),
+        name: name,
         run,
       }),
     ])) as T

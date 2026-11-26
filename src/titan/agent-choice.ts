@@ -11,11 +11,11 @@ import { TITAN_CARD } from './identity.ts'
 export function startsFromSummary({ state }: { state: TitanState }): boolean {
   const agent = state.cards[TITAN_CARD]?.agent
 
-  return agent !== undefined && state.hydraContext?.previousSession === sessionId({ agent })
+  return agent !== undefined && state.titanContext?.previousSession === sessionId({ agent })
 }
 
 // The agent that receives Titan's messages: Titan's chosen agent, its dispatch rule, the default rule, the harness Titan runs on now, then Claude.
-export function hydraCandidate({
+export function titanCandidate({
   state,
   dispatch,
 }: {
@@ -25,7 +25,7 @@ export function hydraCandidate({
   const running = state.cards?.[TITAN_CARD]?.agent?.provider
   const harness = running ? harnessOf({ provider: running }) : DEFAULT_HARNESS
 
-  return state.config?.hydra.agent ?? dispatch.rules.hydra?.candidates[0]
+  return state.config?.titan.agent ?? dispatch.rules.titan?.candidates[0]
     ?? dispatch.default[0] ?? { harness }
 }
 

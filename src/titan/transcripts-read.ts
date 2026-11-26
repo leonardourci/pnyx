@@ -24,9 +24,9 @@ import { isManagedTask } from '#tasks/select.ts'
 import type { TurnActions } from './conversation.ts'
 import type { TurnTiming } from './chat-messages.ts'
 import { threadEntryOrder } from './thread-order.ts'
-import { hydraMessages } from './chat-messages.ts'
+import { titanMessages } from './chat-messages.ts'
 import { deliveredInputs, replyEchoes } from './task-messages.ts'
-import { hydraConfig } from './config.ts'
+import { titanConfig } from './config.ts'
 import type { TitanMessage } from './model.ts'
 
 export interface ThreadEntry {
@@ -60,7 +60,7 @@ export interface ThreadEntry {
       detail?: string
       received?: string
     }
-    hydra: {
+    titan: {
       state: ReplyState
       detail?: string
       received?: string
@@ -314,17 +314,17 @@ interface TitanSession {
 
 // Every session Titan has been configured with, oldest first; the card holds the current
 // session's latest agent.
-function hydraSessions({ state }: { state: TitanState }): TitanSession[] {
-  const hydra = state.cards[TITAN_CARD]
-  const current = hydra && cardSessionId({ card: hydra })
-  const ids = [...state.hydraSessions ?? []]
+function titanSessions({ state }: { state: TitanState }): TitanSession[] {
+  const titan = state.cards[TITAN_CARD]
+  const current = titan && cardSessionId({ card: titan })
+  const ids = [...state.titanSessions ?? []]
 
   if (current && !ids.includes(current)) {
     ids.push(current)
   }
 
   return ids.flatMap(session => {
-    const agent = session === current ? hydra!.agent : state.sessions?.[session]?.agent
+    const agent = session === current ? titan!.agent : state.sessions?.[session]?.agent
 
     return agent && !agent.agentId ? [
       {
@@ -524,7 +524,7 @@ function threadEvents({
       && event.cardId === card.id,
   })
 
-  const moved = history.some(entry => entry.hydra !== titanId)
+  const moved = history.some(entry => entry.titan !== titanId)
 
   return history.reverse().map((
     { event },
@@ -544,7 +544,7 @@ export function threadAction({
 }): boolean {
   const task = state.cards[event.cardId]
 
-  return event.actor === 'hydra' && event.type !== 'titan.message'
+  return event.actor === 'titan' && event.type !== 'titan.message'
     && task !== undefined && !isManagedTask({ card: task })
 }
 
@@ -575,9 +575,9 @@ export function threadSources({
   selectedSession?: boolean
 }): ThreadSource[] {
   const session = cardSessionId({ card })
-  const hydra = state.cards[TITAN_CARD]
+  const titan = state.cards[TITAN_CARD]
   const current = card.id === TITAN_CARD
-    && session === (hydra && cardSessionId({ card: hydra }))
+    && session === (titan && cardSessionId({ card: titan }))
 
   const task = card.id !== TITAN_CARD && !selectedSession
 
@@ -615,7 +615,7 @@ export function threadSources({
     ]
   }
 
-  const earlier = hydraSessions({ state }).filter(item => item.session !== session)
+  const earlier = titanSessions({ state }).filter(item => item.session !== session)
 
   return [
     {
@@ -625,8 +625,8 @@ export function threadSources({
     ...earlier.map(item => ({
       session: item.session,
       path: threadPath({ card: { agent: item.agent } }),
-      // Only the current session can be missing from hydraSessions, and earlier leaves it out.
-      index: state.hydraSessions!.indexOf(item.session),
+      // Only the current session can be missing from titanSessions, and earlier leaves it out.
+      index: state.titanSessions!.indexOf(item.session),
     })).reverse(),
   ]
 }
@@ -1016,7 +1016,7 @@ function readThreadPage(
     const receipt = taskReceipt({
       card: state.cards[card.id] ?? card,
       reply: e.data.reply,
-      hydraReceived: state.hydraMessages?.find(message => message.id === `task-context:${card.id}:${e.data.reply}`)?.received,
+      titanReceived: state.titanMessages?.find(message => message.id === `task-context:${card.id}:${e.data.reply}`)?.received,
     })
     splitEntry({
       entry: {
@@ -1050,8 +1050,8 @@ function readThreadPage(
 
   const messageCursor = match?.[4] === undefined ? undefined : decodeURIComponent(match[4])
   const allMessages = card.id === TITAN_CARD
-    ? (state.hydraMessages ?? []).filter(message =>
-      message.hydra === hydraConfig({ state }).hydra.id)
+    ? (state.titanMessages ?? []).filter(message =>
+      message.titan === titanConfig({ state }).titan.id)
       .toSorted((
         a,
         b,
@@ -1073,7 +1073,7 @@ function readThreadPage(
 
   if (card.id === TITAN_CARD) {
     const messageIds = new Set(messages.map(message => message.id))
-    candidates = hydraMessages({
+    candidates = titanMessages({
       messages,
       transcript: candidates.map(candidate => candidate.item),
       provider: card.agent?.provider,
@@ -1122,7 +1122,7 @@ function readThreadPage(
     const beforeAt = excludedAt.toSorted()[0]
     const events = firstAt === undefined ? [] : readEvents({ titanId }).filter(event =>
       event.at >= firstAt && (beforeAt === undefined || event.at <= beforeAt)
-      && ((event.type === 'card.replied' && event.data.text) || (event.actor === 'hydra' && event.type !== 'titan.message')))
+      && ((event.type === 'card.replied' && event.data.text) || (event.actor === 'titan' && event.type !== 'titan.message')))
     result.actions = events.filter(event => threadAction({
       event,
       state,

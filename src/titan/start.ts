@@ -30,7 +30,7 @@ export async function startTitan({
 
   return startCommand({
     titanId,
-    role: 'hydra',
+    role: 'titan',
     prompt,
     folder,
     harness,

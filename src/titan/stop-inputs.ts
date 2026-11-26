@@ -1,7 +1,7 @@
 import { applyDecision } from '#app/decision.ts'
 import { ownerActor } from '#app/actors.ts'
 import type { Writer } from '#app/writer.ts'
-import { hydraEvent } from './titan.ts'
+import { titanEvent } from './titan.ts'
 import { TITAN_CARD } from './identity.ts'
 
 // Marks the owner's messages among ids as stopped, unless Titan already received them.
@@ -14,7 +14,7 @@ export function stopTitanInputs({
   ids: readonly string[]
   at: string
 }) {
-  const messages = (writer.state.hydraMessages ?? [])
+  const messages = (writer.state.titanMessages ?? [])
     .filter(message => ids.includes(message.id) && !message.received && !message.stopped
       && message.action === 'send' && ownerActor({ actor: message.actor }))
     .map(message => message.id)
@@ -25,7 +25,7 @@ export function stopTitanInputs({
 
   applyDecision({
     writer,
-    decision: hydraEvent({
+    decision: titanEvent({
       state: writer.state,
       cardId: TITAN_CARD,
       meta: {

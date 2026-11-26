@@ -36,9 +36,9 @@ export function messageLookupCommand({
     return
   }
 
-  const command = card === TITAN_CARD ? 'hydra message' : `task messages ${shellArgument({ value: card })}`
+  const command = card === TITAN_CARD ? 'titan message' : `task messages ${shellArgument({ value: card })}`
   const selector = reference ? `--id ${shellArgument({ value: reference })}` : `--at ${shellArgument({ value: at! })}`
-  const hydra = titanId ? ` --titan ${shellArgument({ value: titanId })}` : ''
+  const titan = titanId ? ` --titan ${shellArgument({ value: titanId })}` : ''
 
-  return `othrys ${command} ${selector} --before ${COMMENT_CONTEXT_MESSAGES} --after ${COMMENT_CONTEXT_MESSAGES}${hydra}`
+  return `othrys ${command} ${selector} --before ${COMMENT_CONTEXT_MESSAGES} --after ${COMMENT_CONTEXT_MESSAGES}${titan}`
 }

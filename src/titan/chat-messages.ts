@@ -1,5 +1,5 @@
 import { TITAN_ACTOR, ownerActor } from '#app/actors.ts'
-import { hydraDelivery,QUIET_REPLY,reportActor } from './titan.ts'
+import { titanDelivery,QUIET_REPLY,reportActor } from './titan.ts'
 import { taskMentions } from './mentions.ts'
 import type { TitanMessage } from './model.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
@@ -62,7 +62,7 @@ export const injectedInstructions = ({
   provider?: string
 }) => provider === 'codex' && ownMessage({ entry }) && /^# AGENTS\.md instructions(?: for [^\n]*)?\s*<INSTRUCTIONS>[\s\S]*<\/INSTRUCTIONS>\s*$/.test(entry.text.trim())
 
-export function hydraMessages({
+export function titanMessages({
   messages,
   transcript,
   provider,
@@ -105,7 +105,7 @@ export function hydraMessages({
     const sent = message.context ? `${text}\n\n${message.context}` : text
     // An older server delivered a report as its bare words; the transcript reader drops harness markup the owner quoted.
     const delivered = reportActor({ actor: message.actor }) ? [
-      hydraDelivery({ message }),
+      titanDelivery({ message }),
       text,
       sent,
     ] : [

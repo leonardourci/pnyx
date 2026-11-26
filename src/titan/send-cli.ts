@@ -7,9 +7,9 @@ import { TitanError } from '#store/errors.ts'
 import { liveTask } from '#tasks/select.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
-import { hydraConfig } from './config.ts'
-import { hydraCandidate } from './agent-choice.ts'
-import { hydraEvent, hydraDelivery } from './titan.ts'
+import { titanConfig } from './config.ts'
+import { titanCandidate } from './agent-choice.ts'
+import { titanEvent, titanDelivery } from './titan.ts'
 import { mentionContext } from './mentions.ts'
 import { resolveSkillReferences } from './skill-invocation.ts'
 import { withWriter } from '#app/writer.ts'
@@ -17,7 +17,7 @@ import { applyDecision } from '#app/decision.ts'
 import { TITAN_CARD } from './identity.ts'
 import { failTitanInput } from './received.ts'
 
-export async function hydraSend({
+export async function titanSend({
   values,
   titanId,
 }: {
@@ -75,7 +75,7 @@ export async function hydraSend({
           value: values.text as string | undefined,
           what: '--text',
         })
-      const provider = hydraCandidate({
+      const provider = titanCandidate({
         state,
         dispatch: effective.dispatch,
       }).harness
@@ -87,7 +87,7 @@ export async function hydraSend({
         state,
         text,
       })
-      const decision = hydraEvent({
+      const decision = titanEvent({
         state,
         meta: m,
         cardId: task?.id ?? '$all',
@@ -100,10 +100,10 @@ export async function hydraSend({
             ...(text !== entered ? { enteredText: entered } : {}),
             ...(m.details ? { details: m.details } : {}),
             ...(context ? { context } : {}),
-            hydra: hydraConfig({
+            titan: titanConfig({
               state,
               id: titanId,
-            }).hydra.id,
+            }).titan.id,
           },
         },
       })
@@ -120,7 +120,7 @@ export async function hydraSend({
     return result
   }
 
-  const message = loadTitan({ titanId }).state.hydraMessages
+  const message = loadTitan({ titanId }).state.titanMessages
     ?.find(message => message.id === result.message)
 
   if (!message) {
@@ -139,7 +139,7 @@ export async function hydraSend({
     const claimed = await withWriter({
       titanId,
       fn: ({ writer }) => {
-        const current = writer.state.hydraMessages?.find(input => input.id === message.id)
+        const current = writer.state.titanMessages?.find(input => input.id === message.id)
 
         if (!current?.failure || current.stopped) {
           return false
@@ -147,7 +147,7 @@ export async function hydraSend({
 
         applyDecision({
           writer,
-          decision: hydraEvent({
+          decision: titanEvent({
             state: writer.state,
             cardId: TITAN_CARD,
             meta: {
@@ -177,9 +177,9 @@ export async function hydraSend({
     const hosted = await askHost({
       titanId,
       body: {
-        action: 'hydra',
+        action: 'titan',
         id: message.id,
-        text: hydraDelivery({ message }),
+        text: titanDelivery({ message }),
         actor: m.actor,
       },
     })
@@ -203,7 +203,7 @@ export async function hydraSend({
   }
 }
 
-export function hydraMessages({
+export function titanMessages({
   values,
   titanId,
 }: {
@@ -254,10 +254,10 @@ export function hydraMessages({
   const through = events.at(-1)?.seq ?? after
 
   return {
-    hydra: hydraConfig({
+    titan: titanConfig({
       state,
       id: titanId,
-    }).hydra.id,
+    }).titan.id,
     messages: events.length
       ? events.map(e => {
         if (e.type !== 'titan.message' && e.type !== 'task.reminder-due') {

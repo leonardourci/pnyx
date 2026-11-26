@@ -1,18 +1,18 @@
 import { git } from '#projects/git.ts'
 import { inform } from '#app/command-notices.ts'
 import { copyFingerprint, removalWork } from './removal-work.ts'
-import { hydraPool, protectedCopiesFolder, removeTitanPool } from '#projects/remove-pool.ts'
+import { titanPool, protectedCopiesFolder, removeTitanPool } from '#projects/remove-pool.ts'
 import { requestEnv } from '#app/request-context.ts'
 import { existsSync, rmSync } from 'node:fs'
 import { parse, WRITE, required, meta, type Output } from '#app/cli-support.ts'
-import { hydraIds } from '#app/home-migration.ts'
+import { titanIds } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { hydraRemoval } from '#app/server-state.ts'
+import { titanRemoval } from '#app/server-state.ts'
 import { TitanError } from '#store/errors.ts'
 import { checkCopy, removeCopy } from '#projects/copy-check.ts'
-import { hydraConfig } from './config.ts'
-import { hydraEvent } from './titan.ts'
+import { titanConfig } from './config.ts'
+import { titanEvent } from './titan.ts'
 
 const removing = new Set<string>()
 
@@ -32,7 +32,7 @@ function removalTarget({
   id: string
   caller: string
 }) {
-  const ids = hydraIds()
+  const ids = titanIds()
 
   if (!ids.includes(id)) {
     throw new TitanError({
@@ -73,7 +73,7 @@ async function prepareRemoval({
     id,
     state,
   })
-  const pool = await hydraPool({ titanId: id })
+  const pool = await titanPool({ titanId: id })
   const cards = Object.values(state.cards)
   const previousCopies = cards.flatMap(card => card.copy ? [card.copy.path] : [])
   const recorded = new Set(previousCopies)
@@ -206,7 +206,7 @@ export async function removeTitanCommand({ args }: { args: string[] }): Promise<
 
   requireRemovalIdle()
 
-  if (!hydraRemoval.close) {
+  if (!titanRemoval.close) {
     throw new TitanError({
       message: 'Titan removal requires the running server',
       code: 'NOT_RUNNING',
@@ -224,14 +224,14 @@ export async function removeTitanCommand({ args }: { args: string[] }): Promise<
     titanId: id,
     removal: true,
     fn: ({ writer }) => {
-      const pending = hydraEvent({
+      const pending = titanEvent({
         state: writer.state,
         meta: actor,
         cardId: '$all',
         change: {
           type: 'titan.configured',
           data: {
-            ...hydraConfig({
+            ...titanConfig({
               state: writer.state,
               id,
             }),
@@ -264,7 +264,7 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
 
   requireRemovalIdle()
 
-  const close = hydraRemoval.close
+  const close = titanRemoval.close
 
   if (!close) {
     throw new TitanError({
@@ -280,14 +280,14 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
       titanId: id,
       removal: true,
       fn: ({ writer }) => {
-        const decision = hydraEvent({
+        const decision = titanEvent({
           state: writer.state,
           meta: actor,
           cardId: '$all',
           change: {
             type: 'titan.configured',
             data: {
-              ...hydraConfig({
+              ...titanConfig({
                 state: writer.state,
                 id,
               }),
@@ -304,7 +304,7 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
     })
 
     throw new TitanError({
-      message: 'Checkout work changed; land its new work and run hydra remove again',
+      message: 'Checkout work changed; land its new work and run titan remove again',
       code: 'CONFLICT',
     })
   }
@@ -412,7 +412,7 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
             continue
           }
 
-          const detached = hydraEvent({
+          const detached = titanEvent({
             state: writer.state,
             meta: actor,
             cardId: '$projects',
@@ -434,14 +434,14 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
           }
         }
 
-        const decision = hydraEvent({
+        const decision = titanEvent({
           state: writer.state,
           meta: actor,
           cardId: '$all',
           change: {
             type: 'titan.configured',
             data: {
-              ...hydraConfig({
+              ...titanConfig({
                 state: writer.state,
                 id,
               }),
@@ -462,6 +462,6 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
   } finally {
     removing.delete(id)
 
-    hydraRemoval.finished?.({ titanId: id })
+    titanRemoval.finished?.({ titanId: id })
   }
 }

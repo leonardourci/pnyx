@@ -227,7 +227,7 @@ export function applyContextNotes({
     answer = event.data.decision?.answer
     const source = event.data.decision.fromMessage
 
-    const ownerMessage = source && state.hydraMessages?.some(message => message.id === source.id
+    const ownerMessage = source && state.titanMessages?.some(message => message.id === source.id
       && ownerActor({ actor: message.actor }))
 
     if (ownerMessage) {

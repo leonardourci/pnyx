@@ -1,7 +1,7 @@
 import type { TitanState } from '#app/model.ts'
 import type { TitanConfig } from './model.ts'
 
-export function hydraConfig({
+export function titanConfig({
   state,
   id = 'default',
 }: {
@@ -11,8 +11,8 @@ export function hydraConfig({
   return state.config ?? {
     id,
     name: id,
-    hydra: {
-      id: 'hydra',
+    titan: {
+      id: 'titan',
       name: 'Titan',
     },
   }

@@ -208,17 +208,17 @@ export function createStallChecks({
 
   const wakeOnStall = async () => {
     const state = loadTitan({ titanId }).state
-    const hydraCard = state.cards[TITAN_CARD]
-    const session = state.config?.hydra.session
+    const titanCard = state.cards[TITAN_CARD]
+    const session = state.config?.titan.session
 
     if (closing() || !hostedTitan({ state })) {
       return
     }
 
     // A Titan that cannot start holds main's stall alarms, which would otherwise be spent on starts that never reach it.
-    const mainWaits = state.hydraStatus?.state === 'down' || queuedTitan.size > 0
-      || (hydraCard?.sessionActivity ?? hydraCard?.activity) === 'interrupted'
-      || hydraCard?.attention.some(a => a.key === INTERRUPTED)
+    const mainWaits = state.titanStatus?.state === 'down' || queuedTitan.size > 0
+      || (titanCard?.sessionActivity ?? titanCard?.activity) === 'interrupted'
+      || titanCard?.attention.some(a => a.key === INTERRUPTED)
       || (session && live.get(session)?.activity === 'working')
     const now = Date.now()
     const stalls = Object.values(state.cards).flatMap(card => {

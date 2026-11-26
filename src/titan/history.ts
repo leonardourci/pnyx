@@ -39,7 +39,7 @@ export function compactionContext({ state }: { state: TitanState }): {
   })
 
   return {
-    summary: milestone ? milestone.summary : state.hydraContext?.summary,
+    summary: milestone ? milestone.summary : state.titanContext?.summary,
   }
 }
 
@@ -89,7 +89,7 @@ export function inscribeOperation({
 }): TitanOperation {
   if (action !== 'start' && action !== 'finish' && action !== 'fail') {
     throw new TitanError({
-      message: 'Use hydra inscribe start|finish|fail [--key <milestone-id>]',
+      message: 'Use titan inscribe start|finish|fail [--key <milestone-id>]',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -213,7 +213,7 @@ export function applyHistory({
   if (event.type === 'titan.agent-change' && event.data.state === 'finished' && event.data.summary !== undefined) {
     const change = event.data
     let id = change.operation
-    const active = state.hydraOperation
+    const active = state.titanOperation
 
     // Older switch records name the owner message but carry no operation ID.
     if (!id && active?.kind === 'compaction' && active.id.startsWith(`agent-change:${change.id}:`)) {
@@ -308,8 +308,8 @@ export function applyHistory({
   const children = combined
     ? milestones.filter(item => item.parent === operation.id).map(item => `milestone:${item.id}`)
     : []
-  state.hydraMessages = [
-    ...(state.hydraMessages ?? []).filter(message => message.id !== dividerId
+  state.titanMessages = [
+    ...(state.titanMessages ?? []).filter(message => message.id !== dividerId
       && !children.includes(message.id)),
     {
       id: dividerId,
@@ -318,7 +318,7 @@ export function applyHistory({
       text: label,
       at: event.at,
       actor: 'othrys',
-      hydra: state.config?.hydra.id ?? 'hydra',
+      titan: state.config?.titan.id ?? 'titan',
     },
   ]
 }

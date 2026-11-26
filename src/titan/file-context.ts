@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { hydraFiles, taskFiles } from '#store/file-home.ts'
+import { titanFiles, taskFiles } from '#store/file-home.ts'
 import { othrysHome } from '#store/paths.ts'
 
 export function recordFiles({
@@ -9,19 +9,19 @@ export function recordFiles({
   titanId: string
   task?: string
 }): {
-  hydra: string
+  titan: string
   task: string
   worker: string
   snapshot: string
 } {
   const home = othrysHome()
-  const dir = hydraFiles({
+  const dir = titanFiles({
     home,
-    hydra: titanId,
+    titan: titanId,
   })
   const records = task ? taskFiles({
     home,
-    hydra: titanId,
+    titan: titanId,
     task,
   }) : join(
     dir,
@@ -30,7 +30,7 @@ export function recordFiles({
   )
 
   return {
-    hydra: join(
+    titan: join(
       dir,
       'titan.log',
     ),
@@ -58,5 +58,5 @@ export function recordContext({
     task,
   })
 
-  return `Read ${JSON.stringify(files.hydra)} and the relevant ${JSON.stringify(files.task)} and ${JSON.stringify(files.worker)} directly. ${JSON.stringify(files.snapshot)} is an optional cached view; logs are authoritative and may be newer. Keep record IDs with their file scope; line numbers belong only to that file. Follow recorded transcript paths for full agent replies. Do not edit server-owned records.`
+  return `Read ${JSON.stringify(files.titan)} and the relevant ${JSON.stringify(files.task)} and ${JSON.stringify(files.worker)} directly. ${JSON.stringify(files.snapshot)} is an optional cached view; logs are authoritative and may be newer. Keep record IDs with their file scope; line numbers belong only to that file. Follow recorded transcript paths for full agent replies. Do not edit server-owned records.`
 }

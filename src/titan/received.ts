@@ -1,13 +1,13 @@
 import { ownerActor } from '#app/actors.ts'
 import type { TitanState } from '#app/model.ts'
-import { hydraConfig } from './config.ts'
+import { titanConfig } from './config.ts'
 import type { TitanMessage } from './model.ts'
 import type { Writer } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
-import { hydraEvent } from './titan.ts'
+import { titanEvent } from './titan.ts'
 import { TITAN_CARD } from './identity.ts'
 
-export function hydraDeliveryId({
+export function titanDeliveryId({
   message,
   release = false,
 }: {
@@ -20,7 +20,7 @@ export function hydraDeliveryId({
   return `${message.id}${attempt}${compact}:hosted`
 }
 
-export function hydraInputDispatched({
+export function titanInputDispatched({
   state,
   message,
 }: {
@@ -29,11 +29,11 @@ export function hydraInputDispatched({
 }) {
   return Object.hasOwn(
     state.eventIds,
-    hydraDeliveryId({ message }),
+    titanDeliveryId({ message }),
   )
     || Object.hasOwn(
       state.eventIds,
-      hydraDeliveryId({
+      titanDeliveryId({
         message,
         release: true,
       }),
@@ -51,7 +51,7 @@ export function failTitanInput({
   error: string
   at: string
 }) {
-  const message = writer.state.hydraMessages?.find(message => message.id === input)
+  const message = writer.state.titanMessages?.find(message => message.id === input)
 
   const owner = message && ownerActor({ actor: message.actor })
 
@@ -61,7 +61,7 @@ export function failTitanInput({
 
   applyDecision({
     writer,
-    decision: hydraEvent({
+    decision: titanEvent({
       state: writer.state,
       cardId: TITAN_CARD,
       meta: {
@@ -90,13 +90,13 @@ export function receivedWith({
   input: string
   carried: readonly string[]
 }): string[] {
-  const config = hydraConfig({ state })
+  const config = titanConfig({ state })
   const taken = new Set([
     input,
     ...carried,
   ])
 
-  return (state.hydraMessages ?? []).filter(message => message.hydra === config.hydra.id
+  return (state.titanMessages ?? []).filter(message => message.titan === config.titan.id
     && ownerActor({ actor: message.actor }) && !message.received
     && taken.has(message.id))
     .map(message => message.id)

@@ -21,7 +21,7 @@ export interface TitanConfig {
   icon?: string
   // Sort key in the Titan list, in the same scale as creation time in ms; unset sorts by creation time.
   position?: number
-  hydra: TitanIdentity
+  titan: TitanIdentity
   // Retained so pre-dispatch event logs still replay.
   agents?: Record<string, AgentConfig>
   command?: string
@@ -52,7 +52,7 @@ export interface TitanMessage {
   liftsHold?: string
   at: string
   actor: string
-  hydra: string
+  titan: string
   // When Titan's harness confirmed it took the message.
   received?: string
   stopped?: boolean

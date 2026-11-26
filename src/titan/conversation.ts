@@ -1,7 +1,7 @@
 import type { TitanEvent } from '#app/model.ts'
 import type { TitanMessage } from './model.ts'
 import type { ThreadEntry, ThreadPage } from './transcripts-read.ts'
-import { hydraMessages, leadingTask, ownMessage, quietReply, type TurnTiming } from './chat-messages.ts'
+import { titanMessages, leadingTask, ownMessage, quietReply, type TurnTiming } from './chat-messages.ts'
 import { relevantUpdate, type TaskUpdate } from '#tasks/updates.ts'
 import { threadEntryOrder } from './thread-order.ts'
 
@@ -144,7 +144,7 @@ function conversationOrder({
   }
 }
 
-export function hydraConversation({
+export function titanConversation({
   messages,
   transcript,
   provider,
@@ -185,7 +185,7 @@ export function hydraConversation({
     })
   }
 
-  const merged = hydraMessages({
+  const merged = titanMessages({
     messages,
     transcript: inputs,
     provider,
@@ -364,7 +364,7 @@ export function hydraConversation({
       const beforeNext = nextAt === undefined || event.at < nextAt
       const inTurn = afterStart && beforeNext
 
-      if (!inTurn || event.actor !== 'hydra') {
+      if (!inTurn || event.actor !== 'titan') {
         continue
       }
 
@@ -381,7 +381,7 @@ export function hydraConversation({
         },
       })
 
-      if (!row || row.kind === 'hydra' || row.kind === 'decision') {
+      if (!row || row.kind === 'titan' || row.kind === 'decision') {
         continue
       }
 

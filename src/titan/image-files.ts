@@ -20,7 +20,7 @@ const inside = ({
 
 // The image files a Titan's page may load: its stored attachments and images inside its task copies.
 // A link or `..` that leads outside the folder, another file type, an oversized or a missing file is refused.
-export function hydraImageFile({
+export function titanImageFile({
   dir,
   route,
 }: {

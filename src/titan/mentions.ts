@@ -36,7 +36,7 @@ export function mentionId({ href }: { href: string }): string | undefined {
   return decodeValue({ value: href.slice(href.indexOf(':') + 1) }) || undefined
 }
 
-// A project, column, Titan, image or file reference link, in either spelling.
+// A project, column, Titan, image or file reference link.
 export function pointerReference({ href }: { href: string }): {
   kind: string
   value?: string

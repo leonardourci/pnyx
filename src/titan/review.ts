@@ -71,7 +71,7 @@ const elapsed = ({
   return `${minutes} min old`
 }
 
-export function boardReview({
+export function titanReview({
   state,
   now,
   workerSeenAt = {},
@@ -214,10 +214,10 @@ export function boardReview({
   }
 
   const questionCards = [...live]
-  const hydra = state.cards[TITAN_CARD]
+  const titan = state.cards[TITAN_CARD]
 
-  if (hydra) {
-    questionCards.push(hydra)
+  if (titan) {
+    questionCards.push(titan)
   }
 
   for (const card of questionCards) {
@@ -247,7 +247,7 @@ export function boardReview({
     }
   }
 
-  const cursorText = state.hydraMemory?.['check-cursor']?.text
+  const cursorText = state.titanMemory?.['check-cursor']?.text
   const cursor = Number(cursorText)
 
   if (cursorText && Number.isSafeInteger(cursor) && cursor >= 0 && cursor < state.seq) {
@@ -258,7 +258,7 @@ export function boardReview({
     })
   }
 
-  const leftOff = state.hydraMemory?.['left-off']
+  const leftOff = state.titanMemory?.['left-off']
 
   if (leftOff) {
     // A missing id is a typo or another Titan's task, so it never counts as finished.

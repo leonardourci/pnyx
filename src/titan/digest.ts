@@ -8,7 +8,7 @@ import { openAsks, askWording } from '#tasks/ask-state.ts'
 import { queuePosition, workerQueue } from '#workers/queue.ts'
 import { learningConditions, learningDigest, type LearningConditions } from '#memory/learnings.ts'
 import { OWNER_DOCUMENTS, usage, OWNER_MEMORY_BUDGET, TITAN_MEMORY_BUDGET, type Memory } from '#memory/budgets.ts'
-import { hydraConfig } from './config.ts'
+import { titanConfig } from './config.ts'
 import { TITAN_CARD } from './identity.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
 import { projectGroup } from '#projects/groups.ts'
@@ -260,8 +260,8 @@ function digestParts({
     a,
     b,
   ) => place({ card: a }) - place({ card: b }) || rankOf({ card: a }) - rankOf({ card: b }))
-  const memory = state.hydraMemory ?? {}
-  const hydra = state.cards[TITAN_CARD]
+  const memory = state.titanMemory ?? {}
+  const titan = state.cards[TITAN_CARD]
   const parts = new Map<string, string>()
   let setupText = setup.join('\n')
   let projectText = projects.join('\n')
@@ -274,7 +274,7 @@ function digestParts({
     projectText = 'Attached projects: none'
   }
 
-  const attention = hydra?.attention.filter(item => item.blocking && !item.answered) ?? []
+  const attention = titan?.attention.filter(item => item.blocking && !item.answered) ?? []
   parts.set(
     'attention',
     attention.length ? `Your own chat waits on: ${attention.map(item => clip({ text: item.text ?? item.kind })).join('; ')}` : 'Your own chat has no pending permission requests.',
@@ -498,7 +498,7 @@ function previousCheckpoint({
     return
   }
 
-  if (!('hydra' in value) || value.hydra !== titanId) {
+  if (!('titan' in value) || value.titan !== titanId) {
     return
   }
 
@@ -524,7 +524,7 @@ function previousCheckpoint({
   }
 }
 
-export function hydraDigest({
+export function titanDigest({
   titanId,
   records,
   state,
@@ -644,18 +644,18 @@ export function hydraDigest({
   if (checkpointed) {
     const encoded = Buffer.from(JSON.stringify({
       v: DIGEST_CHECKPOINT_VERSION,
-      hydra: titanId,
+      titan: titanId,
       parts: hashes,
     })).toString('base64url')
     checkpoint = ` checkpoint="${encoded}"`
   }
 
-  const config = hydraConfig({
+  const config = titanConfig({
     state,
     id: titanId,
   })
   const lines = [
-    `<othrys-digest hydra="${titanId}"${checkpoint}>`,
+    `<othrys-digest titan="${titanId}"${checkpoint}>`,
     `Titan ${titanId} ("${config.name}"). ${records}`,
   ]
 

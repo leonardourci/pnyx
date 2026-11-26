@@ -34,7 +34,7 @@ function waitingReason({ card }: { card: Card }) {
   return undefined
 }
 
-function hydraPart({
+function titanPart({
   card,
   reply,
   received,
@@ -43,7 +43,7 @@ function hydraPart({
   reply: string
   received?: string
 }) {
-  const hydra = card.replies?.find(r => r.id === `hydra:${reply}`)
+  const titan = card.replies?.find(r => r.id === `titan:${reply}`)
 
   if (received) {
     return {
@@ -52,7 +52,7 @@ function hydraPart({
     }
   }
 
-  if (!hydra) {
+  if (!titan) {
     return {
       state: 'delivery_unknown' as const,
       detail: 'Titan queue was not confirmed',
@@ -60,20 +60,20 @@ function hydraPart({
   }
 
   return {
-    state: hydra.state,
-    detail: hydra.detail,
+    state: titan.state,
+    detail: titan.detail,
   }
 }
 
 export function taskReceipt({
   card,
   reply,
-  hydraReceived,
+  titanReceived,
 }: {
   card: Card
   reply: string
   // When Titan took the copy of a task message sent to it.
-  hydraReceived?: string
+  titanReceived?: string
 }): Pick<ThreadEntry, 'receipt' | 'received' | 'waiting' | 'delivery' | 'targetAgent'> | undefined {
   const receipt = card.replies?.find(r => r.id === reply)
 
@@ -114,14 +114,14 @@ export function taskReceipt({
 
   if (receipt.route && !receipt.worker) {
     entry.delivery = {
-      hydra: hydraPart({
+      titan: titanPart({
         card,
         reply,
-        received: hydraReceived,
+        received: titanReceived,
       }),
     }
 
-    if (receipt.route !== 'hydra') {
+    if (receipt.route !== 'titan') {
       entry.delivery.agent = {
         state,
         detail: receipt.detail,

@@ -4,12 +4,12 @@ import { applyThreadDelta, receivedThread } from './thread-delta.ts'
 import type { ThreadPage } from './transcripts-read.ts'
 
 export function createThreadReceiver() {
-  let hydra: ThreadPage | null = null
+  let titan: ThreadPage | null = null
   const workers = new Map<string, ThreadPage>()
 
   const read = ({ card }: { card: string }) => {
     if (card === TITAN_CARD) {
-      return hydra
+      return titan
     }
 
     return workers.get(card) ?? null
@@ -54,7 +54,7 @@ export function createThreadReceiver() {
       })
 
       if (thread.card === TITAN_CARD) {
-        hydra = thread
+        titan = thread
       } else {
         workers.set(
           thread.card,

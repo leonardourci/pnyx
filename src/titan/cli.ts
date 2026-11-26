@@ -7,10 +7,10 @@ import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { parse, WRITE, required, meta, commit, guard, type Options, type Output } from '#app/cli-support.ts'
 import { hideDone } from '#tasks/retention.ts'
-import { hydraIds, hydraDir } from '#app/home-migration.ts'
+import { titanIds, titanDir } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
 import { liveTask } from '#tasks/select.ts'
-import { hydraConfig } from './config.ts'
+import { titanConfig } from './config.ts'
 import { readServer, askHost } from '#app/server-state.ts'
 import { TitanError } from '#store/errors.ts'
 import { findSession } from '#workers/session-attachments.ts'
@@ -20,22 +20,22 @@ import { sessionRef } from '#workers/cli.ts'
 import type { TitanIdentity, TitanConfig } from './model.ts'
 import { TITAN_ICONS, TITAN_MARK, isTitanIcon, pickName } from './titan-names.ts'
 import { otherTitanNames } from './taken-names.ts'
-import { hydraEvent } from './titan.ts'
-import { hydraMessages, hydraSend } from './send-cli.ts'
-import { hydraResize } from '#preferences/cli.ts'
-import { hydraMemory } from '#memory/cli.ts'
+import { titanEvent } from './titan.ts'
+import { titanMessages, titanSend } from './send-cli.ts'
+import { titanResize } from '#preferences/cli.ts'
+import { titanMemory } from '#memory/cli.ts'
 import { startTitan } from './start.ts'
 import { TITAN_CARD } from './identity.ts'
 import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
 import { SETTING_FLAGS, sharedSettingFlags } from '#settings/cli.ts'
-import { hydraActor } from '#app/request-context.ts'
+import { titanActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
 import { requireStopAuthority } from '#app/stop-authority.ts'
 import { workerIdentity } from '#workers/worker-identity.ts'
-import { hydraInscribe } from './inscribe-cli.ts'
-import { hydraQuestion } from './questions-cli.ts'
+import { titanInscribe } from './inscribe-cli.ts'
+import { titanQuestion } from './questions-cli.ts'
 
-async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output> {
+async function titanConfigCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
     positionals,
@@ -65,17 +65,17 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   const action = positionals[0]
 
   if (action === 'list') {
-    const hydras = hydraIds()
+    const titans = titanIds()
 
-    if (!hydras.length) {
+    if (!titans.length) {
       return {
-        hydras: 'none: no Titans yet',
+        titans: 'none: no Titans yet',
         help: ['Add a Titan from the header in the UI'],
       }
     }
 
     return {
-      hydras: await Promise.all(hydras.map(async id => {
+      titans: await Promise.all(titans.map(async id => {
         let { state } = loadTitan({ titanId: id })
 
         if (!state.config?.removing) {
@@ -83,7 +83,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
           state = loadTitan({ titanId: id }).state
         }
 
-        const config = hydraConfig({
+        const config = titanConfig({
           state,
           id,
         })
@@ -93,11 +93,11 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         return {
           id,
           name: config.name,
-          hydra: config.hydra.id,
+          titan: config.titan.id,
           tasks,
         }
       })),
-      help: ['Use othrys board --titan <id> to inspect the Titan'],
+      help: ['Use othrys titan --titan <id> to inspect the Titan'],
     }
   }
 
@@ -107,7 +107,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       value: positionals[1],
       what: 'Titan id',
     })
-  hydraDir({ titanId: id })
+  titanDir({ titanId: id })
 
   if (loadTitan({ titanId: id }).state.config?.removed) {
     throw new TitanError({
@@ -118,19 +118,19 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'show') {
     const state = loadTitan({ titanId: id }).state
-    const hydra = structuredClone(hydraConfig({
+    const titan = structuredClone(titanConfig({
       state,
       id,
     }))
-    delete hydra.doneAfterHours
-    delete hydra.reviewMinutes
-    delete hydra.helper
+    delete titan.doneAfterHours
+    delete titan.reviewMinutes
+    delete titan.helper
     const shared = readSettings().settings
     const projects = projectsFor({ state })
 
     return {
-      hydra: {
-        ...hydra,
+      titan: {
+        ...titan,
         polis: ownerPolis({ state }),
       },
       settings: {
@@ -148,7 +148,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'create' && action !== 'set') {
     throw new TitanError({
-      message: 'Use hydra create <id>, list, show or set',
+      message: 'Use titan create <id>, list, show or set',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -158,9 +158,9 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     values,
     titanId: id,
   })
-  const hydraFlags = Object.keys(values).some(flag => values[flag] !== undefined
+  const titanFlags = Object.keys(values).some(flag => values[flag] !== undefined
     && !SETTING_FLAGS.includes(flag) && !(flag in WRITE))
-  const onlySettings = shared !== undefined && action === 'set' && !hydraFlags
+  const onlySettings = shared !== undefined && action === 'set' && !titanFlags
 
   if (shared) {
     checkSettings({ patch: shared })
@@ -216,17 +216,17 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         })
       }
 
-      const current = hydraConfig({
+      const current = titanConfig({
         state,
         id,
       })
 
-      const identity = String(values.identity ?? current.hydra.id)
+      const identity = String(values.identity ?? current.titan.id)
       required({
         value: identity.trim(),
         what: '--identity',
       })
-      const kept = identity === current.hydra.id ? current.hydra : undefined
+      const kept = identity === current.titan.id ? current.titan : undefined
 
       const session = values.session ? findSession({
         state,
@@ -236,9 +236,9 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         }),
       }) : undefined
 
-      const hydraRequest = hydraActor({ actor: m.actor })
+      const titanRequest = titanActor({ actor: m.actor })
 
-      if (hydraRequest && session && raisesPermission({
+      if (titanRequest && session && raisesPermission({
         harness: session.agent.provider === 'codex' ? 'codex' : 'claude',
         before: state.cards[TITAN_CARD]?.settings?.mode,
         after: session.settings?.mode,
@@ -249,7 +249,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         })
       }
 
-      const hydra: TitanIdentity = {
+      const titan: TitanIdentity = {
         name: 'Titan',
         ...kept,
         id: identity,
@@ -264,7 +264,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         ...current,
         id,
         name: String(values.name ?? named?.name ?? current.name),
-        hydra,
+        titan,
       }
 
       if (values.polis !== undefined) {
@@ -326,11 +326,11 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         delete data.commandOwnsFolder
       }
 
-      // Creating a Titan that already exists as asked is a no-op; other settings need hydra set.
+      // Creating a Titan that already exists as asked is a no-op; other settings need titan set.
       if (action === 'create' && state.configured) {
         if (isDeepStrictEqual(
           data,
-          hydraConfig({
+          titanConfig({
             state,
             id,
           }),
@@ -344,7 +344,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         })
       }
 
-      return hydraEvent({
+      return titanEvent({
         state,
         meta: m,
         cardId: '$all',
@@ -406,17 +406,17 @@ export const TITAN_OPTIONS: Options = {
   folder: { type: 'string' },
 }
 
-async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
+async function titanCommand({ args }: { args: string[] }): Promise<Output> {
   if (args[0] === 'remove') {
     return removeTitanCommand({ args })
   }
 
   if (args[0] === 'ask') {
-    return await hydraQuestion({ args: args.slice(1) })
+    return await titanQuestion({ args: args.slice(1) })
   }
 
   if (args[0] === 'worker-notes') {
-    return await hydraCommand({
+    return await titanCommand({
       args: [
         'memory',
         ...args.slice(1),
@@ -432,7 +432,7 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
     'show',
     'set',
   ].includes(args[0] ?? '')) {
-    return hydraConfigCommand({ args })
+    return titanConfigCommand({ args })
   }
 
   const {
@@ -470,7 +470,7 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (positionals[0] === 'inscribe') {
-    return await hydraInscribe({
+    return await titanInscribe({
       values,
       positionals,
       titanId,
@@ -478,14 +478,14 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (positionals[0] === 'resize') {
-    return await hydraResize({
+    return await titanResize({
       values,
       titanId,
     })
   }
 
   if (positionals[0] === 'memory') {
-    return await hydraMemory({
+    return await titanMemory({
       values,
       positionals,
       titanId,
@@ -504,7 +504,7 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (positionals[0] === 'messages') {
-    return hydraMessages({
+    return titanMessages({
       values,
       titanId,
     })
@@ -538,15 +538,15 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
 
   if (positionals[0] !== 'send') {
     throw new TitanError({
-      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra stop, hydra usage, hydra messages or hydra message',
+      message: 'Use titan send --text <message>, titan send --task <id> [--action send|worker], titan stop, titan usage, titan messages or titan message',
       code: 'VALIDATION_ERROR',
     })
   }
 
-  return hydraSend({
+  return titanSend({
     values,
     titanId,
   })
 }
 
-export const hydraCommandHandler = guard({ handler: hydraCommand })
+export const titanCommandHandler = guard({ handler: titanCommand })

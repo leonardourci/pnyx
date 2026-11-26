@@ -1,9 +1,9 @@
 import type { Meta } from '#app/command-meta.ts'
-import { hydraActor } from '#app/request-context.ts'
+import { titanActor } from '#app/request-context.ts'
 import { withWriter } from '#app/writer.ts'
-import { hydraEvent } from './titan.ts'
+import { titanEvent } from './titan.ts'
 import { TITAN_CARD } from './identity.ts'
-import { hydraConfig } from './config.ts'
+import { titanConfig } from './config.ts'
 
 const NOTICE_LENGTH = 180
 
@@ -18,14 +18,14 @@ export async function settingsNotice({
   changeId: string
   text: string
 }): Promise<void> {
-  if (!hydraActor({ actor: meta.actor })) {
+  if (!titanActor({ actor: meta.actor })) {
     return
   }
 
   await withWriter({
     titanId,
     fn: ({ writer }) => {
-      const decision = hydraEvent({
+      const decision = titanEvent({
         state: writer.state,
         cardId: TITAN_CARD,
         meta: {
@@ -37,10 +37,10 @@ export async function settingsNotice({
           type: 'titan.message',
           data: {
             action: 'send',
-            hydra: hydraConfig({
+            titan: titanConfig({
               state: writer.state,
               id: titanId,
-            }).hydra.id,
+            }).titan.id,
             text: text.replaceAll(
               /\s+/g,
               ' ',

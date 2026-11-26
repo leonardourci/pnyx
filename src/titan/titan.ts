@@ -4,10 +4,10 @@ import type { Meta } from '#app/command-meta.ts'
 import { TitanError } from '#store/errors.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import type { TitanMessage } from './model.ts'
-import { hydraConfig } from './config.ts'
+import { titanConfig } from './config.ts'
 import { TITAN_CARD } from './identity.ts'
 
-export function hydraEvent({
+export function titanEvent({
   state,
   meta,
   cardId,
@@ -64,7 +64,7 @@ export const QUIET_REPLY = 'NO_REPLY'
 export { agentActor, reportActor } from '#app/actors.ts'
 
 // The exact text Titan receives, so its transcript copy of a report is known by identity, never by markup.
-export function hydraDelivery({ message }: { message: Pick<TitanMessage, 'id' | 'actor' | 'task' | 'kind' | 'text' | 'details' | 'context'> }) {
+export function titanDelivery({ message }: { message: Pick<TitanMessage, 'id' | 'actor' | 'task' | 'kind' | 'text' | 'details' | 'context'> }) {
   const said = [
     message.text,
     message.details,
@@ -101,9 +101,9 @@ export function othrysRunsTitan({ state }: { state: TitanState }): boolean {
 }
 
 // The mode a hosted Titan's session runs in, once it matches the composer's; none mid-switch.
-export function hydraMode({ state }: { state: TitanState }): string | undefined {
+export function titanMode({ state }: { state: TitanState }): string | undefined {
   const running = state.cards[TITAN_CARD]?.settings?.mode
-  const chosen = hydraConfig({ state }).hydra.agent
+  const chosen = titanConfig({ state }).titan.agent
   const settled = !chosen || chosen.mode === running
 
   return hostedTitan({ state }) && settled ? running : undefined
