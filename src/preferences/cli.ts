@@ -15,7 +15,7 @@ export const view = guard({
     ] = args
     const {
       values,
-      hydraId,
+      titanId,
     } = parse({
       args: rest,
       options: {
@@ -26,7 +26,7 @@ export const view = guard({
     })
 
     if (sub === 'show') {
-      const { state } = loadTitan({ hydraId })
+      const { state } = loadTitan({ titanId })
 
       return {
         view: effectiveView({ state }),
@@ -77,11 +77,11 @@ export const view = guard({
     const shared = Object.fromEntries(entries.filter(([key]) => isSharedViewKey({ key })))
     const board = Object.fromEntries(entries.filter(([key]) => !isSharedViewKey({ key })))
     const viewCommit = () => commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
-        type: 'board.view',
-        card: '$board',
+        type: 'titan.view',
+        card: '$all',
       },
       decide: ({ state: s }) => decideView({
         state: s,
@@ -98,7 +98,7 @@ export const view = guard({
     // --if-revision guards the board's own view; shared keys follow the settings store.
     const settings = settingsReceipt({
       saved: await saveSettings({
-        hydraId,
+        titanId,
         patch: shared,
         meta: {
           ...m,
@@ -128,7 +128,7 @@ export const layout = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: {
@@ -139,7 +139,7 @@ export const layout = guard({
     })
 
     if (positionals[0] === 'show') {
-      const view = effectiveView({ state: loadTitan({ hydraId }).state })
+      const view = effectiveView({ state: loadTitan({ titanId }).state })
 
       return {
         widths: {
@@ -163,11 +163,11 @@ export const layout = guard({
     const { settings } = readSettings()
 
     const reset = ({ id }: { id: string }) => commit({
-      hydraId: id,
+      titanId: id,
       meta: m,
       intent: {
-        type: 'board.view',
-        card: '$board',
+        type: 'titan.view',
+        card: '$all',
       },
       decide: ({ state }) => decideView({
         state,
@@ -182,7 +182,7 @@ export const layout = guard({
     })
 
     if (!values.all) {
-      return await reset({ id: hydraId })
+      return await reset({ id: titanId })
     }
 
     if (m.ifRevision !== undefined) {
@@ -208,10 +208,10 @@ export const layout = guard({
 
 export async function hydraResize({
   values,
-  hydraId,
+  titanId,
 }: {
   values: Record<string, string | boolean | undefined>
-  hydraId: string
+  titanId: string
 }): Promise<Output> {
   const width = integer({
     value: values.width,
@@ -228,11 +228,11 @@ export async function hydraResize({
   const m = meta({ values })
 
   return await commit({
-    hydraId,
+    titanId,
     meta: m,
     intent: {
-      type: 'board.view',
-      card: '$board',
+      type: 'titan.view',
+      card: '$all',
     },
     decide: ({ state }) => decideView({
       state,

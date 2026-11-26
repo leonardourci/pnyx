@@ -29,7 +29,7 @@ import { releaseTask, taskLease } from './leases.ts'
 import { handbackId, HELPER_SUMMARY_CHARS, HELPER_SUMMARY_WORDS, needsMain, type HelperAgent, type HelperBatch, type HelperChange, type HelperOutcome, type HelperUsage } from './state.ts'
 
 type Completion = {
-  change: Extract<HelperChange, { type: 'hydra.helper-finished' }>
+  change: Extract<HelperChange, { type: 'titan.helper-finished' }>
   tasks: string[]
 }
 
@@ -178,7 +178,7 @@ function recentDialog({ state }: { state: TitanState }): string {
 }
 
 export function createRoutineHelper({
-  hydraId,
+  titanId,
   provider,
   environment,
   context,
@@ -190,7 +190,7 @@ export function createRoutineHelper({
   deadline,
   spawned,
 }: {
-  hydraId: string
+  titanId: string
   provider({ harness }: { harness: 'claude' | 'codex' }): Provider
   environment({
     harness,
@@ -240,7 +240,7 @@ export function createRoutineHelper({
 
   const stopping = new AbortController()
   const pendingDir = join(
-    hydraDir({ hydraId }),
+    hydraDir({ titanId }),
     'helper-pending',
   )
 
@@ -268,7 +268,7 @@ export function createRoutineHelper({
         log({
           level: 'warn',
           operation: 'helper.deferred',
-          hydraId,
+          titanId,
           error,
         })
 
@@ -289,10 +289,10 @@ export function createRoutineHelper({
     }
   }
 
-  const append = async ({ change }: { change: Exclude<HelperChange, { type: 'hydra.helper-acknowledged' }> }) => {
-    const id = change.type === 'hydra.helper-finished'
+  const append = async ({ change }: { change: Exclude<HelperChange, { type: 'titan.helper-acknowledged' }> }) => {
+    const id = change.type === 'titan.helper-finished'
       ? `helper-finished:${change.data.batch}` : `helper-started:${change.data.id}`
-    const transaction = change.type === 'hydra.helper-finished' ? {
+    const transaction = change.type === 'titan.helper-finished' ? {
       id: `helper-completion:${change.data.batch}`,
       digest: createHash('sha256').update(JSON.stringify(change))
         .digest('hex'),
@@ -338,13 +338,13 @@ export function createRoutineHelper({
 
     if (transaction) {
       await withWriter({
-        hydraId,
+        titanId,
         transaction,
         fn: save,
       })
     } else {
       await withWriter({
-        hydraId,
+        titanId,
         fn: save,
       })
     }
@@ -384,7 +384,7 @@ export function createRoutineHelper({
   }
 
   const giveBack = ({ batch }: { batch: HelperBatch }) => {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const base = handbackId({ id: batch.id })
     let id = base
 
@@ -406,7 +406,7 @@ export function createRoutineHelper({
     const usage: HelperUsage = {}
 
     try {
-      const state = loadTitan({ hydraId }).state
+      const state = loadTitan({ titanId }).state
       const current = await configuredAgent({ state })
       const candidate: HelperAgent | undefined = batch.agent ?? current
 
@@ -420,7 +420,7 @@ export function createRoutineHelper({
       for (const task of batch.tasks) {
         releases.push(await defer({
           run: () => taskLease({
-            hydraId,
+            titanId,
             task,
             actor,
             lockTimeout: 0,
@@ -433,7 +433,7 @@ export function createRoutineHelper({
       }
 
       const cwd = join(
-        hydraDir({ hydraId }),
+        hydraDir({ titanId }),
         'helper',
       )
       prepareHelperFolder({
@@ -476,7 +476,7 @@ export function createRoutineHelper({
 
         const paths = [
           ...new Set(batch.tasks.flatMap(task => Object.values(recordFiles({
-            hydraId,
+            titanId,
             task,
           })))),
         ]
@@ -528,7 +528,7 @@ export function createRoutineHelper({
         const input = async function* () {
           const card = state.cards[TITAN_CARD]
           const thread = card ? readThread({
-            hydraId,
+            titanId,
             state,
             card,
           }).entries
@@ -545,7 +545,7 @@ export function createRoutineHelper({
             state,
             tasks: batch.tasks,
           })
-          const text = `Use othrys with --titan ${hydraId}. ${recordContext({ hydraId })} Read-only commands for this grant: ${paths.map(path => readCommand({ path })).join('; ')}. Recent owner conversation (read-only context):\n${recentDialog({ state })}\n${thread}\n\nGranted tasks: ${granted.join(', ')}\n${receipts ? `Your earlier outcomes on these tasks:\n${receipts}\n` : ''}${batch.prompt}`
+          const text = `Use othrys with --titan ${titanId}. ${recordContext({ titanId })} Read-only commands for this grant: ${paths.map(path => readCommand({ path })).join('; ')}. Recent owner conversation (read-only context):\n${recentDialog({ state })}\n${thread}\n\nGranted tasks: ${granted.join(', ')}\n${receipts ? `Your earlier outcomes on these tasks:\n${receipts}\n` : ''}${batch.prompt}`
           yield agentInput({
             id: batch.id,
             text,
@@ -659,7 +659,7 @@ export function createRoutineHelper({
       await persistCompletion({
         tasks: batch.tasks,
         change: {
-          type: 'hydra.helper-finished',
+          type: 'titan.helper-finished',
           data: {
             batch: batch.id,
             outcomes,
@@ -670,7 +670,7 @@ export function createRoutineHelper({
 
       log({
         operation: 'helper.batch',
-        hydraId,
+        titanId,
         correlationId: batch.id,
         count: batch.tasks.length,
         ms: performance.now() - started,
@@ -685,7 +685,7 @@ export function createRoutineHelper({
       log({
         level: 'warn',
         operation: 'helper.batch',
-        hydraId,
+        titanId,
         correlationId: batch.id,
         count: batch.tasks.length,
         error,
@@ -699,7 +699,7 @@ export function createRoutineHelper({
         await persistCompletion({
           tasks: batch.tasks,
           change: {
-            type: 'hydra.helper-finished',
+            type: 'titan.helper-finished',
             data: {
               batch: batch.id,
               outcomes: [],
@@ -739,7 +739,7 @@ export function createRoutineHelper({
             log({
               level: 'error',
               operation: 'helper.cleanup',
-              hydraId,
+              titanId,
               correlationId: batch.id,
               error,
             })
@@ -752,7 +752,7 @@ export function createRoutineHelper({
         batchId = undefined
         deadlineAt = undefined
 
-        if (cleaned && `helper-finished:${batch.id}` in loadTitan({ hydraId }).state.eventIds) {
+        if (cleaned && `helper-finished:${batch.id}` in loadTitan({ titanId }).state.eventIds) {
           rmSync(
             join(
               pendingDir,
@@ -796,7 +796,7 @@ export function createRoutineHelper({
       let candidate: HelperAgent | undefined
 
       try {
-        candidate = await configuredAgent({ state: loadTitan({ hydraId }).state })
+        candidate = await configuredAgent({ state: loadTitan({ titanId }).state })
       } catch (error) {
         busy = false
         throw error
@@ -821,7 +821,7 @@ export function createRoutineHelper({
         await defer({
           run: async () => await append({
             change: {
-              type: 'hydra.helper-started',
+              type: 'titan.helper-started',
               data: batch,
             },
           }),
@@ -862,7 +862,7 @@ export function createRoutineHelper({
         }
       }
 
-      const runs = Object.values(loadTitan({ hydraId }).state.helper?.runs ?? {})
+      const runs = Object.values(loadTitan({ titanId }).state.helper?.runs ?? {})
 
       for (const batch of runs) {
         let cleaned = true
@@ -871,7 +871,7 @@ export function createRoutineHelper({
           try {
             await defer({
               run: () => releaseTask({
-                hydraId,
+                titanId,
                 task,
                 actor: `helper:${batch.id}`,
                 lockTimeout: 0,
@@ -882,7 +882,7 @@ export function createRoutineHelper({
             log({
               level: 'error',
               operation: 'helper.recovery-cleanup',
-              hydraId,
+              titanId,
               taskId: task,
               correlationId: batch.id,
               error,
@@ -898,7 +898,7 @@ export function createRoutineHelper({
           await persistCompletion({
             tasks: batch.tasks,
             change: {
-              type: 'hydra.helper-finished',
+              type: 'titan.helper-finished',
               data: {
                 batch: batch.id,
                 outcomes: [],
@@ -935,7 +935,7 @@ export function createRoutineHelper({
             try {
               await defer({
                 run: () => releaseTask({
-                  hydraId,
+                  titanId,
                   task,
                   actor: `helper:${id}`,
                   lockTimeout: 0,
@@ -946,7 +946,7 @@ export function createRoutineHelper({
               log({
                 level: 'error',
                 operation: 'helper.recovery-cleanup',
-                hydraId,
+                titanId,
                 taskId: task,
                 correlationId: id,
                 error,

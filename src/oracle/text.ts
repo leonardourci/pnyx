@@ -323,16 +323,16 @@ export function eventText({ event }: { event: TitanEvent }): string {
         event.data.context,
       )
       break
-    case 'hydra.message':
+    case 'titan.message':
       parts.push(
         event.data.text,
         event.data.details,
       )
       break
-    case 'board.agents':
+    case 'titan.agents':
       parts.push(...Object.keys(event.data.agents))
       break
-    case 'board.configured':
+    case 'titan.configured':
       parts.push(
         event.data.name,
         event.data.hydra.name,

@@ -60,7 +60,7 @@ function commandLease({
     return () => {}
   }
 
-  const hydraId = String(values.hydra ?? env.OTHRYS_TITAN ?? 'default')
+  const titanId = String(values.hydra ?? env.OTHRYS_TITAN ?? 'default')
   const action = positionals[0] ?? ''
   let task: string | undefined
 
@@ -68,7 +68,7 @@ function commandLease({
     const requestedActor = values.actor
     const sameActor = requestedActor === undefined || requestedActor === actor
 
-    if (hydraId !== env.OTHRYS_TITAN || !sameActor || args.some(arg => /^--wait(?:=|$)/.test(arg))) {
+    if (titanId !== env.OTHRYS_TITAN || !sameActor || args.some(arg => /^--wait(?:=|$)/.test(arg))) {
       denied()
     }
 
@@ -110,7 +110,7 @@ function commandLease({
   let card: Card
 
   try {
-    state = loadTitan({ hydraId }).state
+    state = loadTitan({ titanId }).state
     card = findCard({
       state,
       ref: task,
@@ -152,12 +152,12 @@ function commandLease({
   }
 
   requireCopyAvailable({
-    hydraId,
+    titanId,
     task: card.id,
   })
 
   return taskLease({
-    hydraId,
+    titanId,
     task: card.id,
     actor: helper ? actor : 'main',
   })

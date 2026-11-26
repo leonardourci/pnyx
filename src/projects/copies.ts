@@ -10,13 +10,13 @@ export const settles = ({ card }: { card: Card }) => Boolean(card.doneAt) && car
   && card.activity !== 'working'
 
 export async function settleDone({
-  hydraId,
+  titanId,
   at = new Date().toISOString(),
 }: {
-  hydraId: string
+  titanId: string
   at?: string
 }): Promise<number> {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
 
   const due = Object.values(state.cards).filter(card => {
     if (!settles({ card })) {
@@ -30,14 +30,14 @@ export async function settleDone({
 
     // An unresolved handoff refuses settlement until restart recovery, so it must not stop the other copies settling.
     return !queued && !handoffPending({
-      hydraId,
+      titanId,
       task: card.id,
     })
   })
 
   for (const card of due) {
     await settleCopy({
-      hydraId,
+      titanId,
       ref: card.id,
       meta: {
         actor: 'othrys',
@@ -46,7 +46,7 @@ export async function settleDone({
     })
   }
 
-  await trimPool({ hydraId })
+  await trimPool({ titanId })
 
   return due.length
 }

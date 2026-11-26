@@ -45,14 +45,14 @@ export function workerNotesNotice({
 
   const decision = hydraEvent({
     state: writer.state,
-    cardId: '$board',
+    cardId: '$all',
     meta: {
       id,
       at: meta.at,
       actor: 'othrys',
     },
     change: {
-      type: 'hydra.message',
+      type: 'titan.message',
       data: {
         action: 'send',
         hydra: hydraConfig({ state: writer.state }).hydra.id,

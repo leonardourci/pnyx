@@ -8,7 +8,7 @@ export function applyProject({
   state: TitanState
   event: TitanEvent
 }): boolean {
-  if (event.type === 'hydra.project') {
+  if (event.type === 'titan.project') {
     state.projects = [
       ...(state.projects ?? []).filter(p => p.path !== event.data.after.path),
       structuredClone(event.data.after),

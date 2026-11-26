@@ -289,21 +289,21 @@ export async function migrateOwnerMemory(): Promise<void> {
       }
       const failed: string[] = []
 
-      for (const hydraId of hydraIds()) {
+      for (const titanId of hydraIds()) {
         try {
-          const memory = loadTitan({ hydraId }).state.hydraMemory ?? {}
+          const memory = loadTitan({ titanId }).state.hydraMemory ?? {}
 
           if (Object.keys(OWNER_DOCUMENTS).some(key => Object.hasOwn(
             memory,
             key,
           ))) {
             await move({
-              hydraId,
+              titanId,
               meta,
             })
           }
         } catch (error) {
-          failed.push(`${hydraId}: ${(error as Error).message}`)
+          failed.push(`${titanId}: ${(error as Error).message}`)
         }
       }
 
@@ -326,14 +326,14 @@ export async function migrateOwnerMemory(): Promise<void> {
 }
 
 async function move({
-  hydraId,
+  titanId,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   meta: OwnerMeta
 }): Promise<void> {
   await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       for (const key of Object.keys(OWNER_DOCUMENTS)) {
         const held = writer.state.hydraMemory?.[key]?.text
@@ -352,7 +352,7 @@ async function move({
           }),
           meta: {
             ...meta,
-            reason: `Moved ${key} from Titan ${hydraId}`,
+            reason: `Moved ${key} from Titan ${titanId}`,
           },
         })
         const forget = hydraEvent({
@@ -361,9 +361,9 @@ async function move({
             ...meta,
             reason: 'Moved to the Othrys-wide owner memory',
           },
-          cardId: '$board',
+          cardId: '$all',
           change: {
-            type: 'hydra.memory',
+            type: 'titan.memory',
             data: {
               key,
               before: held,
@@ -471,13 +471,13 @@ export function ownerArchive({
 }
 
 export function writableOwnerMemory({
-  hydraId,
+  titanId,
   logs,
 }: {
-  hydraId: string
+  titanId: string
   logs?: ReturnType<typeof readOwnerLogs>
 }) {
-  const writablePolis = ownerPolis({ state: loadTitan({ hydraId }).state })
+  const writablePolis = ownerPolis({ state: loadTitan({ titanId }).state })
 
   const log = readLog({
     polis: writablePolis,
@@ -494,7 +494,7 @@ export function writableOwnerMemory({
 }
 
 export async function saveOwnerMemory({
-  hydraId,
+  titanId,
   key,
   after,
   meta,
@@ -506,13 +506,13 @@ export async function saveOwnerMemory({
   meta: OwnerMeta
   confirmed?: string
   learning?: LearningChange
-  hydraId: string
+  titanId: string
 }): Promise<(OwnerEntry & { revision: string | number }) | undefined> {
   await tryMigrate()
 
   return withRegistryLock({
     fn: () => {
-      const polis = ownerPolis({ state: loadTitan({ hydraId }).state })
+      const polis = ownerPolis({ state: loadTitan({ titanId }).state })
       const entry = append({
         polis,
         key,
@@ -537,13 +537,13 @@ export async function saveOwnerMemory({
 export async function moveOwnerLearning({
   ifDestinationRevision,
   path,
-  hydraId,
+  titanId,
   text,
   meta,
 }: {
   ifDestinationRevision?: number
   path: string
-  hydraId: string
+  titanId: string
   text: string
   meta: OwnerMeta
 }) {
@@ -552,7 +552,7 @@ export async function moveOwnerLearning({
 
   return withRegistryLock({
     fn: () => {
-      const polis = ownerPolis({ state: loadTitan({ hydraId }).state })
+      const polis = ownerPolis({ state: loadTitan({ titanId }).state })
       const owner = readLog({ polis })
 
       checkOwnerRevision({
@@ -573,7 +573,7 @@ export async function moveOwnerLearning({
 
       const project = projectMemoryViewUnderLock({
         facts,
-        hydraId,
+        titanId,
       })
 
       if (ifDestinationRevision !== undefined && project.revision !== ifDestinationRevision) {
@@ -607,7 +607,7 @@ export async function moveOwnerLearning({
         at: meta.at,
         actor: meta.actor,
         reason: meta.reason,
-        hydra: hydraId,
+        hydra: titanId,
         identity: project.identity,
         key: 'learnings',
         before: projectBefore,
@@ -642,13 +642,13 @@ export async function moveOwnerLearning({
 
 export async function moveOwnerPolis({
   ifDestinationRevision,
-  hydraId,
+  titanId,
   destination,
   key,
   meta,
 }: {
   ifDestinationRevision?: number
-  hydraId: string
+  titanId: string
   destination: string
   key: string
   meta: OwnerMeta
@@ -664,7 +664,7 @@ export async function moveOwnerPolis({
 
   return withRegistryLock({
     fn: () => {
-      const polis = ownerPolis({ state: loadTitan({ hydraId }).state })
+      const polis = ownerPolis({ state: loadTitan({ titanId }).state })
       const logs = readOwnerLogs()
       const source = readLog({
         polis,

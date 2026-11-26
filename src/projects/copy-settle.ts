@@ -45,12 +45,12 @@ function releaseReason({
 export type Settle = 'check' | 'safe' | 'discard'
 
 export async function settleCopy({
-  hydraId,
+  titanId,
   ref,
   mode = 'check',
   meta,
 }: {
-  hydraId: string
+  titanId: string
   ref: string
   mode?: Settle
   meta: Meta
@@ -58,7 +58,7 @@ export async function settleCopy({
   copy: TaskCopy | null
   check?: CopyCheck
 }> {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const card = findCard({
     state,
     ref,
@@ -70,17 +70,17 @@ export async function settleCopy({
   }
 
   requireHandoffAvailable({
-    hydraId,
+    titanId,
     task: card.id,
   })
 
   requireCopyAvailable({
-    hydraId,
+    titanId,
     task: card.id,
   })
   const leaseActor = `${COPY_LEASE_PREFIX}${randomUUID()}`
   const releaseLease = taskLease({
-    hydraId,
+    titanId,
     task: card.id,
     actor: leaseActor,
   })
@@ -113,7 +113,7 @@ export async function settleCopy({
 
     if (check.gone || mode === 'discard' || mode === 'safe' || !('reason' in check)) {
       const released = await askHost({
-        hydraId,
+        titanId,
         body: {
           action: 'release',
           task: card.id,
@@ -148,7 +148,7 @@ export async function settleCopy({
     } else if (mode === 'discard' || mode === 'safe' || !('reason' in check)) {
       const why = mode === 'discard' ? 'removed after its work landed' : mode === 'safe' ? 'confirmed safe' : 'its work landed'
       pooled = mode !== 'discard' && copy.via === 'worktree' && await staysInPool({
-        hydraId,
+        titanId,
         state,
         copy,
       })
@@ -181,7 +181,7 @@ export async function settleCopy({
     }
 
     return await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         const now = findCard({
@@ -236,14 +236,14 @@ export async function settleCopy({
               meta: quiet({ meta }),
               cardId: now.id,
               change: {
-                type: 'hydra.message',
+                type: 'titan.message',
                 data: {
                   task: now.id,
                   action: 'send',
                   text,
                   hydra: hydraConfig({
                     state: writer.state,
-                    id: hydraId,
+                    id: titanId,
                   }).hydra.id,
                 },
               },
@@ -262,14 +262,14 @@ export async function settleCopy({
     background({
       name: 'copy settlement replies',
       run: async () => {
-        const saved = loadTitan({ hydraId }).state.cards[card.id]
+        const saved = loadTitan({ titanId }).state.cards[card.id]
 
         if (!saved) {
           return
         }
 
         for (const message of pendingSteering({ card: saved })) {
-          const latest = loadTitan({ hydraId }).state.cards[card.id]
+          const latest = loadTitan({ titanId }).state.cards[card.id]
           const current = latest?.steering?.find(item => item.id === message.id)
 
           if (!current || current.ack || !current.attempts.every(attempt => attempt.result === 'deferred')) {
@@ -277,7 +277,7 @@ export async function settleCopy({
           }
 
           await notifySteering({
-            hydraId,
+            titanId,
             card: card.id,
             message: message.id,
             attempt: `${leaseActor}:${message.id}`,

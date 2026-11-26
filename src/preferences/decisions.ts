@@ -44,9 +44,9 @@ export function decideView({
       ...base({
         state,
         meta,
-        cardId: '$board',
+        cardId: '$all',
       }),
-      type: 'board.view',
+      type: 'titan.view',
       data: {
         before,
         after,

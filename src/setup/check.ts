@@ -34,10 +34,10 @@ const SIGN_IN: Record<Harness, string> = {
 }
 
 export async function setupCheck({
-  hydraId,
+  titanId,
   readable,
 }: {
-  hydraId: string
+  titanId: string
   readable: TitanProject[]
 }): Promise<SetupItem[]> {
   const items: SetupItem[] = []
@@ -116,7 +116,7 @@ export async function setupCheck({
         name: 'hooks',
         missing: script === 'current' ? `reporting hooks not installed in ${missing.join(', ')}` : `hook script ${script}`,
         by: 'owner',
-        fix: `othrys setup hooks --titan ${hydraId}`,
+        fix: `othrys setup hooks --titan ${titanId}`,
       })
     }
   } catch (error) {
@@ -135,7 +135,7 @@ export async function setupCheck({
       name: 'skills',
       missing: skills,
       by: 'owner',
-      fix: skills.startsWith('conflict') ? 'move that skill aside, then run `othrys setup skills`' : `othrys setup skills --titan ${hydraId}`,
+      fix: skills.startsWith('conflict') ? 'move that skill aside, then run `othrys setup skills`' : `othrys setup skills --titan ${titanId}`,
     })
   }
 
@@ -163,7 +163,7 @@ export async function setupCheck({
       project,
       status: (await readableProjectMemory({
         ...project,
-        hydraId,
+        titanId,
       }))?.status,
     })))
 
@@ -172,13 +172,13 @@ export async function setupCheck({
     status,
   } of profiles) {
     const duplicates = sharingTitans({
-      hydraId,
+      titanId,
       path: project.path,
     })
 
     if (duplicates.length) {
       const hydras = [
-        hydraId,
+        titanId,
         ...duplicates.map(hydra => hydra.id),
       ].sort().join(', ')
       items.push({
@@ -207,16 +207,16 @@ export const setupDigest = ({ items }: { items: SetupItem[] }) => items.length ?
   ...items.map(item => `- ${item.name}: ${item.missing} · ${item.by === 'hydra' ? 'you' : 'owner'}: ${item.fix}`),
 ] : []
 
-export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
-  const loaded = loadTitan({ hydraId }).state
+export async function setupCheckOutput({ titanId }: { titanId: string }) {
+  const loaded = loadTitan({ titanId }).state
   const items = await setupCheck({
-    hydraId,
+    titanId,
     readable: projectsFor({state: loaded}),
   })
 
   if (!items.length) {
     return {
-      hydraId,
+      titanId,
       setup: 'complete',
     }
   }
@@ -224,7 +224,7 @@ export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
   recordExitCode({ code: 1 })
 
   return {
-    hydraId,
+    titanId,
     missing: items,
     help: [`Titan runs setup commands directly; login rows need the owner’s credentials; see the ${SET_UP_SKILL} skill`],
   }

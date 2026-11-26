@@ -28,10 +28,10 @@ function fullMemory({
 }
 
 export async function projectDigest({
-  hydraId,
+  titanId,
   readable,
 }: {
-  hydraId: string
+  titanId: string
   readable: TitanProject[]
 }): Promise<string[]> {
   const projects = readable.filter(project => !project.detached)
@@ -44,7 +44,7 @@ export async function projectDigest({
   const lines = await Promise.all(projects.map(async project => {
     const view = await readableProjectMemory({
       ...project,
-      hydraId,
+      titanId,
     })
 
     if (!view) {
@@ -74,11 +74,11 @@ export async function projectDigest({
 }
 
 export async function projectWorkerContext({
-  hydraId,
+  titanId,
   state,
   project: ref,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   project?: string
 }): Promise<{
@@ -101,7 +101,7 @@ export async function projectWorkerContext({
 
   const view = await readableProjectMemory({
     ...project,
-    hydraId,
+    titanId,
   })
 
   if (!view) {

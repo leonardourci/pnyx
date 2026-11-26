@@ -25,7 +25,7 @@ export interface ViewPreferences {
 }
 
 export type ViewEvent = EventBase & {
-  type: 'board.view'
+  type: 'titan.view'
   data: {
     before: ViewPreferences
     after: ViewPreferences

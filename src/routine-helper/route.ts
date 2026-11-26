@@ -142,7 +142,7 @@ export function helperEvent({
   state: TitanState
   event: TitanEvent
 }): string | undefined {
-  const task = event.type === 'hydra.message' ? event.data.task : event.cardId
+  const task = event.type === 'titan.message' ? event.data.task : event.cardId
 
   if (!task) {
     return undefined

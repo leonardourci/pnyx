@@ -37,7 +37,7 @@ export function childRepositories({ path }: { path: string }) {
 }
 
 export function attachProjectGroup({
-  hydraId,
+  titanId,
   paths,
   name,
   groupId,
@@ -46,7 +46,7 @@ export function attachProjectGroup({
   landing,
   merge,
 }: {
-  hydraId: string
+  titanId: string
   paths: string[]
   name: string
   groupId?: string
@@ -57,7 +57,7 @@ export function attachProjectGroup({
 }) {
   return withAsyncRegistryLock({
     fn: () => withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const state = writer.state
 
@@ -91,7 +91,7 @@ export function attachProjectGroup({
           }
 
           const others = sharingTitans({
-            hydraId,
+            titanId,
             path,
           })
 
@@ -145,7 +145,7 @@ export function attachProjectGroup({
             },
             cardId: '$projects',
             change: {
-              type: 'hydra.project',
+              type: 'titan.project',
               data: {
                 ...change,
                 sharedWith: [],
@@ -171,7 +171,7 @@ export function projectGroupCommand({ args }: { args: string[] }) {
   const {
     values,
     positionals,
-    hydraId,
+    titanId,
   } = parse({
     args,
     options: WRITE,
@@ -191,7 +191,7 @@ export function projectGroupCommand({ args }: { args: string[] }) {
   }
 
   return attachProjectGroup({
-    hydraId,
+    titanId,
     paths,
     name,
     meta: meta({ values }),

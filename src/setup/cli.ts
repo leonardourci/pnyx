@@ -20,7 +20,7 @@ export const setup = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options,
@@ -28,7 +28,7 @@ export const setup = guard({
     })
 
     if (positionals[0] === 'check') {
-      return setupCheckOutput({ hydraId })
+      return setupCheckOutput({ titanId })
     }
 
     if (positionals[0] === undefined || [

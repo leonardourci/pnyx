@@ -211,32 +211,32 @@ export async function projectFacts({ path }: { path: string }): Promise<ProjectF
 
 export async function projectMemoryView({
   path,
-  hydraId,
+  titanId,
 }: {
   path: string
-  hydraId: string
+  titanId: string
 }) {
   const facts = await projectFacts({ path })
 
   return withRegistryLock({
     fn: () => projectMemoryViewUnderLock({
       facts,
-      hydraId,
+      titanId,
     }),
   })
 }
 
 export async function readableProjectMemory({
   path,
-  hydraId,
+  titanId,
 }: {
   path: string
-  hydraId: string
+  titanId: string
 }) {
   try {
     return await projectMemoryView({
       path,
-      hydraId,
+      titanId,
     })
   } catch (error) {
     if (error instanceof TitanError && error.code === 'NOT_FOUND') {
@@ -249,17 +249,17 @@ export async function readableProjectMemory({
 
 export function projectMemoryViewUnderLock({
   facts,
-  hydraId,
+  titanId,
 }: {
   facts: ProjectFacts
-  hydraId: string
+  titanId: string
 }) {
   const {
     identity,
     sources,
   } = facts
   findProject({
-    state: loadTitan({ hydraId }).state,
+    state: loadTitan({ titanId }).state,
     ref: facts.path,
     attached: true,
   })
@@ -289,7 +289,7 @@ export function projectMemoryViewUnderLock({
 
 export async function writeProjectMemory({
   path,
-  hydraId,
+  titanId,
   key,
   after,
   sources,
@@ -298,7 +298,7 @@ export async function writeProjectMemory({
   learning,
 }: {
   path: string
-  hydraId: string
+  titanId: string
   key: ProjectMemoryKey
   after: string | null
   sources?: string
@@ -319,7 +319,7 @@ export async function writeProjectMemory({
     fn: async () => {
       const view = projectMemoryViewUnderLock({
         facts,
-        hydraId,
+        titanId,
       })
 
       const previous = view.events.find(event => event.id === meta.id)
@@ -330,7 +330,7 @@ export async function writeProjectMemory({
         }
 
         await withWriter({
-          hydraId: event.hydra,
+          titanId: event.hydra,
           fn: ({ writer }) => workerNotesNotice({
             writer,
             target: basename(path),
@@ -428,7 +428,7 @@ export async function writeProjectMemory({
         at: meta.at,
         actor: meta.actor,
         ...(meta.reason ? { reason: meta.reason } : {}),
-        hydra: hydraId,
+        hydra: titanId,
         identity: view.identity,
         key,
         before,

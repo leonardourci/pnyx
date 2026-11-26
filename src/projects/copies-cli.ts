@@ -7,20 +7,20 @@ import { checkCopy } from './copy-check.ts'
 import { settleCopy } from './copy-settle.ts'
 
 export async function copyCommand({
-  hydraId,
+  titanId,
   ref,
   action,
   values,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   ref: string
   action?: string
   values: Record<string, string | boolean | undefined>
   meta: Meta
 }): Promise<Output> {
   const card = findCard({
-    state: loadTitan({ hydraId }).state,
+    state: loadTitan({ titanId }).state,
     ref,
   })
 
@@ -55,7 +55,7 @@ export async function copyCommand({
     copy,
     check,
   } = await settleCopy({
-    hydraId,
+    titanId,
     ref: card.id,
     mode: values.discard ? 'discard' : values.safe ? 'safe' : 'check',
     meta,

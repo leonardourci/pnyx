@@ -14,7 +14,7 @@ import { outcomeLines, type HelperAgent } from './state.ts'
 
 // The routine helper as a Titan's server runs it: whether it may take work, and the agent, account and context it runs with.
 export function createHostedHelper({
-  hydraId,
+  titanId,
   providers,
   children,
   helperBound,
@@ -24,7 +24,7 @@ export function createHostedHelper({
   armWake,
   host,
 }: {
-  hydraId: string
+  titanId: string
   providers: Record<ProviderId, Provider>
   children: ReturnType<typeof trackChildren>
   helperBound?: number
@@ -48,7 +48,7 @@ export function createHostedHelper({
     .some(batch => batch.error)
 
   const helperPending = () => {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
 
     return outcomeLines({ state }).length > 0 || helperFailed({ state })
   }
@@ -100,7 +100,7 @@ export function createHostedHelper({
   }
 
   const helper = createRoutineHelper({
-    hydraId,
+    titanId,
     spawned: children.spawned,
     provider: ({ harness }) => providers[providerIdOf({ harness })],
     environment: ({
@@ -150,7 +150,7 @@ export function createHostedHelper({
     },
     bound: helperBound,
     agentFor: async () => {
-      const state = loadTitan({ hydraId }).state
+      const state = loadTitan({ titanId }).state
       const effective = effectiveDispatch()
       const candidate = usableHelper({
         state,

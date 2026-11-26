@@ -3,32 +3,32 @@ import { COPY_LEASE_PREFIX, copySettlingRefusal, taskLeasePresent } from '#routi
 export { COPY_LEASE_PREFIX }
 
 export function copySettling({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task: string
 }): boolean {
   return taskLeasePresent({
-    hydraId,
+    titanId,
     task,
     actorPrefix: COPY_LEASE_PREFIX,
   })
 }
 
 export function requireCopyAvailable({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task: string
 }): void {
   if (copySettling({
-    hydraId,
+    titanId,
     task,
   })) {
     throw copySettlingRefusal({
-      hydraId,
+      titanId,
       task,
       code: 'CONFLICT',
     })

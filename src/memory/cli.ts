@@ -148,7 +148,7 @@ export const owner = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args: workerNotes ? [
         'memory',
@@ -202,7 +202,7 @@ export const owner = guard({
             logs,
           })
           const writable = writableOwnerMemory({
-            hydraId,
+            titanId,
             logs,
           })
 
@@ -223,7 +223,7 @@ export const owner = guard({
 
     if (action === 'save' || action === 'archive') {
       const entry = await saveOwnerMemory({
-        hydraId,
+        titanId,
         key: 'learnings',
         after: null,
         learning,
@@ -250,7 +250,7 @@ export const owner = guard({
 
     if (action === 'move' && documentMove) {
       return await moveOwnerPolis({
-        hydraId,
+        titanId,
         ifDestinationRevision: integer({
           value: values['if-destination-revision'],
           flag: '--if-destination-revision',
@@ -266,7 +266,7 @@ export const owner = guard({
 
     if (action === 'move') {
       const project = findProject({
-        state: loadTitan({ hydraId }).state,
+        state: loadTitan({ titanId }).state,
         ref: required({
           value: values.project as string | undefined,
           what: '--project <name|path>',
@@ -280,7 +280,7 @@ export const owner = guard({
           flag: '--if-destination-revision',
         }),
         path: project.path,
-        hydraId,
+        titanId,
         text: required({
           value: values.text as string | undefined,
           what: '--text <existing learning line>',
@@ -295,7 +295,7 @@ export const owner = guard({
         what: '--text <existing learning line>',
       })
       const entry = await saveOwnerMemory({
-        hydraId,
+        titanId,
         key: 'learnings',
         after: null,
         confirmed: line,
@@ -327,7 +327,7 @@ export const owner = guard({
     }
 
     const entry = await saveOwnerMemory({
-      hydraId,
+      titanId,
       key,
       after,
       learning,
@@ -338,7 +338,7 @@ export const owner = guard({
       memory: key,
       state: after === null ? 'forgotten' : 'saved',
       revision: entry.revision,
-      used: `${memorySize({ memory: writableOwnerMemory({ hydraId }).memory })} of ${OWNER_MEMORY_BUDGET} characters`,
+      used: `${memorySize({ memory: writableOwnerMemory({ titanId }).memory })} of ${OWNER_MEMORY_BUDGET} characters`,
     } : {
       memory: key,
       skipped: 'unchanged',
@@ -349,16 +349,16 @@ export const owner = guard({
 export async function hydraMemory({
   values,
   positionals,
-  hydraId,
+  titanId,
 }: {
   values: Record<string, string | boolean | undefined>
   positionals: string[]
-  hydraId: string
+  titanId: string
 }): Promise<Output> {
   const action = positionals[1] ?? 'list'
 
   if (action === 'list') {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
 
     return memoryList({
       memory: state.hydraMemory ?? {},
@@ -405,11 +405,11 @@ export async function hydraMemory({
   }
 
   const result = await commit({
-    hydraId,
+    titanId,
     meta: m,
     intent: {
-      type: 'hydra.memory',
-      card: '$board',
+      type: 'titan.memory',
+      card: '$all',
     },
     decide: ({ state }) => {
       const before = state.hydraMemory?.[key]?.text ?? null
@@ -424,9 +424,9 @@ export async function hydraMemory({
       return before === after ? { skipped: 'unchanged' } : hydraEvent({
         state,
         meta: m,
-        cardId: '$board',
+        cardId: '$all',
         change: {
-          type: 'hydra.memory',
+          type: 'titan.memory',
           data: {
             key,
             before,
@@ -439,18 +439,18 @@ export async function hydraMemory({
 
   if (key === 'workers' && result.event === 'none: unchanged') {
     await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const saved = scanEvents({
-          hydraId,
-          types: ['hydra.memory'],
+          titanId,
+          types: ['titan.memory'],
           descending: true,
-        }).find(event => event.type === 'hydra.memory' && event.data.key === 'workers')
+        }).find(event => event.type === 'titan.memory' && event.data.key === 'workers')
 
         if (saved) {
           workerNotesNotice({
             writer,
-            target: `Titan ${hydraId}`,
+            target: `Titan ${titanId}`,
             meta: saved,
           })
         }

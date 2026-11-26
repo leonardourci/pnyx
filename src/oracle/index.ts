@@ -61,13 +61,13 @@ interface Cursor {
 }
 
 export function openIndex({
-  hydraId,
+  titanId,
   sources,
   positions,
 }: {
-  hydraId: string
+  titanId: string
 } & Pick<SearchSnapshot, 'sources' | 'positions'>) {
-  const dir = hydraDir({ hydraId })
+  const dir = hydraDir({ titanId })
   privateDir({ dir })
 
   for (const leftover of RETIRED_INDEX_FILES) {
@@ -112,7 +112,7 @@ export function openIndex({
 
     catchUp({
       db,
-      hydraId,
+      titanId,
       sources,
       positions,
     })
@@ -187,12 +187,12 @@ export function openIndex({
 
 function catchUp({
   db,
-  hydraId,
+  titanId,
   sources,
   positions,
 }: {
   db: DatabaseSync
-  hydraId: string
+  titanId: string
 } & Pick<SearchSnapshot, 'sources' | 'positions'>) {
   const getCursor = db.prepare('SELECT pos, n, event FROM cursors WHERE source=?')
   const putCursor = db.prepare(`INSERT INTO cursors(source, pos, n, event)
@@ -234,7 +234,7 @@ function catchUp({
       log({
         level: 'warn',
         operation: 'oracle.rebuild',
-        hydraId,
+        titanId,
         name: source.key,
         status: 'cursor does not belong to its native log',
       })
@@ -344,7 +344,7 @@ function* documentChunks({
 }: Document): Generator<Document> {
   for (const body of chunk({ text: redact({ text }) })) {
     yield {
-      card: card === TITAN_CARD ? '$board' : card,
+      card: card === TITAN_CARD ? '$all' : card,
       kind,
       at,
       text: body,
@@ -353,11 +353,11 @@ function* documentChunks({
 }
 
 function* eventDocuments({ event }: { event: TitanEvent }): Generator<Document> {
-  if (event.type === 'chat.message' || event.type === 'hydra.memory' || event.type === 'hydra.review') {
+  if (event.type === 'chat.message' || event.type === 'titan.memory' || event.type === 'titan.review') {
     return
   }
 
-  if (event.type === 'hydra.helper-finished') {
+  if (event.type === 'titan.helper-finished') {
     for (const outcome of event.data.outcomes) {
       if (outcome.status !== 'handled' && outcome.status !== 'still_waiting') {
         yield* documentChunks({

@@ -69,7 +69,7 @@ function migrationPlan({
     cards,
   }) => cards.flatMap(card => {
     const refusal = moveRefusal({
-      hydraId: id,
+      titanId: id,
       to,
       source: state,
       target,
@@ -103,11 +103,11 @@ function migrationPlan({
 }
 
 export async function keepProject({
-  hydraId,
+  titanId,
   ref,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   ref: string
   meta: Meta
 }) {
@@ -118,7 +118,7 @@ export async function keepProject({
     })
   }
 
-  const keeper = loadTitan({ hydraId }).state
+  const keeper = loadTitan({ titanId }).state
   checkProjectsRevision({
     state: keeper,
     meta,
@@ -134,14 +134,14 @@ export async function keepProject({
     attached: true,
   })
   const ids = sharingTitans({
-    hydraId,
+    titanId,
     path: project.path,
   }).map(hydra => hydra.id)
   const sources = migrationPlan({
-    to: hydraId,
+    to: titanId,
     project,
     ids,
-    stateFor: ({ id }) => loadTitan({ hydraId: id }).state,
+    stateFor: ({ id }) => loadTitan({ titanId: id }).state,
   })
 
   for (const {
@@ -152,10 +152,10 @@ export async function keepProject({
       if (!prepareTaskRuntimeMove({
         task: card.id,
         from: id,
-        to: hydraId,
+        to: titanId,
       })) {
         await releaseWorker({
-          hydraId: id,
+          titanId: id,
           card,
           actor: meta.actor,
         })
@@ -164,7 +164,7 @@ export async function keepProject({
   }
 
   return await withWriter({
-    hydraId,
+    titanId,
     also: ids,
     fn: ({
       writer: target,
@@ -182,7 +182,7 @@ export async function keepProject({
       })
 
       const current = migrationPlan({
-        to: hydraId,
+        to: titanId,
         project,
         ids,
         stateFor: ({ id }) => writers.get(id)!.state,
@@ -203,11 +203,11 @@ export async function keepProject({
 
         for (const card of cards) {
           stageTaskMove({
-            hydraId: id,
+            titanId: id,
             source,
             target,
             cardId: card.id,
-            to: hydraId,
+            to: titanId,
             move: `${attempt}:${id}:${card.id}`,
             meta: sourceMeta,
             moving,
@@ -220,7 +220,7 @@ export async function keepProject({
           meta: sourceMeta,
           cardId: '$projects',
           change: {
-            type: 'hydra.project',
+            type: 'titan.project',
             data: {
               before: attached,
               after: {
@@ -238,7 +238,7 @@ export async function keepProject({
       }
 
       return {
-        keeper: hydraId,
+        keeper: titanId,
         project: project.path,
         moved,
       }

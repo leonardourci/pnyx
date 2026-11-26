@@ -68,16 +68,16 @@ async function verifyCopyBranch({
 
 // ponytail: an attached session stands for a live worker; a presence check could replace it.
 function noteShared({
-  hydraId,
+  titanId,
   path,
 }: {
-  hydraId: string
+  titanId: string
   path: string
 }): void {
   const working = ({ card }: { card: Card }) => liveTask({ card }) && card.sessionIds?.length
     && !card.doneAt && (card.folder === path || card.agent?.cwd === path)
-  const busy = hydraIds().filter(id => id !== hydraId
-    && Object.values(loadTitan({ hydraId: id }).state.cards).some(card => working({ card })))
+  const busy = hydraIds().filter(id => id !== titanId
+    && Object.values(loadTitan({ titanId: id }).state.cards).some(card => working({ card })))
 
   if (busy.length) {
     inform({
@@ -89,14 +89,14 @@ function noteShared({
 
 // The slot's current branch, empty when detached, once its work is proved landed; undefined keeps it out of reuse.
 async function landedSlotBranch({
-  hydraId,
+  titanId,
   path,
   card,
   project,
   base,
   common,
 }: {
-  hydraId: string
+  titanId: string
   path: string
   card: Card
   project: TitanProject
@@ -146,7 +146,7 @@ async function landedSlotBranch({
     const key = createHash('sha256').update(`${path}\0${branch}\0${check.reason}`)
       .digest('hex')
     await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => applyDecision({
         writer,
         decision: hydraEvent({
@@ -158,13 +158,13 @@ async function landedSlotBranch({
             at: new Date().toISOString(),
           },
           change: {
-            type: 'hydra.message',
+            type: 'titan.message',
             data: {
               action: 'send',
               text: `Unrecorded copy ${path} was kept: ${check.reason}. Inspect and land its work before reusing it.`,
               hydra: hydraConfig({
                 state: writer.state,
-                id: hydraId,
+                id: titanId,
               }).hydra.id,
             },
           },
@@ -185,7 +185,7 @@ async function landedSlotBranch({
   }
 
   await withWriter({
-    hydraId: released.hydraId,
+    titanId: released.titanId,
     fn: ({ writer }) => {
       const current = writer.state.cards[released.card.id]
 
@@ -224,11 +224,11 @@ async function landedSlotBranch({
 
 // The slot it returns stays claimed until the caller records it.
 async function worktreeCopy({
-  hydraId,
+  titanId,
   card,
   project,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
   project: TitanProject
 }): Promise<TaskCopy> {
@@ -244,9 +244,9 @@ async function worktreeCopy({
     base,
     start,
   } = await branchStart({ project })
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const branches = recordedBranches({
-    hydraId,
+    titanId,
     state,
     project: project.path,
   })
@@ -258,7 +258,7 @@ async function worktreeCopy({
   const branch = previousBranch ?? await createTaskBranch({
     cwd: project.path,
     hydraName: branchTitanName({
-      hydraId,
+      titanId,
       state,
     }),
     task: card.id,
@@ -339,7 +339,7 @@ async function worktreeCopy({
   // Ignored files such as installed dependencies stay with the slot; the clean check leaves nothing else to reset.
   for (const path of candidates) {
     if (!await take({
-      hydraId,
+      titanId,
       card,
       path,
     })) {
@@ -370,7 +370,7 @@ async function worktreeCopy({
       }
 
       const slotBranch = await landedSlotBranch({
-        hydraId,
+        titanId,
         path,
         card,
         project,
@@ -416,7 +416,7 @@ async function worktreeCopy({
   }
 
   const path = await freshSlot({
-    hydraId,
+    titanId,
     task: card.id,
     project,
   })
@@ -466,12 +466,12 @@ async function worktreeCopy({
 }
 
 async function commandCopy({
-  hydraId,
+  titanId,
   card,
   project,
   command,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
   project: TitanProject
   command: string
@@ -487,7 +487,7 @@ async function commandCopy({
     env: {
       ...process.env,
       OTHRYS_HOME: othrysHome(),
-      OTHRYS_TITAN: hydraId,
+      OTHRYS_TITAN: titanId,
       OTHRYS_TASK: card.id,
       OTHRYS_TASK_TITLE: card.title,
       OTHRYS_PROJECT: project.path,
@@ -509,7 +509,7 @@ async function commandCopy({
   }
 
   protectedCopiesFolder({
-    hydraId,
+    titanId,
     root: path,
     preserveSurvivors: false,
   })
@@ -523,21 +523,21 @@ async function commandCopy({
 }
 
 export async function taskFolder({
-  hydraId,
+  titanId,
   task,
   folder,
   inPlace,
   ownFolder,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   folder?: string
   inPlace?: boolean
   ownFolder?: boolean
   meta: Meta
 }): Promise<string | undefined> {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
 
   const card = findCard({
     state,
@@ -562,7 +562,7 @@ export async function taskFolder({
       ref: given,
     }))) {
       noteShared({
-        hydraId,
+        titanId,
         path: given,
       })
     }
@@ -590,7 +590,7 @@ export async function taskFolder({
   if (inPlace || ownFolder) {
     if (inPlace) {
       noteShared({
-        hydraId,
+        titanId,
         path: project.path,
       })
     }
@@ -623,20 +623,20 @@ export async function taskFolder({
   const current = live && isFolder({ path: live.path }) ? live : undefined
   const ready = current
     ?? (project.copy ? await commandCopy({
-      hydraId,
+      titanId,
       card,
       project,
       command: project.copy,
     }) : undefined)
   const copy = ready ?? await worktreeCopy({
-    hydraId,
+    titanId,
     card,
     project,
   })
 
   try {
     return await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         const now = findCard({

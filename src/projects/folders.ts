@@ -114,9 +114,9 @@ export async function listFolders({
   const seen = new Set<string>()
   const candidates: string[] = []
 
-  for (const hydraId of hydraIds()) {
+  for (const titanId of hydraIds()) {
     try {
-      const { state } = loadTitan({ hydraId })
+      const { state } = loadTitan({ titanId })
 
       for (const card of Object.values(state.cards).sort((
         a,

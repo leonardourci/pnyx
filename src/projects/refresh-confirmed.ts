@@ -32,17 +32,17 @@ export function refreshTarget({
 }
 
 async function recordRefresh({
-  hydraId,
+  titanId,
   cardId,
   url,
   proof,
 }: {
-  hydraId: string
+  titanId: string
   cardId: string
   url: string
   proof: NonNullable<Link['mergeProof']>
 }): Promise<void> {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const card = state.cards[cardId]
   const link = card?.links.find(link => link.url === url)
 
@@ -65,7 +65,7 @@ async function recordRefresh({
     url,
     merge: proof.commit,
     isPending: () => {
-      const latest = loadTitan({ hydraId }).state
+      const latest = loadTitan({ titanId }).state
       const current = latest.cards[cardId]
       const confirmed = current?.links.find(link => link.url === url)
 
@@ -84,7 +84,7 @@ async function recordRefresh({
       })
     },
     complete: async ({ result }) => await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const latest = writer.state.cards[cardId]
         const confirmed = latest?.links.find(link => link.url === url)
@@ -128,18 +128,18 @@ async function recordRefresh({
 }
 
 export async function refreshConfirmedProject({
-  hydraId,
+  titanId,
   cardId,
   url,
   proof,
 }: {
-  hydraId: string
+  titanId: string
   cardId: string
   url: string
   proof: NonNullable<Link['mergeProof']>
 }): Promise<void> {
   const key = JSON.stringify([
-    hydraId,
+    titanId,
     cardId,
     url,
     proof.commit,
@@ -153,7 +153,7 @@ export async function refreshConfirmedProject({
   }
 
   const operation = recordRefresh({
-    hydraId,
+    titanId,
     cardId,
     url,
     proof,

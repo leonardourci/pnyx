@@ -8,7 +8,7 @@ export function applyView({
   state: TitanState
   event: TitanEvent
 }): boolean {
-  if (event.type === 'board.view') {
+  if (event.type === 'titan.view') {
     state.view = structuredClone(event.data.after)
     Reflect.deleteProperty(
       state.view,

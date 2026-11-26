@@ -27,11 +27,11 @@ function overlaps({
 }
 
 export function protectedCopiesFolder({
-  hydraId,
+  titanId,
   root = copiesDir(),
   preserveSurvivors = true,
 }: {
-  hydraId: string
+  titanId: string
   root?: string
   preserveSurvivors?: boolean
 }) {
@@ -39,10 +39,10 @@ export function protectedCopiesFolder({
 
   const folder = canonicalPath({ path: root })
 
-  const survivors = reservedCopies({ hydraId }).map(path => canonicalPath({ path }))
+  const survivors = reservedCopies({ titanId }).map(path => canonicalPath({ path }))
 
   for (const id of hydraIds()) {
-    const current = loadTitan({ hydraId: id }).state
+    const current = loadTitan({ titanId: id }).state
     const projects = current.projects ?? []
     const sourcePaths = Object.values(current.cards).flatMap(card =>
       card.copy ? [card.copy.project] : [])
@@ -51,7 +51,7 @@ export function protectedCopiesFolder({
       ...sourcePaths,
     ]
 
-    if (id !== hydraId) {
+    if (id !== titanId) {
       for (const card of Object.values(current.cards)) {
         if (card.copy && card.copy.state !== 'removed') {
           survivors.push(canonicalPath({ path: card.copy.path }))
@@ -99,13 +99,13 @@ export function protectedCopiesFolder({
   }
 }
 
-export async function hydraPool({ hydraId }: { hydraId: string }) {
+export async function hydraPool({ titanId }: { titanId: string }) {
   const {
     root,
     folder,
     survivors,
-  } = protectedCopiesFolder({ hydraId })
-  const state = loadTitan({ hydraId }).state
+  } = protectedCopiesFolder({ titanId })
+  const state = loadTitan({ titanId }).state
   const attachedProjects = state.projects ?? []
   const copies = Object.values(state.cards).flatMap(card => card.copy ? [card.copy] : [])
   const projects = new Set([
@@ -203,7 +203,7 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
           branch,
         })
 
-        if (released && released.hydraId !== hydraId) {
+        if (released && released.titanId !== titanId) {
           continue
         }
 
@@ -223,16 +223,16 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
 }
 
 export async function removeTitanPool({
-  hydraId,
+  titanId,
   verify,
 }: {
-  hydraId: string
+  titanId: string
   verify({ path }: { path: string }): Promise<void>
 }): Promise<void> {
-  const pool = await hydraPool({ hydraId })
+  const pool = await hydraPool({ titanId })
 
   function validateFolder() {
-    const current = protectedCopiesFolder({ hydraId })
+    const current = protectedCopiesFolder({ titanId })
 
     if (current.folder !== pool.folder) {
       throw new TitanError({
@@ -247,7 +247,7 @@ export async function removeTitanPool({
   for (const slot of pool.slots) {
     await verify({ path: slot.path })
     protectedCopiesFolder({
-      hydraId,
+      titanId,
       root: slot.path,
       preserveSurvivors: false,
     })

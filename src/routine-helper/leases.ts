@@ -22,18 +22,18 @@ interface Lease {
 export const isHelper = ({ actor }: { actor: string }) => actor.startsWith('helper:')
 
 export function copySettlingRefusal({
-  hydraId,
+  titanId,
   task,
   code,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   code: string
 }): TitanError {
   return new TitanError({
     message: `Task ${task} is settling its copy; try again when cleanup finishes`,
     code,
-    help: [`Read tasks/${task}/task.log in Titan ${hydraId} for the copy's state`],
+    help: [`Read tasks/${task}/task.log in Titan ${titanId} for the copy's state`],
   })
 }
 
@@ -50,8 +50,8 @@ const leasePath = ({
 
 const leases = new Map<string, Lease>()
 
-export function dropCopyLeases({ hydraId }: { hydraId: string }): void {
-  const requested = hydraDir({ hydraId })
+export function dropCopyLeases({ titanId }: { titanId: string }): void {
+  const requested = hydraDir({ titanId })
   const dir = canonical({ path: requested }) ?? requested
 
   for (const [
@@ -65,16 +65,16 @@ export function dropCopyLeases({ hydraId }: { hydraId: string }): void {
 }
 
 export function taskLeasePresent({
-  hydraId,
+  titanId,
   task,
   actorPrefix,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   actorPrefix?: string
 }): boolean {
   const lease = leases.get(leasePath({
-    dir: hydraDir({ hydraId }),
+    dir: hydraDir({ titanId }),
     task,
   }))
 
@@ -137,13 +137,13 @@ export function guardTaskLease({
 }
 
 export function taskLease({
-  hydraId,
+  titanId,
   task,
   actor,
   message = false,
   pid = process.pid,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   actor: string
   message?: boolean
@@ -152,7 +152,7 @@ export function taskLease({
 }): () => void {
   const holder = randomUUID()
   let owner = actor
-  const dir = hydraDir({ hydraId })
+  const dir = hydraDir({ titanId })
   const path = leasePath({
     dir,
     task,
@@ -168,7 +168,7 @@ export function taskLease({
   if (lease && (lease.actor !== owner || copyHeld)) {
     if (actor.startsWith(COPY_LEASE_PREFIX) || lease.actor.startsWith(COPY_LEASE_PREFIX)) {
       throw copySettlingRefusal({
-        hydraId,
+        titanId,
         task,
         code: 'TASK_LEASED',
       })
@@ -189,14 +189,14 @@ export function taskLease({
   }
 
   if (isHelper({ actor }) && !helperGrant({
-    state: loadTitan({ hydraId }).state,
+    state: loadTitan({ titanId }).state,
     actor,
     task,
   })) {
     inform({
       task,
       reason: 'Helper has no current task grant',
-      clear: `Read tasks/${task}/task.log in Titan ${hydraId} to inspect the change`,
+      clear: `Read tasks/${task}/task.log in Titan ${titanId} to inspect the change`,
     })
   }
 
@@ -218,7 +218,7 @@ export function taskLease({
 
   return () => {
     releaseTask({
-      hydraId,
+      titanId,
       task,
       actor: owner,
       holder,
@@ -227,18 +227,18 @@ export function taskLease({
 }
 
 export function releaseTask({
-  hydraId,
+  titanId,
   task,
   actor,
   holder,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   actor: string
   holder?: string
   lockTimeout?: number
 }): void {
-  const dir = hydraDir({ hydraId })
+  const dir = hydraDir({ titanId })
   const path = leasePath({
     dir,
     task,

@@ -19,36 +19,36 @@ const WORKER = new URL(
 const searchQueues = new Map<string, Promise<ReturnType<typeof search>>>()
 
 export interface SearchInput {
-  hydraId: string
+  titanId: string
   query: Query
 }
 
 export type SearchWork = SearchInput & SearchSnapshot
 
-function searchSnapshot({ hydraId }: { hydraId: string }): Promise<SearchSnapshot> {
+function searchSnapshot({ titanId }: { titanId: string }): Promise<SearchSnapshot> {
   const home = nativeHome()
 
   return home.run({
     fn: () => {
-      const view = home.files.positions({ hydra: hydraId })
+      const view = home.files.positions({ hydra: titanId })
 
       if (!view || view.issue) {
         throw view?.issue ?? new TitanError({
           code: 'NOT_FOUND',
-          message: `unknown Titan: ${hydraId}`,
+          message: `unknown Titan: ${titanId}`,
         })
       }
 
-      const state = loadTitan({ hydraId }).state
+      const state = loadTitan({ titanId }).state
 
       const sources: SearchSnapshot['sources'] = [
         {
-          key: `hydra:${hydraId}`,
-          scope: hydraId,
+          key: `hydra:${titanId}`,
+          scope: titanId,
           path: join(
             hydraFiles({
               home: home.path,
-              hydra: hydraId,
+              hydra: titanId,
             }),
             'titan.log',
           ),
@@ -79,7 +79,7 @@ function searchSnapshot({ hydraId }: { hydraId: string }): Promise<SearchSnapsho
 
       return structuredClone({
         state,
-        positions: home.references({ hydra: hydraId }),
+        positions: home.references({ hydra: titanId }),
         sources,
       })
     },
@@ -104,11 +104,11 @@ function requireSearchActive({ signal }: { signal?: AbortSignal }): void {
 }
 
 export async function searchInBackground({
-  hydraId,
+  titanId,
   query,
   signal,
 }: SearchInput & { signal?: AbortSignal }): Promise<ReturnType<typeof search>> {
-  const previousSearch = searchQueues.get(hydraId)
+  const previousSearch = searchQueues.get(titanId)
 
   const next = async () => {
     if (previousSearch) {
@@ -119,7 +119,7 @@ export async function searchInBackground({
     await migrateOwnerMemory()
 
     return searchInWorker({
-      hydraId,
+      titanId,
       query,
       signal,
     })
@@ -127,26 +127,26 @@ export async function searchInBackground({
 
   const pending = next()
   searchQueues.set(
-    hydraId,
+    titanId,
     pending,
   )
 
   try {
     return await pending
   } finally {
-    if (searchQueues.get(hydraId) === pending) {
-      searchQueues.delete(hydraId)
+    if (searchQueues.get(titanId) === pending) {
+      searchQueues.delete(titanId)
     }
   }
 }
 
 async function searchInWorker({
-  hydraId,
+  titanId,
   query,
   signal,
 }: SearchInput & { signal?: AbortSignal }): Promise<ReturnType<typeof search>> {
   requireSearchActive({ signal })
-  const snapshot = await searchSnapshot({ hydraId })
+  const snapshot = await searchSnapshot({ titanId })
   requireSearchActive({ signal })
 
   return new Promise((
@@ -158,7 +158,7 @@ async function searchInWorker({
       {
         execArgv: SOURCE_CONDITIONS,
         workerData: {
-          hydraId,
+          titanId,
           query,
           ...snapshot,
         },
@@ -173,7 +173,7 @@ async function searchInWorker({
         log({
           level: 'error',
           operation: 'oracle.cancel',
-          hydraId,
+          titanId,
           error,
         })
       })

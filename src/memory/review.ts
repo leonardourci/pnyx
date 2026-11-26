@@ -7,20 +7,20 @@ import { loadTitan } from '#app/store.ts'
 import { readableProjectMemory } from './project-memory.ts'
 
 export async function memoryReview({
-  hydraId,
+  titanId,
   now,
 }: {
-  hydraId: string
+  titanId: string
   now: string
 }) {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const conditions = memoryConditions()
   const attached = (projectsFor({ state })).filter(project => !project.detached)
   const projectLayers = await Promise.all(attached.map(async project => ({
     name: `Project ${project.name}`,
     lines: (await readableProjectMemory({
       path: project.path,
-      hydraId,
+      titanId,
     }))?.learnings ?? [],
   })))
   const layers = [

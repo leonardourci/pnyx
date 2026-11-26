@@ -121,15 +121,15 @@ export function projectFolder({ path }: { path: string }): string {
 }
 
 export function sharingTitans({
-  hydraId,
+  titanId,
   path,
 }: {
-  hydraId: string
+  titanId: string
   path: string
 }) {
-  return hydraIds().filter(id => id !== hydraId)
+  return hydraIds().filter(id => id !== titanId)
     .flatMap(id => {
-      const state = loadTitan({ hydraId: id }).state
+      const state = loadTitan({ titanId: id }).state
 
       if (!projectsFor({ state }).some(p => !p.detached && sameProjectPath({
         left: p.path,

@@ -48,14 +48,14 @@ function startSourceChild({ entry }: { entry: URL }) {
 }
 
 export function createSourceRunner({
-  hydraId,
+  titanId,
   changed,
   spawnSource = startSourceChild,
   commit = commitCapture,
   tell = sendReply,
   state: shared,
 }: {
-  hydraId: string
+  titanId: string
   changed(): void
   spawnSource?: typeof startSourceChild
   commit?: typeof commitCapture
@@ -96,14 +96,14 @@ export function createSourceRunner({
       result,
     }
     const path = bufferCapture({
-      hydraId,
+      titanId,
       capture: captured,
     })
     capturePending = true
 
     try {
       await commit({
-        hydraId,
+        titanId,
         path,
         capture: captured,
       })
@@ -168,7 +168,7 @@ export function createSourceRunner({
           log({
             level: 'error',
             operation: 'source.capture',
-            hydraId,
+            titanId,
             taskId: job.card,
             correlationId: job.run,
             error,
@@ -193,7 +193,7 @@ export function createSourceRunner({
         log({
           level: 'error',
           operation: 'source.capture',
-          hydraId,
+          titanId,
           taskId: job.card,
           correlationId: job.run,
           error,
@@ -248,10 +248,10 @@ export function createSourceRunner({
     const pending = new Set<string>()
     let committed = false
 
-    for (const buffered of bufferedCaptures({ hydraId })) {
+    for (const buffered of bufferedCaptures({ titanId })) {
       try {
         await commit({
-          hydraId,
+          titanId,
           path: buffered.path,
           capture: buffered.capture,
         })
@@ -261,7 +261,7 @@ export function createSourceRunner({
         log({
           level: 'error',
           operation: 'source.capture',
-          hydraId,
+          titanId,
           correlationId: buffered.capture.run,
           error,
         })
@@ -392,7 +392,7 @@ export function createSourceRunner({
     }
 
     const launches = await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const launches: {
           card: Card
@@ -554,7 +554,7 @@ export function createSourceRunner({
     sequence: number
   }) =>
     await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const card = writer.state.cards[cardId]!
         const source = sourceById({
@@ -639,14 +639,14 @@ export function createSourceRunner({
 
     try {
       const receipt = await tell({
-        hydraId,
+        titanId,
         request: {
           card,
           expectedSession: claim.session,
           id: `source-notice:${message}:${claim.generation}`,
           text: steeringNotice({
             task: card,
-            hydraId,
+            titanId,
             ids: [message],
             claim,
           }),
@@ -661,7 +661,7 @@ export function createSourceRunner({
     }
 
     await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const current = writer.state.cards[card]
         const pending = current?.steering?.find(item => item.id === message)
@@ -704,7 +704,7 @@ export function createSourceRunner({
                   data: {
                     source: source.id,
                     sequence: captured.sequence,
-                    detail: `External result ${message} is unread. Worker notification: ${result} (${detail}). Read source ${source.id}, result ${captured.sequence}, in tasks/${card}/task.log in Titan ${hydraId} and restore worker delivery.`,
+                    detail: `External result ${message} is unread. Worker notification: ${result} (${detail}). Read source ${source.id}, result ${captured.sequence}, in tasks/${card}/task.log in Titan ${titanId} and restore worker delivery.`,
                   },
                 },
               })
@@ -750,7 +750,7 @@ export function createSourceRunner({
 
     const wrote = flushed.committed || prepared.locked
     // What this pass wrote is not in the shared state yet, so its results come from disk.
-    const state = wrote ? loadTitan({ hydraId }).state : shared()
+    const state = wrote ? loadTitan({ titanId }).state : shared()
 
     for (const card of Object.values(state.cards)) {
       for (const source of card.externalSources ?? []) {
@@ -781,7 +781,7 @@ export function createSourceRunner({
             log({
               level: 'error',
               operation: 'source.notification',
-              hydraId,
+              titanId,
               taskId: card.id,
               error,
             })
@@ -807,7 +807,7 @@ export function createSourceRunner({
           log({
             level: 'error',
             operation: 'source.reconcile',
-            hydraId,
+            titanId,
             error,
           })
         } finally {

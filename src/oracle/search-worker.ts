@@ -16,7 +16,7 @@ try {
     const memory = readProjectMemory({id})
 
     return Object.values(memory.documents).map(text => ({
-      card: '$board',
+      card: '$all',
       project: project.path,
       kind: 'note' as const,
       at: memory.events.at(-1)?.at ?? '',

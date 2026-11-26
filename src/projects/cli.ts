@@ -37,7 +37,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
     positionals,
-    hydraId,
+    titanId,
   } = parse({
     args,
     options: {
@@ -58,7 +58,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     ref,
   ] = positionals
   const m = meta({ values })
-  const current = loadTitan({ hydraId }).state
+  const current = loadTitan({ titanId }).state
 
   const settings = values['command-name'] !== undefined || values.command !== undefined || values['brings-own-folder'] !== undefined
   const landing = values.landing === undefined
@@ -85,7 +85,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
   if (action === 'keep') {
     return keepProject({
-      hydraId,
+      titanId,
       ref: required({
         value: ref,
         what: 'repository path',
@@ -112,7 +112,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
             '--project',
             project.path,
             '--titan',
-            hydraId,
+            titanId,
           ],
         })
       } catch (error) {
@@ -122,7 +122,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       }
     }
 
-    const shownState = loadTitan({ hydraId }).state
+    const shownState = loadTitan({ titanId }).state
     const shownProject = findProject({
       state: shownState,
       ref: project.path,
@@ -140,11 +140,11 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'list' && !ref && !values.clone && !values.into) {
-    const listedState = loadTitan({ hydraId }).state
+    const listedState = loadTitan({ titanId }).state
     const projects = projectRows({ state: listedState })
 
     const listed: Output = {
-      hydraId,
+      titanId,
       revision: listedState.projectsRevision ?? 0,
       projects: projects.length ? projects : 'none: no projects attached',
     }
@@ -197,10 +197,10 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     }
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
-        type: 'hydra.project',
+        type: 'titan.project',
         card: '$projects',
       },
       decide: ({ state }) => {
@@ -255,7 +255,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
             meta: m,
             cardId: '$projects',
             change: {
-              type: 'hydra.project',
+              type: 'titan.project',
               data: {
                 before,
                 after,
@@ -272,10 +272,10 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     m.id,
   )) {
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
-        type: 'hydra.project',
+        type: 'titan.project',
         card: '$projects',
       },
       decide: () => ({ skipped: 'duplicate' }),
@@ -347,7 +347,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
     if (repositories.length) {
       return attachProjectGroup({
-        hydraId,
+        titanId,
         paths: repositories,
         landing,
         merge,
@@ -361,10 +361,10 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
   const result = await withAsyncRegistryLock({
     fn: () => commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
-        type: 'hydra.project',
+        type: 'titan.project',
         card: '$projects',
       },
       decide: ({ state }) => {
@@ -383,7 +383,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         }
 
         const sharedWith = detached ? [] : sharingTitans({
-          hydraId,
+          titanId,
           path,
         })
         const newlyAttached = !detached && (!before || before.detached)
@@ -421,7 +421,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
           meta: m,
           cardId: '$projects',
           change: {
-            type: 'hydra.project',
+            type: 'titan.project',
             data: {
               before,
               after,

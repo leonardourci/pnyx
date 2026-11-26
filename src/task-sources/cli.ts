@@ -33,7 +33,7 @@ export async function sourceCommand({ args }: { args: string[] }): Promise<Outpu
   const {
     values,
     positionals,
-    hydraId,
+    titanId,
   } = parse({
     args,
     positionals: 4,
@@ -52,7 +52,7 @@ export async function sourceCommand({ args }: { args: string[] }): Promise<Outpu
   const worker = requestEnv().OTHRYS_STEERING_WORKER
 
   if (action === 'list' || action === 'read') {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const card = sourceTask({
       writer: { state },
       ref: task,
@@ -102,7 +102,7 @@ export async function sourceCommand({ args }: { args: string[] }): Promise<Outpu
   })
 
   return await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       if (action === 'lavish') {
         let claim

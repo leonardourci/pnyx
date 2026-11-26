@@ -11,7 +11,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
   const {
     values,
     positionals,
-    hydraId,
+    titanId,
   } = parse({
     args,
     options: {
@@ -28,7 +28,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
   })
   const action = positionals[0] ?? 'list'
   const project = findProject({
-    state: loadTitan({ hydraId }).state,
+    state: loadTitan({ titanId }).state,
     ref: required({
       value: values.project as string | undefined,
       what: '--project <name|path>',
@@ -46,7 +46,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
   if (action === 'list') {
     const view = await projectMemoryView({
       ...project,
-      hydraId,
+      titanId,
     })
 
     return {
@@ -84,7 +84,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
   if (action === 'save' || action === 'archive') {
     return writeProjectMemory({
       path: project.path,
-      hydraId,
+      titanId,
       key: 'learnings',
       after: null,
       learning,
@@ -95,7 +95,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
   if (action === 'confirm') {
     const view = await projectMemoryView({
       ...project,
-      hydraId,
+      titanId,
     })
     const change = meta({ values })
 
@@ -110,7 +110,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
 
     return writeProjectMemory({
       path: project.path,
-      hydraId,
+      titanId,
       key: 'learnings',
       after: view.documents.learnings ?? null,
       confirmed: required({
@@ -156,7 +156,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
 
   return writeProjectMemory({
     path: project.path,
-    hydraId,
+    titanId,
     key,
     after,
     sources: values.sources as string | undefined,

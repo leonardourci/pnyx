@@ -112,7 +112,7 @@ function append({
   return entry
 }
 
-type ConfiguredEvent = TitanEvent & { type: 'board.configured' }
+type ConfiguredEvent = TitanEvent & { type: 'titan.configured' }
 
 const newest = <T extends { at: string }>({ events }: { events: T[] }) => events
   .toSorted((
@@ -165,18 +165,18 @@ function migrate(): void {
     return
   }
 
-  const logs = hydraIds().map(hydraId => eventsOrLegacy({
-    hydraId,
+  const logs = hydraIds().map(titanId => eventsOrLegacy({
+    titanId,
     types: [
-      'board.view',
-      'board.configured',
+      'titan.view',
+      'titan.configured',
     ],
   }))
-  const views = logs.flat().filter((event): event is ViewEvent => event.type === 'board.view')
+  const views = logs.flat().filter((event): event is ViewEvent => event.type === 'titan.view')
   const view = newest({ events: views })
   const changed = <K extends Legacy>({ key }: { key: K }) => newest({
     events: logs.flatMap(events => lastChange({
-      events: events.filter((event): event is ConfiguredEvent => event.type === 'board.configured'),
+      events: events.filter((event): event is ConfiguredEvent => event.type === 'titan.configured'),
       key,
     }) ?? []),
   })?.value
@@ -277,13 +277,13 @@ export async function saveSettings({
   patch,
   meta,
   beforeSave,
-  hydraId,
+  titanId,
 }: {
   patch: unknown
   meta: Meta
   // Runs inside the settings lock once the patch is valid or a repeat, before it is written, so a combined command changes its Titan only when the shared write goes ahead.
   beforeSave?(): void | Promise<void>
-  hydraId?: string
+  titanId?: string
 }): Promise<SettingsSave> {
   return withAsyncRegistryLock({
     fn: async () => {
@@ -295,9 +295,9 @@ export async function saveSettings({
 
         const entry = readEntries().find(entry => entry.id === meta.id)
 
-        if (hydraId && entry && Object.keys(entry.after).length) {
+        if (titanId && entry && Object.keys(entry.after).length) {
           await settingsNotice({
-            hydraId,
+            titanId,
             meta,
             changeId: `shared:${entry.id}`,
             text: `Changed settings: ${Object.keys(entry.after).join(', ')}`,
@@ -357,9 +357,9 @@ export async function saveSettings({
         meta,
       })
 
-      if (hydraId) {
+      if (titanId) {
         await settingsNotice({
-          hydraId,
+          titanId,
           meta,
           changeId: `shared:${entry.id}`,
           text: `Changed settings: ${Object.keys(entry.after).join(', ')}`,

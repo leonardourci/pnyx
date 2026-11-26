@@ -187,14 +187,14 @@ function snippet({
 }
 
 export function search({
-  hydraId,
+  titanId,
   query,
   memoryDocuments,
   state,
   sources,
   positions,
 }: {
-  hydraId: string
+  titanId: string
   query: Query
   memoryDocuments: Document[]
 } & SearchSnapshot): {
@@ -215,7 +215,7 @@ export function search({
   const ownerDocuments = Object.values(ownerMemory({
     migrate: false,
   })).map(entry => ({
-    card: '$board',
+    card: '$all',
     kind: 'note' as const,
     at: entry.at,
     text: redact({ text: entry.text }),
@@ -233,13 +233,13 @@ export function search({
       key,
       entry,
     ]) => ({
-      card: '$board',
+      card: '$all',
       kind: 'event' as const,
       at: entry.at,
       text: redact({ text: `${key}: ${entry.text}` }),
     }))
   const index = openIndex({
-    hydraId,
+    titanId,
     sources,
     positions,
   })
@@ -285,9 +285,9 @@ export function search({
       latest: number
     }[] = []
     const candidates = [
-      ...Object.values(state.cards).filter(card => card.id !== '$hydra'),
+      ...Object.values(state.cards).filter(card => card.id !== '$titan'),
       {
-        id: '$board',
+        id: '$all',
         title: 'Titan',
         workspace: '',
         project: undefined,
@@ -305,12 +305,12 @@ export function search({
         continue
       }
 
-      if (query.live && card.id !== '$board' && !liveTask({ card: state.cards[card.id]! })) {
+      if (query.live && card.id !== '$all' && !liveTask({ card: state.cards[card.id]! })) {
         continue
       }
 
       if (query.columns?.length) {
-        const group = card.id === '$board' ? undefined : taskProjectGroup({
+        const group = card.id === '$all' ? undefined : taskProjectGroup({
           state,
           card,
         })
@@ -320,13 +320,13 @@ export function search({
         }
       }
 
-      if (query.projects?.length && card.id !== '$board' && !query.projects.includes(card.project ?? '')) {
+      if (query.projects?.length && card.id !== '$all' && !query.projects.includes(card.project ?? '')) {
         continue
       }
 
       let entries = grouped.get(card.id) ?? []
 
-      if (card.id === '$board' && query.projects?.length) {
+      if (card.id === '$all' && query.projects?.length) {
         const projects = new Set(query.projects)
         entries = entries.filter(entry => {
           if (entry.project === undefined) {
@@ -371,7 +371,7 @@ export function search({
           fuzzy,
         })),
       }))
-      const projectMemory = card.id === '$board' && Boolean(query.projects?.length)
+      const projectMemory = card.id === '$all' && Boolean(query.projects?.length)
       const scoped = Boolean(query.kind || query.card || projectMemory)
       const everyTermFound = terms.every((
         _,
@@ -422,7 +422,7 @@ export function search({
         })),
       }
 
-      if (card.id === '$board') {
+      if (card.id === '$all') {
         hit.kind = 'hydra'
       }
 

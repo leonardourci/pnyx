@@ -64,7 +64,7 @@ const oracleCommand = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: SEARCH,
@@ -99,9 +99,9 @@ const oracleCommand = guard({
       })
     }
 
-    requireTitan({ hydraId })
+    requireTitan({ titanId })
 
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const card = values.card === undefined
       ? undefined
       : findCard({
@@ -117,7 +117,7 @@ const oracleCommand = guard({
 
     return present({
       input: await searchInBackground({
-        hydraId,
+        titanId,
         query: {
           ...readSearchFilters({
             value: JSON.stringify({

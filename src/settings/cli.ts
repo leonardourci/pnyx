@@ -18,7 +18,7 @@ export const settings = guard({
     ] = args
     const {
       values,
-      hydraId,
+      titanId,
     } = parse({
       args: rest,
       options: {
@@ -76,7 +76,7 @@ export const settings = guard({
 
     const receipt = settingsReceipt({
       saved: await saveSettings({
-        hydraId,
+        titanId,
         patch,
         meta: change,
       }),
@@ -103,10 +103,10 @@ export const SETTING_FLAGS = [
 
 export function sharedSettingFlags({
   values,
-  hydraId,
+  titanId,
 }: {
   values: Record<string, string | boolean | undefined>
-  hydraId: string
+  titanId: string
 }): Partial<Settings> | undefined {
   const patch: Partial<Settings> = {}
   const done = values['done-after-hours']
@@ -132,7 +132,7 @@ export function sharedSettingFlags({
   if (HELPER_FLAGS.some(flag => values[flag] !== undefined)) {
     const current = readSettings().settings.helper
     const agent = typeof current === 'object' ? current : undefined
-    const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadTitan({ hydraId }).state }).hydra.agent?.harness ?? 'claude'
+    const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadTitan({ titanId }).state }).hydra.agent?.harness ?? 'claude'
     const helperHarness = knownHarness({ name: harness })
 
     if (harness === 'off' || harness === 'auto') {

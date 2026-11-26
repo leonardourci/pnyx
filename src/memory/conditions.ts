@@ -7,14 +7,14 @@ import { loadTitan } from '#app/store.ts'
 export function memoryConditions() {
   const states: Record<string, TitanState> = {}
 
-  for (const hydraId of hydraIds()) {
+  for (const titanId of hydraIds()) {
     try {
-      states[hydraId] = loadTitan({ hydraId }).state
+      states[titanId] = loadTitan({ titanId }).state
     } catch (error) {
       log({
         level: 'warn',
         operation: 'memory.conditions',
-        hydraId,
+        titanId,
         error,
       })
     }

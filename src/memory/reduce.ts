@@ -7,7 +7,7 @@ export function applyMemory({
   state: TitanState
   event: TitanEvent
 }): boolean {
-  if (event.type === 'hydra.memory') {
+  if (event.type === 'titan.memory') {
     state.hydraMemory ??= {}
 
     if (event.data.after === null) {

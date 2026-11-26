@@ -47,10 +47,10 @@ export interface HelperUsageTotal extends HelperUsage {
 }
 
 export type HelperChange = {
-  type: 'hydra.helper-started'
+  type: 'titan.helper-started'
   data: HelperBatch
 } | {
-  type: 'hydra.helper-finished'
+  type: 'titan.helper-finished'
   data: {
     batch: string
     outcomes: HelperOutcome[]
@@ -58,7 +58,7 @@ export type HelperChange = {
     error?: string
   }
 } | {
-  type: 'hydra.helper-acknowledged'
+  type: 'titan.helper-acknowledged'
   data: {
     batches: string[]
     through: number
@@ -81,8 +81,8 @@ export function applyHelper({
   state: TitanState
   event: TitanEvent
 }): boolean {
-  if (event.type !== 'hydra.helper-started' && event.type !== 'hydra.helper-finished'
-    && event.type !== 'hydra.helper-acknowledged') {
+  if (event.type !== 'titan.helper-started' && event.type !== 'titan.helper-finished'
+    && event.type !== 'titan.helper-acknowledged') {
     return false
   }
 
@@ -95,12 +95,12 @@ export function applyHelper({
   }
   const helper = state.helper
 
-  if (event.type === 'hydra.helper-started') {
+  if (event.type === 'titan.helper-started') {
     helper.runs[event.data.id] = {
       ...structuredClone(event.data),
       startedAt: event.at,
     }
-  } else if (event.type === 'hydra.helper-finished') {
+  } else if (event.type === 'titan.helper-finished') {
     const batch = helper.runs[event.data.batch]
     const original = state.eventIds[`helper-finished:${event.data.batch}`]
     const alreadyFinished = original !== undefined && original < event.seq

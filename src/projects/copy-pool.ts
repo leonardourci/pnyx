@@ -16,7 +16,7 @@ import { TitanError } from '#store/errors.ts'
 import { isFolder } from '#workers/folders.ts'
 
 const claims = new Map<string, {
-  hydraId: string
+  titanId: string
   task?: string
 }>()
 const POOL_IDLE = 2
@@ -25,26 +25,26 @@ export const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'rem
 
 // An unnamed Titan names its task branches after its id.
 export const branchTitanName = ({
-  hydraId,
+  titanId,
   state,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
-}) => state.config?.name || hydraId
+}) => state.config?.name || titanId
 
 export function recordedBranches({
-  hydraId,
+  titanId,
   state,
   project,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   project: string
 }): string[] {
   const branches = new Set<string>()
 
   for (const id of hydraIds()) {
-    const current = id === hydraId ? state : loadTitan({ hydraId: id }).state
+    const current = id === titanId ? state : loadTitan({ titanId: id }).state
 
     for (const { copy } of Object.values(current.cards)) {
       if (copy?.branch && sameProjectPath({
@@ -134,15 +134,15 @@ const holds = ({
     card.id !== except && canonical({ path: liveCopy({ card })?.path }) === path)
 
 const idle = ({
-  hydraId,
+  titanId,
   path,
   except,
 }: {
-  hydraId: string
+  titanId: string
   path: string
   except?: string
 }) => hydraIds().every(id => {
-  const state = loadTitan({ hydraId: id }).state
+  const state = loadTitan({ titanId: id }).state
 
   return !runsIn({
     state,
@@ -150,7 +150,7 @@ const idle = ({
   }) && !holds({
     state,
     path,
-    except: id === hydraId ? except : undefined,
+    except: id === titanId ? except : undefined,
   })
 })
 
@@ -161,16 +161,16 @@ export function releasedCopyOwner({
   path: string
   branch: string
 }): {
-  hydraId: string
+  titanId: string
   card: Card
 } | undefined {
-  for (const hydraId of hydraIds()) {
-    const owner = Object.values(loadTitan({ hydraId }).state.cards).find(card =>
+  for (const titanId of hydraIds()) {
+    const owner = Object.values(loadTitan({ titanId }).state.cards).find(card =>
       card.copy?.state === 'removed' && card.copy.branch === branch && canonical({ path: card.copy.path }) === path)
 
     if (owner) {
       return {
-        hydraId,
+        titanId,
         card: owner,
       }
     }
@@ -233,18 +233,18 @@ export const checkout = ({
     })
 
 async function claim({
-  hydraId,
+  titanId,
   task,
   path,
   vacant = false,
 }: {
-  hydraId: string
+  titanId: string
   task?: string
   path: string
   vacant?: boolean
 }): Promise<boolean> {
   return await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       requireUnlinkedCopyFolder({ path: copiesDir() })
 
@@ -260,7 +260,7 @@ async function claim({
       }
 
       if (!idle({
-        hydraId,
+        titanId,
         path,
         except: task,
       })) {
@@ -272,7 +272,7 @@ async function claim({
           claims.set(
             path,
             {
-              hydraId,
+              titanId,
               task,
             },
           )
@@ -288,42 +288,42 @@ export function unclaim({ path }: { path: string }): void {
   claims.delete(path)
 }
 
-export const reservedCopies = ({ hydraId }: { hydraId: string }): string[] =>
+export const reservedCopies = ({ titanId }: { titanId: string }): string[] =>
   [...claims].filter(([
     , owner,
-  ]) => owner.hydraId !== hydraId).map(([path]) => path)
+  ]) => owner.titanId !== titanId).map(([path]) => path)
 
 export const reservingTaskCopy = ({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task: string
 }): boolean =>
-  [...claims.values()].some(owner => owner.hydraId === hydraId && owner.task === task)
+  [...claims.values()].some(owner => owner.titanId === titanId && owner.task === task)
 
 export function take({
-  hydraId,
+  titanId,
   card,
   path,
 }: {
-  hydraId: string
+  titanId: string
   card?: Card
   path: string
 }): Promise<boolean> {
   return claim({
-    hydraId,
+    titanId,
     task: card?.id,
     path,
   })
 }
 
 export async function freshSlot({
-  hydraId,
+  titanId,
   task,
   project,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   project: TitanProject
 }): Promise<string> {
@@ -336,7 +336,7 @@ export async function freshSlot({
     )
 
     if (await claim({
-      hydraId,
+      titanId,
       task,
       path,
       vacant: true,
@@ -347,11 +347,11 @@ export async function freshSlot({
 }
 
 export async function staysInPool({
-  hydraId,
+  titanId,
   state,
   copy,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   copy: TaskCopy
 }): Promise<boolean> {
@@ -376,7 +376,7 @@ export async function staysInPool({
 
   for (const slot of pooled) {
     if (slot !== path && idle({
-      hydraId,
+      titanId,
       path: slot,
     }) && await reusable({
       path: slot,
@@ -392,8 +392,8 @@ export async function staysInPool({
   }) || spare.length < POOL_IDLE
 }
 
-export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> {
-  const state = loadTitan({ hydraId }).state
+export async function trimPool({ titanId }: { titanId: string }): Promise<void> {
+  const state = loadTitan({ titanId }).state
 
   for (const project of projectsFor({ state }).filter(p => !p.detached)) {
     const pooled = slots({
@@ -409,7 +409,7 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
 
     for (const path of pooled) {
       if (!await take({
-        hydraId,
+        titanId,
         path,
       })) {
         continue

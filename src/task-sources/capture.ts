@@ -19,20 +19,20 @@ export interface BufferedCapture {
   result: ChildResult
 }
 
-const captureDirectory = ({ hydraId }: { hydraId: string }) =>
+const captureDirectory = ({ titanId }: { titanId: string }) =>
   join(
-    hydraDir({ hydraId }),
+    hydraDir({ titanId }),
     'source-captures',
   )
 
 export function bufferCapture({
-  hydraId,
+  titanId,
   capture,
 }: {
-  hydraId: string
+  titanId: string
   capture: BufferedCapture
 }): string {
-  const directory = captureDirectory({ hydraId })
+  const directory = captureDirectory({ titanId })
   privateDir({ dir: directory })
   const name = createHash('sha256').update(capture.registration)
     .update(capture.run)
@@ -71,11 +71,11 @@ export function bufferCapture({
   return path
 }
 
-export function bufferedCaptures({ hydraId }: { hydraId: string }): {
+export function bufferedCaptures({ titanId }: { titanId: string }): {
   path: string
   capture: BufferedCapture
 }[] {
-  const directory = captureDirectory({ hydraId })
+  const directory = captureDirectory({ titanId })
 
   if (!existsSync(directory)) {
     return []
@@ -99,16 +99,16 @@ export function bufferedCaptures({ hydraId }: { hydraId: string }): {
 }
 
 export async function commitCapture({
-  hydraId,
+  titanId,
   path,
   capture,
 }: {
-  hydraId: string
+  titanId: string
   path: string
   capture: BufferedCapture
 }): Promise<void> {
   await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       const card = writer.state.cards[capture.card]
       const source = card?.externalSources?.find(source => source.id === capture.source
