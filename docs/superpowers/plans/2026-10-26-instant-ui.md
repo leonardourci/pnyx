@@ -8,11 +8,11 @@
 
 **Tech Stack:** TypeScript, React, existing WebSocket protocol, Node test runner.
 
-**Spec:** Stored Pnyx report `report-84a5e5c4-ui-waits-v1` on task `task-84a5e5c4-7827-4586-b1ff-5b3987c51cc9`.
+**Spec:** Stored Othrys report `report-84a5e5c4-ui-waits-v1` on task `task-84a5e5c4-7827-4586-b1ff-5b3987c51cc9`.
 
 ## Global constraints
 
-- One PR per phase; owner merges. Phase 2 is stacked on phase 1 by explicit Hydra steering; later branches use fetched main after their foundations land.
+- One PR per phase; owner merges. Phase 2 is stacked on phase 1 by explicit Titan steering; later branches use fetched main after their foundations land.
 - Isolated homes and random ports; no live daemon on 4747.
 - Preserve confirmations for deletion, project sharing and permissions.
 - Keep daemon revisions and sequence authoritative; no pretend events.
@@ -25,13 +25,13 @@
 - Refusal after newer server changes must preserve unrelated work.
 - Disconnect must retain an unknown outcome without replaying unsafe effects.
 - Dependencies must not survive a refused prerequisite.
-- Resource scope must isolate installations and Hydras across component remounts.
+- Resource scope must isolate installations and Titans across component remounts.
 
 ### Phase 1: Shared pending intents
 
-Files: new `web/src/hydra/pending-intents.ts`, `pending-state.ts`, shared UI status primitive; modify `connection.ts`, `app.tsx`; add `test/pending-intents.test.ts`.
+Files: new `web/src/titan/pending-intents.ts`, `pending-state.ts`, shared UI status primitive; modify `connection.ts`, `app.tsx`; add `test/pending-intents.test.ts`.
 
-Interfaces: generic scoped resource with confirmed base, intent snapshots, enqueue, sending, accept, refuse, unknown and confirm transitions; Hydra edit adapter consumes existing `optimisticState` and stable event IDs.
+Interfaces: generic scoped resource with confirmed base, intent snapshots, enqueue, sending, accept, refuse, unknown and confirm transitions; Titan edit adapter consumes existing `optimisticState` and stable event IDs.
 
 - [ ] Write tests for projection before acknowledgement, scope/remount reuse, receipt/event order, refusal with newer server changes, independent rapid writes, invalid dependents, structured errors and unknown reconciliation.
 - [ ] Run focused tests and observe expected missing-implementation failure.
@@ -39,9 +39,9 @@ Interfaces: generic scoped resource with confirmed base, intent snapshots, enque
 - [ ] Run focused tests, lint and build; exercise held acknowledgements in an isolated browser fixture.
 - [ ] Review branch, fix findings, commit by concern, rebase on fetched main and push. Run allowed verification, open draft PR and link task.
 
-### Phase 2: Instant Hydra navigation and creation
+### Phase 2: Instant Titan navigation and creation
 
-Files: connection/navigation, Hydra picker, server scoped transport/mount, creation CLI/core identity metadata, related server/browser tests.
+Files: connection/navigation, Titan picker, server scoped transport/mount, creation CLI/core identity metadata, related server/browser tests.
 
 - [ ] Build single-WebSocket explicit scope routing and target selection independent of old requests.
 - [ ] Render cached/uncached/provisional targets immediately; promote canonical IDs without reload and retain drafts.

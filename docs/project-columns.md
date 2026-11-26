@@ -4,7 +4,7 @@ This is the living spec for task `task-ecfe3cac-541d-4dd5-a876-5cc8229f2365`. It
 
 ## Settled behavior
 
-- A slim header replaces the sidebar. Titan chips show waiting counts and navigate to each Titan's own chat and composer. The Oracle finds waiting work across Titans. Settings opens at `/hydra/<id>/settings/` as a full page. Closing it preserves the workspace's open cards, unsent drafts and horizontal position; Back and reload work.
+- A slim header replaces the sidebar. Titan chips show waiting counts and navigate to each Titan's own chat and composer. The Oracle finds waiting work across Titans. Settings opens at `/titan/<id>/settings/` as a full page. Closing it preserves the workspace's open cards, unsent drafts and horizontal position; Back and reload work.
 - Titans sit side by side on a horizontal axis that snaps to each Titan. Each has its own chat, project chips and project columns. Titans, chats and projects fold. A folded Titan also lists its projects. A control folds all projects together. Every toggle shows the action it will perform: fold-all points inward toward a vertical divider until every project is folded, then points outward to unfold. A partial fold folds the remaining projects. Individual horizontal and vertical chevrons point toward their next action.
 - Ideas is the first column and contains tasks without a project. Attaching a project moves a task into that project's column. Each project has one Titan; each repository has one project. A project can group several repositories.
 - Project columns resize from a minimum of 280px with no maximum. Their grids fit as many compact cards per row as their width allows.
@@ -187,7 +187,7 @@ Pointer title activation uses the same opening route as the card surface; keyboa
 
 ## Current owner round
 
-Settled and built: opening the modal never changes the board behind it. A closed card stays closed in its slot, so its column neither widens nor reflows, and closing folds the modal back into that closed card. A card that was already open inline returns open. Before this, the modal action also opened the card inline, so a card low in a scrolled column moved to a new row, often below the screen, and the modal folded toward it. Implemented and checked: pointer opening retains the visible scroll anchor and clips expanding contents. The modal defaults to 70% × 80%, keeps saved dimensions and fixes action anchoring during real resizing.
+Settled and built: opening the modal never changes the Titan behind it. A closed card stays closed in its slot, so its column neither widens nor reflows, and closing folds the modal back into that closed card. A card that was already open inline returns open. Before this, the modal action also opened the card inline, so a card low in a scrolled column moved to a new row, often below the screen, and the modal folded toward it. Implemented and checked: pointer opening retains the visible scroll anchor and clips expanding contents. The modal defaults to 70% × 80%, keeps saved dimensions and fixes action anchoring during real resizing.
 
 The independent drag render-fan-out patch is committed separately. The investigator measured a median peak of 60ms at 3× CPU slowdown, down from 153ms; this does not establish 50ms compliance.
 

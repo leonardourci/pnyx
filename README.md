@@ -124,11 +124,11 @@ The **Oracle** searches tasks, their events and notes by keyword, matching word 
 
 ## CLI reference
 
-Use `othrys --help` for syntax and the [plain CLI reference](docs/othrys.md) for details. Workers append reports to their assigned `worker.log`. Titan and workers read `hydra.log`, `task.log`, `worker.log` and the optional snapshot directly.
+Use `othrys --help` for syntax and the [plain CLI reference](docs/othrys.md) for details. Workers append reports to their assigned `worker.log`. Titan and workers read `titan.log`, `task.log`, `worker.log` and the optional snapshot directly.
 
 | Command | Description |
 | --- | --- |
-| `othrys board` | Show the current Titan. |
+| `othrys titan` | Show the current Titan. |
 | `othrys task create` | Create a task and start its worker. |
 | `othrys task ack` | Acknowledge one instruction read by its assigned worker. |
 | `othrys send --text <message>` | Send to Titan, or add `--task <id>` for a worker. |

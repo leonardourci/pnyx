@@ -2,7 +2,7 @@
 
 Othrys is a deterministic view of every agent and its work in Titans, with a small plain CLI named `othrys`.
 
-Vocabulary: Othrys is the app, a **Titan** holds its tasks (always say Titan, never board), search is the **Oracle**, and **inscribe** summarizes durable context before a reset and identifies memory changes to save. Everything else uses its plain name.
+Vocabulary: Othrys is the app, a **Titan** holds its tasks (always say Titan), search is the **Oracle**, and **inscribe** summarizes durable context before a reset and identifies memory changes to save. Everything else uses its plain name.
 
 ## Build and test
 
@@ -63,13 +63,13 @@ CodeRabbit is the on-request challenger before merge, replacing a separate agent
 ## Design rules
 
 - Othrys is a view plus a reply queue over existing tools. Othrys runs the agents it is asked to start; Titan still decides what to do. `task start` runs Claude Code through the Agent SDK or Codex through its app-server inside the Othrys server, which stops them when it stops and resumes a turn it cut from the saved session when it starts again; a start can instead go through the Titan's own command, and Othrys never watches over those.
-- The server (`othrys serve`) is the only writer of Titan state, and `othrys` is its client: every command except `serve`, `setup` and help runs in the server. Othrys keeps state in memory and saves decisions to `hydra.log` and per-task `task.log` files through one ordered queue. Acknowledgements follow durable file writes. Snapshots cache folded state and byte positions; task folders determine Titan membership. Derived observations stay in memory and are rebuilt from native agent files after restart.
+- The server (`othrys serve`) is the only writer of Titan state, and `othrys` is its client: every command except `serve`, `setup` and help runs in the server. Othrys keeps state in memory and saves decisions to `titan.log` and per-task `task.log` files through one ordered queue. Acknowledgements follow durable file writes. Snapshots cache folded state and byte positions; task folders determine Titan membership. Derived observations stay in memory and are rebuilt from native agent files after restart.
 - The reducer is pure and deterministic: no I/O, clock or randomness inside it. Applying the same changes to the same starting state gives the same Titan. Restart loads a snapshot and each log tail, then rereads native agent observations.
 - No AI model calls or model tokens anywhere in the Titan's logic. Oracle searches tasks, events and notes with a derived SQLite index, never agent transcripts. Queries catch up only unread events; no index work runs in the background. The server's only token is a local per-install auth token for writes. The browser reads Titan state, shared settings, agent activity, conversation pages and command receipts through one authenticated WebSocket. Reconnect resumes retained home changes by epoch and sequence, with a fresh snapshot when the cursor is unavailable.
 - Hooks are fast and always exit 0, and they never wait on a network call, browser or model. They print nothing, except the session-start hook, which prints a short summary of the Titan's open work for the session's project.
 - GitHub pull request state comes from `gh-axi`.
-- The CLI handles immediate actions with plain text output and optional `--json`. Titan and workers read `hydra.log`, `tasks/<task>/task.log`, `worker.log` and the optional snapshot directly; workers append their assigned `worker.log`.
+- The CLI handles immediate actions with plain text output and optional `--json`. Titan and workers read `titan.log`, `tasks/<task>/task.log`, `worker.log` and the optional snapshot directly; workers append their assigned `worker.log`.
 
 ## Runtime data
 
-An Othrys home is `~/.othrys`, or `$OTHRYS_HOME` when set. Each `hydras/<hydra>/` holds `hydra.log`, `snapshot.json`, `tasks/<task>/task.log`, the task's `worker.log` and derived `brief.md`, `oracle.db` (a derived search index), transcript cursors, spool files and `agent/`. Copies live under the home’s `copies/`; stable worker runtime files live under `runtime/tasks/<task>/`. Moving a task renames its folder while preserving its captured report path. New installations start in an empty home; an existing default Pnyx home is exposed through a non-destructive alias as described in [Compatibility](docs/compatibility.md). Nothing at runtime writes inside the repository.
+An Othrys home is `~/.othrys`, or `$OTHRYS_HOME` when set. Each `titans/<titan>/` holds `titan.log`, `snapshot.json`, `tasks/<task>/task.log`, the task's `worker.log` and derived `brief.md`, `oracle.db` (a derived search index), transcript cursors, spool files and `agent/`. Copies live under the home’s `copies/`; stable worker runtime files live under `runtime/tasks/<task>/`. Moving a task renames its folder while preserving its captured report path. New installations start in an empty home. Nothing at runtime writes inside the repository.

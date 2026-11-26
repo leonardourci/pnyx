@@ -1,13 +1,13 @@
 # Native file store
 
-The daemon keeps canonical state in memory and appends native facts to one Titan log and one log per task. A Postgres-era home is not read; a native `~/.pnyx` home is reused as [Compatibility](compatibility.md) describes.
+The daemon keeps canonical state in memory and appends native facts to one Titan log and one log per task. A Postgres-era home is not read; a native `~/.othrys` home is reused as is.
 
 ## Files and identity
 
 ```text
 $OTHRYS_HOME/
-└── hydras/<hydra>/
-    ├── hydra.log
+└── titans/<titan>/
+    ├── titan.log
     ├── snapshot.json
     └── tasks/<task>/
         └── task.log
@@ -29,19 +29,19 @@ Within a process, opening the same canonical home twice refuses with `STORE_OPEN
 
 | Operation | Result |
 |---|---|
-| `createTitan({hydra, facts})` | Publishes a Titan folder with its first facts. |
-| `createTask({hydra, task, facts})` | Publishes a task folder under an existing Titan. |
-| `changeTitan({hydra, decide})` | Decides and appends Titan facts in queue order. |
-| `changeTask({hydra, task, decide})` | Decides and appends task facts in queue order. |
+| `createTitan({titan, facts})` | Publishes a Titan folder with its first facts. |
+| `createTask({titan, task, facts})` | Publishes a task folder under an existing Titan. |
+| `changeTitan({titan, decide})` | Decides and appends Titan facts in queue order. |
+| `changeTask({titan, task, decide})` | Decides and appends task facts in queue order. |
 | `change({decide})` | Reads the durable queue prefix and validates every changed scope before appending a command’s facts. |
 | `moveTask({from, to, task, id, at, by})` | Records the move and renames the task folder. |
-| `hydras()` | Lists the native Titans loaded in memory. |
-| `read({hydra})` | Returns a copy of its state, task states, worker cursors and scope errors. |
+| `titans()` | Lists the native Titans loaded in memory. |
+| `read({titan})` | Returns a copy of its state, task states, worker cursors and scope errors. |
 | `locateTask({task})` | Resolves the task's current Titan and folder. |
 | `snapshot()` | Writes atomic snapshots after earlier queued writes finish. |
 | `close()` | Stops accepting commands, drains earlier writes and snapshots the state. |
 
-A decision receives its scope's state and a `read({hydra})` function for the staged home. It sees the preceding accepted decisions, including ones waiting in the same disk batch. A refused decision discards its draft without discarding adjacent valid commands.
+A decision receives its scope's state and a `read({titan})` function for the staged home. It sees the preceding accepted decisions, including ones waiting in the same disk batch. A refused decision discards its draft without discarding adjacent valid commands.
 
 Local setup reads replay native files without opening the writer, repairing tails or completing pending moves.
 
@@ -69,6 +69,6 @@ Snapshots contain state, accepted native IDs and the byte and line position cove
 
 Worker facts carry `off`, the byte immediately after the consumed worker line. A new worker fact advances that cursor within the same file identity. That identity is the file's inode without the device number, which macOS changes at each mount, so a reboot keeps the cursor; an identity saved earlier as `<device>:<inode>` still matches. Replacement files have independent offsets, and a same-offset truncation warning is retained; a retry uses the same native ID. The cursor is rebuilt from native facts if the snapshot is absent.
 
-The daemon truncates an unterminated final line or invalid JSON at the end of a log. Corruption before the tail in bytes that replay reads reports the file and byte position as `LOG_CORRUPT`. Bytes covered by a valid snapshot are not reread on open, so corruption in them is not reported then. A permission-denied canonical log reports `LOG_UNREADABLE`. The affected task remains visible with an error and refuses changes; other healthy tasks continue. A corrupt Titan log refuses changes to that Titan. Legacy folders without `hydra.log` are left untouched.
+The daemon truncates an unterminated final line or invalid JSON at the end of a log. Corruption before the tail in bytes that replay reads reports the file and byte position as `LOG_CORRUPT`. Bytes covered by a valid snapshot are not reread on open, so corruption in them is not reported then. A permission-denied canonical log reports `LOG_UNREADABLE`. The affected task remains visible with an error and refuses changes; other healthy tasks continue. A corrupt Titan log refuses changes to that Titan. Legacy folders without `titan.log` are left untouched.
 
 Task cards keep owner text and briefs, worker.log lines, links, explicit questions, holds, dependencies and outcomes. Running and idle are native session facts. Hidden lifecycle columns, placement rules and task declarations are absent. Native task transcript summaries are not copied into task notes; Titan memory and compaction milestones retain their durable recovery records.

@@ -7,7 +7,7 @@ othrys serve --titan work
 othrys setup --preview
 othrys setup check
 othrys debug health --titan work --json
-othrys board --titan work
+othrys titan --titan work
 othrys task ack <task> <instruction-id> --session <session> --generation '<native-reference>' --titan work
 othrys task create --title "Fix the empty state" --brief "Implement and check the empty state" --project app --titan work
 othrys send --text "Review the open work" --titan work
@@ -25,11 +25,11 @@ othrys answer <task> <question> --text "Use the existing design" --titan work
 
 ## Migrate from a Postgres installation
 
-Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `setup --remove` with the old executable (`pnyx` or `pnyx-axi`) before rebuilding. Select the old installation's home for removal and add `--allow-custom-home` if it uses a custom home. Update and build the clone using the install steps in the README. Keep the old home and set `OTHRYS_HOME` to an empty folder before starting the new server. Existing data stays in the old installation. If you installed hooks, run `othrys setup hooks --allow-custom-home` with the new home selected. Use `othrys setup --allow-custom-home --port <previous-port>` to reinstall the login service at the same address.
+Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `setup --remove` with the old executable (`othrys` or `othrys-axi`) before rebuilding. Select the old installation's home for removal and add `--allow-custom-home` if it uses a custom home. Update and build the clone using the install steps in the README. Keep the old home and set `OTHRYS_HOME` to an empty folder before starting the new server. Existing data stays in the old installation. If you installed hooks, run `othrys setup hooks --allow-custom-home` with the new home selected. Use `othrys setup --allow-custom-home --port <previous-port>` to reinstall the login service at the same address.
 
 ## Read records and report through files
 
-The default home is `~/.othrys`. Set `OTHRYS_HOME` to select another home. Each Titan has `hydras/<hydra>/hydra.log`, an optional `snapshot.json`, and a `tasks/<task>/` folder containing `task.log` and `worker.log`. Read these files directly with your harness's file tools. Logs are authoritative; the snapshot is a cached view and may be older or absent. Each native log numbers its own lines, so keep record IDs with their file scope rather than treating a line number as a global cursor. Follow recorded transcript paths for complete agent replies.
+The default home is `~/.othrys`. Set `OTHRYS_HOME` to select another home. Each Titan has `titans/<titan>/titan.log`, an optional `snapshot.json`, and a `tasks/<task>/` folder containing `task.log` and `worker.log`. Read these files directly with your harness's file tools. Logs are authoritative; the snapshot is a cached view and may be older or absent. Each native log numbers its own lines, so keep record IDs with their file scope rather than treating a line number as a global cursor. Follow recorded transcript paths for complete agent replies.
 
 The CLI has no read, history, status, inbox or report commands. Use the UI for configuration and task edits. Reconcile saved instructions and delivery receipts before retrying a send; reading a file does not acknowledge or complete work.
 
