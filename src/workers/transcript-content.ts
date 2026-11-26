@@ -2,7 +2,7 @@ import { commandOf } from './tool-input.ts'
 import { object } from './transcript-usage.ts'
 import { visibleText, wakeInput } from '#oracle/text.ts'
 
-const WORKER_HEADER = /<(?:othrys|pnyx)-worker[\s>]/
+const WORKER_HEADER = /<othrys-worker[\s>]/
 import type { FoundSettings, TranscriptMessage, TranscriptCall, TranscriptTrace } from './provider.ts'
 
 const TEXT_BLOCKS = [
@@ -14,7 +14,7 @@ const UNRECORDED_DETAIL = 'Recorded details unavailable'
 const UNNAMED_TOOL = 'tool'
 
 export function injectedDigest({ text }: { text: string }): string | undefined {
-  return /^\s*(<((?:othrys|pnyx)-digest)\b[^>]*>[\s\S]*?<\/\2>)/.exec(text)?.[1]
+  return /^\s*(<(othrys-digest)\b[^>]*>[\s\S]*?<\/\2>)/.exec(text)?.[1]
 }
 
 export const transcriptString = ({ value }: { value: unknown }): string | undefined =>

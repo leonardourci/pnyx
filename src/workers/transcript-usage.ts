@@ -12,7 +12,7 @@ export function textContent({ value }: { value: unknown }): string {
 }
 
 export function taskContext({ text }: { text: string }): string[] {
-  return [...new Set([...text.matchAll(/<(?:othrys|pnyx)-report\b[^>]*\btask="([^"]+)"/g)].map(match => match[1]!))]
+  return [...new Set([...text.matchAll(/<othrys-report\b[^>]*\btask="([^"]+)"/g)].map(match => match[1]!))]
 }
 
 export function usageNumber({
