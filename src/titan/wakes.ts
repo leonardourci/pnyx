@@ -189,7 +189,7 @@ export function wakeText({
 
         if (ids.has(event.id)) {
           const file = event.type === 'hydra.message' || event.cardId === TITAN_CARD
-            ? 'hydra.log' : `tasks/${event.cardId}/task.log`
+            ? 'titan.log' : `tasks/${event.cardId}/task.log`
           pendingEvents.set(
             event.id,
             file,
@@ -219,7 +219,7 @@ export function wakeText({
     lines.push(`Pending reports: ${JSON.stringify(savedReports)}`)
 
     if (reviewOverflow) {
-      lines.push(`Read the full hydra.review record ${JSON.stringify(reviewId)} in hydra.log.`)
+      lines.push(`Read the full hydra.review record ${JSON.stringify(reviewId)} in titan.log.`)
     }
   }
 
@@ -468,7 +468,7 @@ export function findTitanTurnToResume({
 
   const interruptedWork = unfinishedWork.join(' and ') || 'a turn'
   const ownerReads = unansweredMessages.map(id =>
-    `Read owner message ${JSON.stringify(id)} in hydra.log in full.`)
+    `Read owner message ${JSON.stringify(id)} in titan.log in full.`)
 
   return {
     resumeAttemptId,

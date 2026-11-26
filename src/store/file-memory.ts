@@ -375,7 +375,7 @@ function loadTitanMemory<Titan, Task>({
       id: hydra,
       path: join(
         files.dir,
-        'hydra.log',
+        'titan.log',
       ),
     }),
     tasks: new Map(Object.entries(files.tasks).map(([

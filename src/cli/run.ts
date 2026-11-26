@@ -32,7 +32,7 @@ othrys debug health
 Task creation starts its worker. Use --harness, --account, --model, --effort,
 --mode, --fast or --rule to choose its settings.
 Send addresses Titan unless --task names a worker. --file <path|-> reads message text.
-Read hydra.log, tasks/<task>/task.log, worker.log and snapshot.json directly.
+Read titan.log, tasks/<task>/task.log, worker.log and snapshot.json directly.
 Add --json when a script reads an action receipt or the Titan.
 Workers append needs-you, blocked, done, link or note lines to their worker.log.
 `

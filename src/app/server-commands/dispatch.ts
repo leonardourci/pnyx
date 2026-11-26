@@ -220,7 +220,7 @@ export function createServerCommands({
       'answer',
       'agent',
       'catalog',
-      'hydras',
+      'titans',
       'hydra-agent',
       'models',
       'files',
@@ -290,7 +290,7 @@ export function createServerCommands({
             agents,
             kick,
           })
-        } else if (name === 'hydras') {
+        } else if (name === 'titans') {
           await hydrasCommand({
             ws,
             id,

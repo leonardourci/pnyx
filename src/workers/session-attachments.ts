@@ -56,7 +56,7 @@ export function findSession({
     throw new TitanError({
       message: `session not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Read hydra.log for Titan sessions or the task’s task.log for worker sessions'],
+      help: ['Read titan.log for Titan sessions or the task’s task.log for worker sessions'],
     })
   }
 
@@ -87,7 +87,7 @@ export function selfSession({
     throw new TitanError({
       message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no tmux or Herdr pane in the environment',
       code: 'NOT_FOUND',
-      help: ['Read hydra.log for Titan sessions or the task’s task.log for worker sessions, then select the session in the UI'],
+      help: ['Read titan.log for Titan sessions or the task’s task.log for worker sessions, then select the session in the UI'],
     })
   }
 

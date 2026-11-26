@@ -50,7 +50,7 @@ function searchSnapshot({ hydraId }: { hydraId: string }): Promise<SearchSnapsho
               home: home.path,
               hydra: hydraId,
             }),
-            'hydra.log',
+            'titan.log',
           ),
           position: view.position,
           accepted: view.accepted,

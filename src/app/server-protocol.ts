@@ -71,7 +71,7 @@ export function retryable({
   }
 
   return repeatable({ name }) || args.some(arg => arg === '--event-id' || arg.startsWith('--event-id='))
-    || (name === 'hydras' && ([
+    || (name === 'titans' && ([
       'edit',
       'move',
     ].includes(args[0] ?? '') || (args[0] === 'create' && !!args[2])))

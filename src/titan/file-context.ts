@@ -32,7 +32,7 @@ export function recordFiles({
   return {
     hydra: join(
       dir,
-      'hydra.log',
+      'titan.log',
     ),
     task: join(
       records,

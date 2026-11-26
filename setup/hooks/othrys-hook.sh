@@ -61,7 +61,7 @@ read -r hook_seconds hook_at hook_milliseconds <<EOF
 $hook_clock
 EOF
 id="hook-$hook_seconds$hook_milliseconds-$$"
-hydra_dir=$home/hydras/$hydra_name
+hydra_dir=$home/titans/$hydra_name
 # An unknown Titan id is dropped instead of starting a new Titan; only the default one is made on first use.
 [ -d "$hydra_dir" ] || [ "$hydra_name" = default ] || exit 0
 spool=$hydra_dir/spool

@@ -76,7 +76,7 @@ export const hydraFiles = ({
   hydra,
 }: TitanLocation) => join(
   resolve(home),
-  'hydras',
+  'titans',
   component({
     id: hydra,
     rule: TITAN_ID,
@@ -140,7 +140,7 @@ function publishFolder({
 }: {
   parent: string
   id: string
-  log: 'hydra.log' | 'task.log'
+  log: 'titan.log' | 'task.log'
   entries: readonly LogFact[]
 }): LogPosition {
   const destination = join(
@@ -213,7 +213,7 @@ export function createTitanFiles({
       hydra,
     })),
     id: hydra,
-    log: 'hydra.log',
+    log: 'titan.log',
     entries,
   })
 }
@@ -348,7 +348,7 @@ function prepareMove({
   const targetLog = lstatSync(
     join(
       targetTitan,
-      'hydra.log',
+      'titan.log',
     ),
     { throwIfNoEntry: false },
   )
@@ -591,7 +591,7 @@ export function readTitanFiles({
 
   const hydraLogPath = join(
     dir,
-    'hydra.log',
+    'titan.log',
   )
   let hydraLog = readFileLog({
     path: hydraLogPath,
@@ -637,7 +637,7 @@ function readKnownTitan({
     return {
       dir: join(
         resolve(home),
-        'hydras',
+        'titans',
         hydra,
       ),
       hydra: failedLog({ issue: error }),
@@ -661,7 +661,7 @@ export function readHomeFiles({
 
   const parent = join(
     resolve(home),
-    'hydras',
+    'titans',
   )
 
   if (!lstatSync(
@@ -681,7 +681,7 @@ export function readHomeFiles({
     && existsSync(join(
       parent,
       entry.name,
-      'hydra.log',
+      'titan.log',
     ))).map(entry => entry.name)
     .sort()
   const hydras = new Map(ids.map(hydra => [

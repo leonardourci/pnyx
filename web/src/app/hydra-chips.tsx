@@ -58,7 +58,7 @@ export function TitanChips({
                 item={{
                   id: hydra.id,
                   kind: 'hydra',
-                  scope: 'hydras',
+                  scope: 'titans',
                   hydra: hydra.id,
                 }}
                 variant="hydra"

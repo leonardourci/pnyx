@@ -136,7 +136,7 @@ export function useTitanEdits({
 
       try {
         await command({
-          name: 'hydras',
+          name: 'titans',
           args: [
             'edit',
             id,
@@ -181,7 +181,7 @@ export function useTitanEdits({
 
       try {
         await command({
-          name: 'hydras',
+          name: 'titans',
           args: [
             'move',
             id,

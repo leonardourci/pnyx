@@ -218,7 +218,7 @@ export function openFileStore<Titan, Task>({
         home,
         hydra: scope.hydra,
       }),
-      'hydra.log',
+      'titan.log',
     )
     : join(
       taskFiles({

@@ -8,7 +8,7 @@ import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 
 // A Titan serves its stored attachments and the images inside its task copies; any other path has no source.
 function attachmentSource({ path }: { path: string }) {
-  const served = /\/hydras\/([a-z0-9][a-z0-9._-]{0,63})\/(attachments\/[^/]+|copies\/.+)$/.exec(path)
+  const served = /\/titans\/([a-z0-9][a-z0-9._-]{0,63})\/(attachments\/[^/]+|copies\/.+)$/.exec(path)
   const token = document.querySelector<HTMLMetaElement>('meta[name=othrys-token]')?.content
   const route = served?.[2]
   const stored = route?.startsWith('attachments/') && ATTACHMENT_NAME.test(route.slice('attachments/'.length))

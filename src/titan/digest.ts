@@ -357,7 +357,7 @@ function digestParts({
 
         return `- ${id} · ${name} · ${counts.asks} / ${counts.working} / ${counts.waiting} / ${counts.done}`
       }),
-      'Counts include sub-tasks. Read hydra.log or use the UI for project grouping and task order.',
+      'Counts include sub-tasks. Read titan.log or use the UI for project grouping and task order.',
     ].join('\n'),
   )
   parts.set(

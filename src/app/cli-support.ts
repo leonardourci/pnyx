@@ -252,7 +252,7 @@ function receipt({
       message: event.id,
       hydra: event.data.hydra,
       state: 'queued',
-      help: ['Titan can read this in hydra.log; no worker was launched'],
+      help: ['Titan can read this in titan.log; no worker was launched'],
     }
   }
 

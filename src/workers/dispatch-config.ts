@@ -60,7 +60,7 @@ function configPath({ accounts = false }: { accounts?: boolean } = {}): string {
   return join(
     othrysHome(),
     'config',
-    accounts ? 'hydra-accounts.json' : 'hydra-heads-dispatch.json',
+    accounts ? 'titan-accounts.json' : 'titan-dispatch.json',
   )
 }
 
@@ -83,7 +83,7 @@ const TEMPLATES = join(
 function templatePath({ accounts = false }: { accounts?: boolean } = {}): string {
   return join(
     TEMPLATES,
-    accounts ? 'hydra-accounts.example.json' : 'hydra-heads-dispatch.example.json',
+    accounts ? 'titan-accounts.example.json' : 'titan-dispatch.example.json',
   )
 }
 

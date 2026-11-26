@@ -9,7 +9,7 @@ export const DEFAULT_TITAN = 'default'
 
 export const hydrasDir = (): string => join(
   othrysHome(),
-  'hydras',
+  'titans',
 )
 
 export function hydraIds({

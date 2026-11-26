@@ -130,7 +130,7 @@ function pageOutput({
     unavailable: unavailable.length ? unavailable : 'none: every card found',
     help: [
       `Use the UI to inspect the full Titan ${hydraId}`,
-      `Read hydra.log and tasks/<task>/task.log in Titan ${hydraId}`,
+      `Read titan.log and tasks/<task>/task.log in Titan ${hydraId}`,
     ],
   }
 }

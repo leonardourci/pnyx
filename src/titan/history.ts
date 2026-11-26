@@ -147,7 +147,7 @@ export function inscribeOperation({
   if (action === 'finish' && through !== previous?.through) {
     inform({
       reason: 'Inscribe finished without confirming its history snapshot',
-      clear: `Read pass ${id} in hydra.log: its inscribe.since and inscribe.throughSeq are the saved bounds. Resolve each reference in its file scope before reading recorded transcripts.`,
+      clear: `Read pass ${id} in titan.log: its inscribe.since and inscribe.throughSeq are the saved bounds. Resolve each reference in its file scope before reading recorded transcripts.`,
     })
   }
 

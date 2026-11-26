@@ -259,7 +259,7 @@ export function createTitanCreation({
     try {
       const receipt = await command({
         scope: scopeFor({ id: creation.from }),
-        name: 'hydras',
+        name: 'titans',
         args,
         creation: creation.attempt,
       })

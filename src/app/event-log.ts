@@ -57,7 +57,7 @@ function savedEvents({
           home: home.path,
           hydra: hydraId,
         }),
-        'hydra.log',
+        'titan.log',
       ),
       ...view,
     },

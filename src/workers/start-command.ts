@@ -249,7 +249,7 @@ export async function startCommand({
     folder: claimed.cwd,
     help: [
       role === 'hydra'
-        ? `Its first session becomes the Titan; read hydra.log in Titan ${hydraId}`
+        ? `Its first session becomes the Titan; read titan.log in Titan ${hydraId}`
         : `Its session attaches to ${target} when its hooks first report; read tasks/${target}/task.log in Titan ${hydraId}`,
     ],
   }

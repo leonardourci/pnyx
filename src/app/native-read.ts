@@ -25,7 +25,7 @@ export function nativeTitanIds(): string[] {
   return directories({
     path: join(
       home,
-      'hydras',
+      'titans',
     ),
   }).filter(hydra => TITAN_ID.test(hydra)
     && existsSync(join(
@@ -33,7 +33,7 @@ export function nativeTitanIds(): string[] {
         home,
         hydra,
       }),
-      'hydra.log',
+      'titan.log',
     )))
     .sort()
 }
@@ -52,7 +52,7 @@ export function readNativeTitan({ hydraId }: { hydraId: string }): {
       id: hydraId,
       path: join(
         dir,
-        'hydra.log',
+        'titan.log',
       ),
     },
     ...directories({

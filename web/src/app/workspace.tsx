@@ -80,7 +80,7 @@ function TitanDragName({
     item: {
       id,
       kind: 'hydra',
-      scope: 'hydras',
+      scope: 'titans',
       hydra: id,
     },
     disabled,

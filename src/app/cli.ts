@@ -200,7 +200,7 @@ const undo = guard({
       throw new TitanError({
         message: `event not found: ${id}`,
         code: 'NOT_FOUND',
-        help: ['Read hydra.log and task.log to find event IDs'],
+        help: ['Read titan.log and task.log to find event IDs'],
       })
     }
 

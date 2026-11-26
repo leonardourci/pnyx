@@ -4,7 +4,7 @@ export function notUndoable({ message }: { message: string }): TitanError {
   return new TitanError({
     message,
     code: 'NOT_UNDOABLE',
-    help: ['Read hydra.log and task.log to find an undoable edit'],
+    help: ['Read titan.log and task.log to find an undoable edit'],
   })
 }
 

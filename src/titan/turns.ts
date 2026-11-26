@@ -308,7 +308,7 @@ export function createTitanTurns({
     const changed = memoryStamp !== undefined && memoryStamp !== stamp
     memoryStamp = stamp
 
-    return changed ? ' Memory changed; reread the saved owner memory logs, this Titan’s hydra.log and the project memory logs named in your context when needed.' : ''
+    return changed ? ' Memory changed; reread the saved owner memory logs, this Titan’s titan.log and the project memory logs named in your context when needed.' : ''
   }
 
   // Titan runs Othrys's own CLI without asking; every other prompt waits in Titan's chat.
