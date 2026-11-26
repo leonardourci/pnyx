@@ -26,6 +26,7 @@ import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
 import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, LogDaysPreview, LogLinesPreview, LogSizePreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
 import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
+import { AllowedHosts } from './allowed-hosts.tsx'
 import { SETTING_ICONS, SETTINGS_SECTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
 
 const UNITS: Record<string, string> = {
@@ -394,6 +395,8 @@ export function SettingControl({
           onSlide={slideTo({ key: 'logMaxMB' })}
         />
       )
+    case 'allowedHosts':
+      return <AllowedHosts settings={settings} save={save} />
     case 'helper':
       return (
         rule && (

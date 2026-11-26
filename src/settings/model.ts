@@ -44,6 +44,7 @@ export interface Settings extends SharedView {
   logs: LogMode
   logDays: number
   logMaxMB: number
+  allowedHosts: string[]
 }
 
 export type PageSettings = Settings
@@ -59,6 +60,7 @@ export const SETTING_KEYS = [
   'logs',
   'logDays',
   'logMaxMB',
+  'allowedHosts',
 ] as const
 
 export type SettingKey = (typeof SETTING_KEYS)[number]
