@@ -5,6 +5,8 @@ import { liveTask } from '#tasks/select.ts'
 import type { Card } from '#tasks/model.ts'
 import type { TitanProject } from '#projects/model.ts'
 import type { ProjectGroup } from '#projects/groups.ts'
+import type { ProjectFiles } from '#projects/file-index.ts'
+import type { FolderEntry } from '#projects/folders.ts'
 import { isPendingImage, type PlacedChip } from './draft.ts'
 import type { OtherTitan } from './composer-sources.tsx'
 import type { MentionItem } from './mention-picker.tsx'
@@ -136,6 +138,47 @@ export const titanRows = ({ titans }: { titans: OtherTitan[] }): MentionRow[] =>
     },
   }))
 
+export const fileItem = ({
+  name,
+  path,
+}: FolderEntry): MentionItem => ({
+  key: `file:${path}`,
+  kind: 'file',
+  title: name,
+  detail: path,
+  icons: ['file'],
+  group: 'Files',
+  insert: reference({
+    kind: 'file',
+    value: path,
+    label: name,
+  }),
+})
+
+const fileRow = ({
+  project,
+  file,
+}: {
+  project: ProjectFiles
+  file: string
+}) => prepareRow<MentionItem>({
+  item: {
+    ...fileItem({
+      name: file.slice(file.lastIndexOf('/') + 1),
+      path: `${project.path}/${file}`,
+    }),
+    detail: projectTitle({ project: project.path }),
+    excerpt: file,
+  },
+  fallback: file,
+})
+
+export const fileRows = ({ projects }: { projects: ProjectFiles[] }): MentionRow[] => projects
+  .flatMap(project => project.files.map(file => fileRow({
+    project,
+    file,
+  })))
+
 export const attachmentRows = ({ chips }: { chips: PlacedChip[] }): MentionRow[] => chips
   .filter(chip => chip.attached && !isPendingImage({ path: chip.value }))
   .map(chip => prepareRow<MentionItem>({
@@ -162,12 +205,14 @@ export const folderRows = ({ folders }: { folders: MentionItem[] }): MentionRow[
 export function mentionMatches({
   query,
   rows,
+  files,
   folders,
   filterFolders,
   typedFolder,
 }: {
   query: string
   rows: MentionRow[]
+  files: MentionRow[]
   folders: MentionRow[]
   filterFolders: boolean
   typedFolder?: MentionItem
@@ -180,6 +225,10 @@ export function mentionMatches({
     ...filterRows({
       rows: folders,
       query: filterFolders ? query : '',
+    }),
+    ...filterRows({
+      rows: files,
+      query,
     }),
   ]
 

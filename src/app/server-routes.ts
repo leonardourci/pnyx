@@ -189,6 +189,7 @@ export function createServerRoutes({
       return listFolders({
         path: query.get('path') ?? '',
         repository: query.get('repository') ?? '',
+        withFiles: query.get('files') === '1',
       }).then(
         body => reply({
           res,

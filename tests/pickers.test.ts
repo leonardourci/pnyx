@@ -1,6 +1,11 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { filterRows, prepareRow } from '#titan/suggestion-matches.ts'
-import { startOthrys, type Othrys } from './setup/othrys.ts'
+import { completePath, typedListing } from '#web-titan/path-completion.ts'
+import { startOthrys, until, type Othrys } from './setup/othrys.ts'
+import { createProject } from './setup/projects.ts'
+import { git } from './setup/upgrade.ts'
 
 let othrys: Othrys
 
@@ -159,5 +164,274 @@ test(
         },
       ],
     ])
+  },
+)
+
+interface FilesAnswer {
+  projects?: {
+    path: string
+    files: string[]
+  }[]
+}
+
+test(
+  'files lists each attached project\'s files without ignored ones or nested repositories, and again after a file appears',
+  async () => {
+    const hydra = await othrys.hydra()
+    const path = await createProject({
+      hydra,
+      landing: 'branch',
+    })
+    writeFileSync(
+      join(
+        path,
+        '.gitignore',
+      ),
+      'build/\n',
+    )
+    mkdirSync(join(
+      path,
+      'build',
+    ))
+    writeFileSync(
+      join(
+        path,
+        'build',
+        'out.js',
+      ),
+      '',
+    )
+    git({
+      cwd: path,
+      args: [
+        'init',
+        '-q',
+        'vendor',
+      ],
+    })
+    writeFileSync(
+      join(
+        path,
+        'vendor',
+        'lib.js',
+      ),
+      '',
+    )
+    const page = await hydra.page()
+
+    const files = async () => {
+      const answer = await page.send({
+        name: 'files',
+        args: [],
+      }) as FilesAnswer
+
+      return answer.projects?.[0]?.files ?? []
+    }
+
+    try {
+      await until({
+        what: 'the project files',
+        check: async () => (await files()).includes('.gitignore'),
+      })
+      expect(await files()).toEqual([
+        '.gitignore',
+        'README.md',
+      ])
+      mkdirSync(join(
+        path,
+        'notes',
+      ))
+      writeFileSync(
+        join(
+          path,
+          'notes',
+          'plan.md',
+        ),
+        'plan\n',
+      )
+      await until({
+        what: 'the new file listed',
+        check: async () => (await files()).includes('notes/plan.md'),
+      })
+    } finally {
+      page.close()
+    }
+  },
+)
+
+test(
+  'a folder listing with files names every entry, hidden ones included',
+  async () => {
+    const hydra = await othrys.hydra()
+    const folder = hydra.folder({ name: 'loose' })
+    mkdirSync(join(
+      folder,
+      'src',
+    ))
+    mkdirSync(join(
+      folder,
+      '.config',
+    ))
+    writeFileSync(
+      join(
+        folder,
+        'notes.txt',
+      ),
+      '',
+    )
+
+    const listing = async ({ files }: { files: boolean }) => {
+      const query = new URLSearchParams({ path: `${folder}/` })
+
+      if (files) {
+        query.set(
+          'files',
+          '1',
+        )
+      }
+
+      const response = await fetch(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/folders?${query}`)
+
+      return await response.json() as {
+        folders: { name: string }[]
+        files?: { name: string }[]
+      }
+    }
+
+    const full = await listing({ files: true })
+    expect(full.folders.map(entry => entry.name)).toEqual([
+      '.config',
+      'src',
+    ])
+    expect(full.files?.map(entry => entry.name)).toEqual(['notes.txt'])
+    const plain = await listing({ files: false })
+    expect(plain.folders.map(entry => entry.name)).toEqual(['src'])
+    expect(plain.files).toBeUndefined()
+  },
+)
+
+test(
+  'a typed name narrows its folder\'s contents and recent folders before at most eight recent ones show, a missing folder lists nothing, and Tab completes only from contents listed in full',
+  () => {
+    const entries = ({ names }: { names: string[] }) => names.map(name => ({
+      name,
+      path: `/work/${name}`,
+    }))
+    const work = {
+      name: 'work',
+      path: '/work',
+      empty: false,
+    }
+    const contents = {
+      folders: entries({
+        names: [
+          '.cache',
+          'app-api',
+          'app-web',
+          'docs',
+        ],
+      }),
+      files: entries({
+        names: [
+          '.env',
+          'apply.md',
+        ],
+      }),
+      recent: [
+        ...Array.from(
+          { length: 8 },
+          (
+            _,
+            index,
+          ) => ({
+            name: `guide-${index}`,
+            path: `/work/docs/guide-${index}`,
+          }),
+        ),
+        {
+          name: 'ui',
+          path: '/work/app-web/ui',
+        },
+      ],
+      selected: work,
+    }
+
+    const shown = ({ name }: { name: string }) => {
+      const listing = typedListing({
+        listing: contents,
+        name,
+      })
+
+      return [
+        ...listing.folders,
+        ...listing.files ?? [],
+      ].map(entry => entry.name)
+    }
+
+    expect(shown({ name: '' })).toEqual([
+      'app-api',
+      'app-web',
+      'docs',
+      'apply.md',
+    ])
+    expect(shown({ name: 'APP' })).toEqual([
+      'app-api',
+      'app-web',
+      'apply.md',
+    ])
+    expect(shown({ name: '.' })).toEqual([
+      '.cache',
+      '.env',
+    ])
+    expect(typedListing({
+      listing: contents,
+      name: 'app',
+    }).recent.map(folder => folder.path)).toEqual(['/work/app-web/ui'])
+    expect(typedListing({
+      listing: contents,
+      name: '',
+    }).recent).toHaveLength(8)
+    expect(completePath({
+      typed: '/work/app',
+      contents,
+    })).toBe('/work/app-')
+
+    const parentOfMissing = {
+      folders: entries({ names: ['app-api'] }),
+      recent: [],
+    }
+    expect(typedListing({
+      listing: parentOfMissing,
+      name: '',
+    }).folders).toEqual([])
+    expect(completePath({
+      typed: '/work/app/',
+      contents: parentOfMissing,
+    })).toBeUndefined()
+
+    const capped = {
+      folders: entries({
+        names: Array.from(
+          { length: 1000 },
+          (
+            _,
+            index,
+          ) => `pkg-${String(index).padStart(
+            4,
+            '0',
+          )}-src`,
+        ),
+      }),
+      recent: [],
+      selected: work,
+    }
+    expect(typedListing({
+      listing: capped,
+      name: 'pkg-0999',
+    }).folders.map(entry => entry.name)).toEqual(['pkg-0999-src'])
+    expect(completePath({
+      typed: '/work/pkg-0999',
+      contents: capped,
+    })).toBeUndefined()
   },
 )

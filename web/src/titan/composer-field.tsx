@@ -5,7 +5,7 @@ import { embedImages,imagesHtml } from './clipboard.ts'
 import { copyDraft,draftView,editDraft,isPendingImage,placeBlock,removeChip,replaceDisplay,shownDraft,snapSelection,type PlacedChip } from './draft.ts'
 import { pastedImages } from './image-upload.ts'
 import { MentionPicker,type MentionItem } from './mention-picker.tsx'
-import { completePath } from './path-completion.ts'
+import { completePath,splitPath,typedListing } from './path-completion.ts'
 import { GOALS,mentionText,projectRequestActions,REQUEST_HEAD,requestPaths } from './project-request.ts'
 import { slashState,type SlashState } from './view.ts'
 import { useFolders } from '#web-projects/folders.ts'
@@ -100,11 +100,13 @@ export function ComposerField({
   const {
     projects,
     mentionRows,
+    fileRows,
     slashRows,
     taskReferences,
     openTask,
     catalog,
     catalogOpen: onCatalogOpen,
+    mentionOpen,
     labelColors,
     notify,
     otherProjects,
@@ -171,27 +173,54 @@ export function ComposerField({
   const query = mention?.query ?? ''
   const typed = query.trim()
   const folderPath = /^[~/]/.test(typed) ? typed : ''
+  const typedPath = !!folderPath
+  const mentioning = mention !== null
+  const {
+    directory,
+    name: typedName,
+  } = splitPath({ path: folderPath })
   const folders = useFolders({
-    path: folderPath,
+    path: directory,
     repository: '',
-    connected: mention !== null,
+    connected: mentioning,
+    files: typedPath,
   })
-  const listingWhileNextLoads = useRef<FolderListing | undefined>(undefined)
+  const listingWhileNextLoads = useRef<{
+    listing?: FolderListing
+    name: string
+  }>({ name: '' })
 
   if (folders) {
-    listingWhileNextLoads.current = folders.listing
+    listingWhileNextLoads.current = {
+      listing: folders.listing,
+      name: typedName,
+    }
   }
 
-  const shownListing = listingWhileNextLoads.current
+  const {
+    listing: shownListing,
+    name: shownName,
+  } = listingWhileNextLoads.current
+  const listingOfTypedFolder = folders?.listing
+  const pathListing = useMemo(
+    () => shownListing && typedPath ? typedListing({
+      listing: shownListing,
+      name: shownName,
+    }) : shownListing,
+    [
+      shownListing,
+      typedPath,
+      shownName,
+    ],
+  )
   const cloneUrl = CLONE_URL.test(typed) ? typed : ''
-  const typedPath = !!folderPath
   const folderList = useMemo(
     () => folderRows({
       folders: folderSuggestions({
         typed: cloneUrl,
         attached: projects,
         otherProjects,
-        listing: shownListing,
+        listing: pathListing,
         typedPath,
       }),
     }),
@@ -199,11 +228,11 @@ export function ComposerField({
       cloneUrl,
       projects,
       otherProjects,
-      shownListing,
+      pathListing,
       typedPath,
     ],
   )
-  const selectedFolder = folderPath ? folders?.listing?.selected : undefined
+  const selectedFolder = typedPath && listingOfTypedFolder ? pathListing?.selected : undefined
   const typedFolder = useMemo(
     (): MentionItem | undefined => selectedFolder && {
       key: `folder:${selectedFolder.path}`,
@@ -242,24 +271,41 @@ export function ComposerField({
     ],
   )
   const shownQuery = useDeferredValue(query)
-  const filterFolders = !typedPath && !cloneUrl
+  const searchesByName = !typedPath && !cloneUrl
   const matched = useMemo(
     () => mentionMatches({
       query: shownQuery,
       rows,
+      files: searchesByName ? fileRows : [],
       folders: folderList,
-      filterFolders,
+      filterFolders: searchesByName,
       typedFolder,
     }),
     [
       shownQuery,
       rows,
+      searchesByName,
+      fileRows,
       folderList,
-      filterFolders,
       typedFolder,
     ],
   )
   const matches = mention ? matched : []
+  useEffect(
+    () => {
+      if (!mentioning) {
+        return
+      }
+
+      mentionOpen({ open: true })
+
+      return () => mentionOpen({ open: false })
+    },
+    [
+      mentioning,
+      mentionOpen,
+    ],
+  )
   const picked = Math.min(
     mentionActive,
     matches.length - 1,
@@ -930,10 +976,10 @@ export function ComposerField({
             // A typed path completes like a shell: Tab extends it as text, and Tab on a complete path adds it.
             // Tab with nothing to complete leaves the path as typed; an item moved to with the arrows is picked as usual.
             const fromTop = picked <= 0
-            const listing = mention && folderPath && fromTop ? folders?.listing : undefined
-            const completed = listing && completePath({
+            const contents = mention && folderPath && fromTop ? listingOfTypedFolder : undefined
+            const completed = contents && completePath({
               typed: folderPath,
-              listing,
+              contents,
             })
 
             if (e.key === 'Tab' && mention && folderPath && fromTop

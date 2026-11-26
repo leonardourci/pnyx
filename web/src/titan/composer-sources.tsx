@@ -11,7 +11,9 @@ import type { TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { createContext,useCallback,useContext,useMemo,useRef,useState,type ReactNode } from 'react'
 import { useKept,useStableActions } from '#web-shared/stable.ts'
 import { useSkillsCatalog } from './skills-catalog.ts'
-import { columnRows,projectRows,taskRows,titanRows } from './mention-candidates.ts'
+import { columnRows,fileRows,projectRows,taskRows,titanRows } from './mention-candidates.ts'
+import type { ProjectFiles } from '#projects/file-index.ts'
+import { useCachedList } from '#web-shared/cached-list.ts'
 import type { MentionItem } from './mention-picker.tsx'
 import { slashRows,type SlashItem } from './slash-menu.tsx'
 
@@ -19,12 +21,13 @@ import { slashRows,type SlashItem } from './slash-menu.tsx'
 export interface ComposerSources {
   projects: TitanProject[]
   mentionRows: PreparedRow<MentionItem>[]
+  fileRows: PreparedRow<MentionItem>[]
   slashRows: PreparedRow<SlashItem>[]
   taskReferences: Record<string, TaskReferenceData>
   openTask({ id }: { id: string }): void
   catalog: Catalog | null
-  // A field asks for the skills catalog while its / menu is open.
   catalogOpen({ open }: { open: boolean }): void
+  mentionOpen({ open }: { open: boolean }): void
   labelColors?: SavedLabelColor[]
   // Projects of the owner's other Titans, offered under Folders in the @ picker.
   otherProjects: {
@@ -51,6 +54,26 @@ function ComposerSourcesProvider({
   children: ReactNode
 }) {
   return <Sources.Provider value={sources}>{children}</Sources.Provider>
+}
+
+function useOpenInAnyField() {
+  const [
+    open,
+    setOpen,
+  ] = useState(false)
+  const fieldsOpen = useRef(0)
+  const opened = useCallback(
+    ({ open }: { open: boolean }) => {
+      fieldsOpen.current += open ? 1 : -1
+      setOpen(fieldsOpen.current > 0)
+    },
+    [],
+  )
+
+  return {
+    open,
+    opened,
+  }
 }
 
 export function useComposerSources() {
@@ -86,18 +109,28 @@ export function TitanComposerSources({
   children: ReactNode
 }) {
   const config = hydraConfig({ state }), card = state.cards[TITAN_CARD]
-  const [
-    open,
-    setOpen,
-  ] = useState(false)
-  // Several fields can have their / menu open at once; the catalog refreshes while any does.
-  const openMenus = useRef(0)
-  const catalogOpen = useCallback(
-    ({ open }: { open: boolean }) => {
-      openMenus.current += open ? 1 : -1
-      setOpen(openMenus.current > 0)
-    },
-    [],
+  const {
+    open: slashMenuOpen,
+    opened: catalogOpen,
+  } = useOpenInAnyField()
+  const {
+    open: mentionMenuOpen,
+    opened: mentionOpen,
+  } = useOpenInAnyField()
+  const attached = (state.projects ?? []).filter(project => !project.detached)
+  const projectPaths = attached.map(project => project.path)
+  const files = useCachedList<ProjectFiles[]>({
+    key: `files:${JSON.stringify(projectPaths)}`,
+    connected,
+    open: mentionMenuOpen,
+    fetch: async () => (await command({
+      name: 'files',
+      args: [],
+    })).projects as ProjectFiles[],
+  })
+  const projectFileRows = useMemo(
+    () => fileRows({ projects: files.value ?? [] }),
+    [files.value],
   )
   const catalog = useSkillsCatalog({
     identity: JSON.stringify([
@@ -110,7 +143,7 @@ export function TitanComposerSources({
     provider: config.hydra.agent?.harness ?? card?.agent?.provider,
     command,
     connected,
-    open,
+    open: slashMenuOpen,
   })
   const projects = state.projects
   const titans = useKept({ value: otherTitans })
@@ -166,11 +199,13 @@ export function TitanComposerSources({
     () => ({
       projects: projects ?? [],
       mentionRows,
+      fileRows: projectFileRows,
       slashRows: commands,
       taskReferences: references,
       openTask: actions.openTask,
       catalog,
       catalogOpen,
+      mentionOpen,
       labelColors,
       notify: actions.notify,
       otherProjects: folders,
@@ -178,11 +213,13 @@ export function TitanComposerSources({
     [
       projects,
       mentionRows,
+      projectFileRows,
       commands,
       references,
       actions,
       catalog,
       catalogOpen,
+      mentionOpen,
       labelColors,
       folders,
     ],

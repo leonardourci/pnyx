@@ -5,10 +5,12 @@ export function useFolders({
   path,
   repository,
   connected,
+  files = false,
 }: {
   path: string
   repository: string
   connected: boolean
+  files?: boolean
 }) {
   const [
     result,
@@ -18,10 +20,19 @@ export function useFolders({
     listing?: FolderListing
     error?: string
   }>()
-  const query = new URLSearchParams({
+  const params = new URLSearchParams({
     path,
     repository,
-  }).toString()
+  })
+
+  if (files) {
+    params.set(
+      'files',
+      '1',
+    )
+  }
+
+  const query = params.toString()
   useEffect(
     () => {
       if (!connected) {

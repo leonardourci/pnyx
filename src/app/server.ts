@@ -17,6 +17,7 @@ import { createServerTick } from './server-tick.ts'
 import { createThreadSubscriptions } from './thread-subscriptions.ts'
 import type { CatalogLocations } from '#titan/transcripts-catalog.ts'
 import { createCatalogIndex } from '#titan/transcripts-catalog-index.ts'
+import { createFileIndex } from '#projects/file-index.ts'
 import { wakeReasons } from '#titan/wake-reasons.ts'
 import { rmSync } from 'node:fs'
 import { watchPath, type PathWatch } from './watch.ts'
@@ -112,6 +113,7 @@ export async function mountOwnedTitan({
     let { state } = loadTitan({ hydraId })
     let handledThrough = state.seq
     const catalogIndex = createCatalogIndex({ locations: catalogLocations })
+    const fileIndex = createFileIndex()
     const {
       threadSubscriptions,
       retainThreads,
@@ -523,6 +525,7 @@ export async function mountOwnedTitan({
       kick,
       agents,
       catalogCommand,
+      fileIndex,
       showPage: ({
         ws,
         interest,
@@ -669,6 +672,7 @@ export async function mountOwnedTitan({
       await sources.close()
       review.close()
       catalogIndex.close()
+      fileIndex.close()
       agents.close()
       await spend.close()
 

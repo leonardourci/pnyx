@@ -1,7 +1,9 @@
 import type { TitanProject } from '#projects/model.ts'
 import type { FolderListing } from '#projects/folders.ts'
 import { reference } from '#titan/mentions.ts'
+import { fileItem } from './mention-candidates.ts'
 import type { MentionItem } from './mention-picker.tsx'
+import type { TypedListing } from './path-completion.ts'
 
 export const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
 
@@ -20,7 +22,7 @@ export function folderSuggestions({
     path: string
     hydra: string
   }[]
-  listing?: FolderListing
+  listing?: TypedListing
   typedPath: boolean
 }): MentionItem[] {
   if (CLONE_URL.test(typed)) {
@@ -90,5 +92,10 @@ export function folderSuggestions({
     }
   }
 
-  return items
+  const files = typedPath ? (listing?.files ?? []).map(fileItem) : []
+
+  return [
+    ...items,
+    ...files,
+  ]
 }

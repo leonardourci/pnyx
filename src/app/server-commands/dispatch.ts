@@ -10,8 +10,10 @@ import type { TitanClient } from '#app/server-transport.ts'
 import type { createServerWorkers } from '#app/server-workers.ts'
 import { loadTitan } from '#app/store.ts'
 import type { createThreadSubscriptions } from '#app/thread-subscriptions.ts'
+import type { createFileIndex } from '#projects/file-index.ts'
 import { cliCommand } from './cli-command.ts'
 import { compactCommand } from './compact.ts'
+import { filesCommand } from './files.ts'
 import { hydraAgentCommand } from './hydra-agent.ts'
 import { hydrasCommand } from './hydras.ts'
 import { modelsCommand } from './models.ts'
@@ -49,6 +51,7 @@ export function createServerCommands({
   kick,
   agents,
   catalogCommand,
+  fileIndex,
   showPage,
   subscriptionMap,
   retainThreads,
@@ -64,6 +67,7 @@ export function createServerCommands({
   send: ReturnType<typeof createServerClients>['send']
   kick(): void
   agents: ReturnType<typeof createHost>
+  fileIndex: ReturnType<typeof createFileIndex>
   catalogCommand({
     ws,
     id,
@@ -219,6 +223,7 @@ export function createServerCommands({
       'hydras',
       'hydra-agent',
       'models',
+      'files',
       'compact',
     ].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
@@ -246,6 +251,15 @@ export function createServerCommands({
             fail,
             send,
             agents,
+          })
+        } else if (name === 'files') {
+          await filesCommand({
+            ws,
+            id,
+            args,
+            send,
+            state,
+            fileIndex,
           })
         } else if (name === 'catalog') {
           catalogCommand({
