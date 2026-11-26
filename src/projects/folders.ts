@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { hydraIds, hydrasDir } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
-import { FOLDER_LIMIT } from './folder-limit.ts'
+import { ENTRY_LIMIT, FOLDER_LIMIT } from './folder-limit.ts'
 
 export interface Folder {
   name: string
@@ -11,6 +11,8 @@ export interface Folder {
 }
 export interface FolderListing {
   folders: Folder[]
+  // Listed only on request, with every entry of the folder rather than the first few.
+  files?: Folder[]
   recent: Folder[]
   selected?: Folder & { empty: boolean }
   cloneInto?: string
@@ -35,10 +37,12 @@ export async function listFolders({
   path,
   repository = '',
   home = homedir(),
+  withFiles = false,
 }: {
   path: string
   repository?: string
   home?: string
+  withFiles?: boolean
 }): Promise<FolderListing> {
   const expanded = path === '~' ? home : path.startsWith('~/') ? join(
     home,
@@ -64,10 +68,15 @@ export async function listFolders({
   const root = selected ? typed : dirname(typed)
   const prefix = selected ? '' : basename(typed).toLowerCase()
   const folders: Folder[] = []
+  const files: Folder[] = []
+  const limit = withFiles ? ENTRY_LIMIT : FOLDER_LIMIT
   const entries = await opendir(root)
 
   for await (const entry of entries) {
-    if (!entry.name.toLowerCase().startsWith(prefix) || (entry.name.startsWith('.') && !prefix.startsWith('.'))) {
+    // The whole contents include hidden entries; the page hides them until a dot is typed.
+    const hidden = entry.name.startsWith('.') && !prefix.startsWith('.') && !withFiles
+
+    if (!entry.name.toLowerCase().startsWith(prefix) || hidden) {
       continue
     }
 
@@ -84,9 +93,11 @@ export async function listFolders({
 
     if (directory) {
       folders.push(folder({ path: child }))
+    } else if (withFiles && files.length < limit) {
+      files.push(folder({ path: child }))
     }
 
-    if (folders.length === FOLDER_LIMIT) {
+    if (folders.length === limit) {
       break
     }
   }
@@ -153,6 +164,12 @@ export async function listFolders({
       b,
     ) => a.name.localeCompare(b.name)),
     recent,
+    ...(withFiles ? {
+      files: files.sort((
+        a,
+        b,
+      ) => a.name.localeCompare(b.name)),
+    } : {}),
     ...(selected ? { selected } : {}),
     ...(cloneInto ? { cloneInto } : {}),
   }

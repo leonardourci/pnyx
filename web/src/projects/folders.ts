@@ -5,10 +5,13 @@ export function useFolders({
   path,
   repository,
   connected,
+  files = false,
 }: {
   path: string
   repository: string
   connected: boolean
+  // Also lists the files in the folder, and every entry rather than the first few.
+  files?: boolean
 }) {
   const [
     result,
@@ -21,6 +24,7 @@ export function useFolders({
   const query = new URLSearchParams({
     path,
     repository,
+    ...files ? { files: '1' } : {},
   }).toString()
   useEffect(
     () => {
