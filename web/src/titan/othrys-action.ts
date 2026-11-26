@@ -94,7 +94,7 @@ export function shellWords({ command }: { command: string }): string[] {
 
 export function othrysWords({ command }: { command: string }): string[] | undefined {
   const words = shellWords({ command })
-  const at = words.findIndex(word => /(^|\/)(?:othrys|pnyx)(?:-axi)?(\.ts|\.js)?$/.test(word))
+  const at = words.findIndex(word => /(^|\/)othrys(?:-axi)?(\.ts|\.js)?$/.test(word))
 
   return at >= 0 && words.slice(
     0,

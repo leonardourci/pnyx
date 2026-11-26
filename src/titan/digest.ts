@@ -469,7 +469,7 @@ function previousCheckpoint({
 }): {
   parts: Record<string, string>
 } | undefined {
-  const encoded = text?.match(/^<(?:othrys|pnyx)-digest\b[^>]* checkpoint="([A-Za-z0-9_-]+)"/)?.[1]
+  const encoded = text?.match(/^<othrys-digest\b[^>]* checkpoint="([A-Za-z0-9_-]+)"/)?.[1]
 
   if (!encoded) {
     return

@@ -129,7 +129,7 @@ const inline = ({
       }
       case 'link': {
         const task = mentionId({ href: token.href })
-        const skillPointer = /^(?:othrys|pnyx)-skill:([\w%~.-]+)$/.exec(token.href)
+        const skillPointer = /^othrys-skill:([\w%~.-]+)$/.exec(token.href)
         const skillValue = skillPointer ? decodeValue({ value: skillPointer[1]! }) : undefined
         const skill = skillValue ? readSkillReference({ value: skillValue }) : undefined
 

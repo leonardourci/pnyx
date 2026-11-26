@@ -12,7 +12,7 @@ export interface TaskMention {
 export type ReferenceKind = 'task' | 'project' | 'column' | 'titan' | 'image' | 'file' | 'skill' | 'slot'
 
 // A reference as Othrys writes it: [@Label](othrys-<kind>:<encoded value>).
-export const REFERENCE = /\[@((?:\\.|[^\]\\\r\n])*)\]\((?:othrys|pnyx)-(task|project|column|titan|image|file|skill|slot):([\w%~.-]+)\)/
+export const REFERENCE = /\[@((?:\\.|[^\]\\\r\n])*)\]\(othrys-(task|project|column|titan|image|file|skill|slot):([\w%~.-]+)\)/
 
 export const referenceLabel = ({ label }: { label: string }) => label.replace(
   /\\(.)/g,
@@ -29,7 +29,7 @@ export function decodeValue({ value }: { value: string }): string | undefined {
 }
 
 export function mentionId({ href }: { href: string }): string | undefined {
-  if (!/^(?:othrys|pnyx)-task:[\w%~.-]+$/.test(href)) {
+  if (!/^othrys-task:[\w%~.-]+$/.test(href)) {
     return undefined
   }
 
@@ -41,7 +41,7 @@ export function pointerReference({ href }: { href: string }): {
   kind: string
   value?: string
 } | undefined {
-  const pointer = /^(?:othrys|pnyx)-(project|column|titan|image|file):([\w%~.-]+)$/.exec(href)
+  const pointer = /^othrys-(project|column|titan|image|file):([\w%~.-]+)$/.exec(href)
 
   return pointer ? {
     kind: pointer[1]!,
@@ -87,7 +87,7 @@ export const taskMention = ({
 })
 
 // A task chip as Othrys writes it: [@Title](othrys-task:<encoded id>).
-export const TASK_MENTION = /\[@((?:\\.|[^\]\\\r\n])*)\]\(((?:othrys|pnyx)-task:[\w%~.-]+)\)/
+export const TASK_MENTION = /\[@((?:\\.|[^\]\\\r\n])*)\]\((othrys-task:[\w%~.-]+)\)/
 
 export function taskMentions({ text }: { text: string }): TaskMention[] {
   return [
