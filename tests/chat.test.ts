@@ -191,8 +191,9 @@ test(
       }
     }
     page.close()
-    expect(thread.conversation.entries.filter(entry => entry.role === 'assistant').map(entry => entry.text)).toContain('Suite passed.')
-    expect(loadTitan({ titanId: titan.id }).state.cards[TITAN_CARD]!.attention
+    const replies = thread.conversation.entries.filter(entry => entry.role === 'assistant')
+    expect(replies.map(entry => entry.text)).toContain('Suite passed.')
+    expect(loadTitan({ titanId: titan.id }).state.cards[TITAN_CARD]?.attention
       .some(item => item.kind === 'interrupted')).toBe(false)
   },
 )

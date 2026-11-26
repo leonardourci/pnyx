@@ -1375,6 +1375,7 @@ test.each([
         'region',
         { name: chat },
       )
+      const answeredBeforeSend = session.answered
       await page.locator('[data-titan-workspace][data-active=true]').getByRole(
         'textbox',
         {
@@ -1388,7 +1389,7 @@ test.each([
         what: 'the new input to reach the running turn',
         check: () => session.received.some(input => input.includes(text)),
       })
-      expect(session.answered).toBeLessThan(session.received.length)
+      expect(session.answered).toBe(answeredBeforeSend)
       await conversation.getByText(
         text,
         { exact: true },
