@@ -25,6 +25,7 @@ import { applyDecision } from '#app/decision.ts'
 import { titanAgentFolder } from '#app/home-migration.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { loadTitan } from '#app/store.ts'
+import { readEvents } from '#app/event-log.ts'
 import type { TitanState } from '#app/model.ts'
 import type { Writer } from '#app/writer.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
@@ -187,7 +188,7 @@ export function createTitanTurns({
   }
 
   let outcomesPresented = 0
-  const contextPresented = new Map<string, number>()
+  const contextPresented = new Set<string>()
 
   const readContextNote = ({
     note,
@@ -211,10 +212,7 @@ export function createTitanTurns({
       }
     }
 
-    contextPresented.set(
-      note.id,
-      note.seq,
-    )
+    contextPresented.add(note.id)
   }
 
   const helperBatchesPresented = new Set<string>()
@@ -1020,7 +1018,16 @@ export function createTitanTurns({
         }
       }
 
-      if (contextPresented.size && outcome?.status === 'completed') {
+      const delivered = contextPresented.size > 0 && outcome?.status === 'completed'
+
+      if (delivered || handledWake) {
+        // Only saved changes have a place after a restart, so the wake is anchored on the last one it covers.
+        const through = handledWake ? readEvents({
+          titanId,
+          before: readThrough() + 1,
+          descending: true,
+          limit: 1,
+        })[0]?.seq ?? 0 : 0
         applyDecision({
           writer,
           decision: titanEvent({
@@ -1033,12 +1040,15 @@ export function createTitanTurns({
             change: {
               type: 'titan.context-delivered',
               data: {
-                through: Math.max(...contextPresented.values()),
-                ids: [...contextPresented.keys()],
+                through,
+                ids: delivered ? [...contextPresented] : [],
               },
             },
           }),
         })
+      }
+
+      if (delivered) {
         contextPresented.clear()
       }
 

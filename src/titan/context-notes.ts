@@ -51,9 +51,11 @@ export function applyContextNotes({
 }): void {
   if (event.type === 'titan.context-delivered') {
     const delivered = event.data.ids
-    state.contextNotes = (state.contextNotes ?? []).filter(note => delivered
-      ? !delivered.includes(note.id)
-      : note.seq > event.data.through)
+    state.contextNotes = (state.contextNotes ?? []).filter(note => !delivered.includes(note.id))
+    state.titanHandledSeq = Math.max(
+      state.titanHandledSeq ?? 0,
+      event.data.through,
+    )
 
     return
   }

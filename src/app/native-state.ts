@@ -571,6 +571,7 @@ const SEQUENCE_FIELDS = new Set([
   'finishedThrough',
   'steeringGeneration',
   'stateSeq',
+  'titanHandledSeq',
 ])
 const GENERATION_PARENTS = new Set([
   'claim',

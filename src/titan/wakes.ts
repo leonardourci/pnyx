@@ -341,10 +341,13 @@ export function wakeCursor({
   state: TitanState
   fallback: number
 }): number {
-  const handled = wakesThrough({
-    state,
-    pattern: WAKE_HANDLED,
-  })
+  const handled = Math.max(
+    wakesThrough({
+      state,
+      pattern: WAKE_HANDLED,
+    }),
+    state.titanHandledSeq ?? 0,
+  )
 
   if (handled > 0) {
     return handled

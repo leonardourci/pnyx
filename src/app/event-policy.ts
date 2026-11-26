@@ -9,7 +9,6 @@ export function durableEvent({ event }: { event: TitanEvent }): boolean {
     case 'titan.received':
     case 'titan.delivered':
     case 'titan.agent-used':
-    case 'titan.context-delivered':
     case 'titan.helper-started':
     case 'titan.helper-finished':
     case 'titan.helper-acknowledged':
