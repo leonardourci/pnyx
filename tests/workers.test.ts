@@ -759,14 +759,25 @@ test(
     })).toBe(1)
     expect(worker.uuids).toContain(REPLY_ID)
 
-    const { thread } = await titan.owner({
-      args: [
-        'task',
-        'chat',
-        'export',
-      ],
+    const shown = await until({
+      what: 'the reply to show as delivered once its read receipt is saved',
+      check: async () => {
+        const { thread } = await titan.owner({
+          args: [
+            'task',
+            'chat',
+            'export',
+          ],
+        })
+        const entries = (thread.entries as {
+          role: string
+          receipt?: string
+        }[]).filter(entry => entry.role === 'You' || entry.role === 'user')
+
+        return entries.every(entry => entry.receipt === 'delivered') && entries
+      },
     })
-    expect((thread.entries as { role: string }[]).filter(entry => entry.role === 'You' || entry.role === 'user')).toEqual([
+    expect(shown).toEqual([
       expect.objectContaining({
         role: 'You',
         text: 'Use semicolons as separators',
@@ -1948,7 +1959,7 @@ test(
       && record.event.data.message.id === instruction.id).event.data.message
     const acknowledgements = () => records().filter(record => record.event?.type === 'task.steering.handled'
       && record.event.data.message === instruction.id)
-    expect(acknowledgements()).toHaveLength(0)
+    expect(acknowledgements()).toHaveLength(1)
     const args = [
       'task',
       'ack',
@@ -1975,7 +1986,7 @@ test(
       acknowledged: 'read',
     })
     const saved = acknowledgements()
-    expect(saved).toHaveLength(1)
+    expect(saved).toHaveLength(2)
     await othrys.restart()
     const retry = await runOthrys({
       args,
@@ -1986,6 +1997,62 @@ test(
       retry.stderr,
     ).toBe(0)
     expect(acknowledgements()).toEqual(saved)
+  },
+)
+
+test(
+  'an instruction the harness took stays read after a restart that can no longer find it in the transcript',
+  async () => {
+    const titan = await othrys.titan()
+    const {
+      folder,
+    } = await titan.startTask({ key: 'reworded-read' })
+    const task = await titan.task({ key: 'reworded-read' })
+    await titan.owner({
+      args: [
+        'reply',
+        task.id,
+        '--text',
+        'Rename the export column',
+      ],
+    })
+    const read = async () => (await titan.owner({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        task.id,
+        '--all',
+      ],
+    })).messages.some((message: {
+      text: string
+      ack?: { outcome: string }
+    }) => message.text === 'Rename the export column' && message.ack?.outcome === 'read')
+    await until({
+      what: 'the harness to take the instruction',
+      check: read,
+    })
+    const transcript = loadTitan({ titanId: titan.id }).state.cards[task.id]!.agent!.transcriptPath!
+
+    // A later Othrys words the instruction header differently, so the transcript no longer proves the read.
+    await othrys.restart({
+      whileStopped: () => writeFileSync(
+        transcript,
+        readFileSync(
+          transcript,
+          'utf8',
+        ).replaceAll(
+          'inbox IDs',
+          'earlier inbox IDs',
+        ),
+      ),
+    })
+
+    expect(await read()).toBe(true)
+    expect(times({
+      sessions: othrys.claude.sessions.filter(session => session.cwd === folder),
+      text: 'Rename the export column',
+    })).toBe(1)
   },
 )
 
@@ -2014,13 +2081,24 @@ test(
       what: 'the reply to reach Codex',
       check: () => worker.answered === 2,
     })
-    expect(((await titan.owner({
-      args: [
-        'task',
-        'chat',
-        'codex',
-      ],
-    })).thread.entries as { role: string }[]).filter(entry => entry.role === 'You' || entry.role === 'user')).toEqual([
+    const sent = await until({
+      what: 'the reply to show as delivered once its read receipt is saved',
+      check: async () => {
+        const entries = ((await titan.owner({
+          args: [
+            'task',
+            'chat',
+            'codex',
+          ],
+        })).thread.entries as {
+          role: string
+          receipt?: string
+        }[]).filter(entry => entry.role === 'You' || entry.role === 'user')
+
+        return entries.every(entry => entry.receipt === 'delivered') && entries
+      },
+    })
+    expect(sent).toEqual([
       expect.objectContaining({
         text: 'Add a test for empty input',
         receipt: 'delivered',
