@@ -109,7 +109,6 @@ export function folderSuggestions({
     folders.push(...listing.folders)
   }
 
-  // A typed path also offers the files in its folder, as file references.
   const files: MentionItem[] = typedPath ? (listing?.files ?? []).map(file => ({
     key: `file:${file.path}`,
     kind: 'file',

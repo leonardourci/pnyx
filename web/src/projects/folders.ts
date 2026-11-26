@@ -10,7 +10,6 @@ export function useFolders({
   path: string
   repository: string
   connected: boolean
-  // Also lists the files in the folder, and every entry rather than the first few.
   files?: boolean
 }) {
   const [

@@ -12,7 +12,6 @@ interface Entry {
   watcher?: FSWatcher
 }
 
-// Git's tracked and untracked files, without the ignored ones, as paths inside the project.
 async function listFiles({ root }: { root: string }): Promise<string[]> {
   try {
     const { stdout } = await run(

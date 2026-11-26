@@ -21,7 +21,6 @@ import { slashRows,type SlashItem } from './slash-menu.tsx'
 export interface ComposerSources {
   projects: TitanProject[]
   mentionRows: PreparedRow<MentionItem>[]
-  // The attached projects' files, offered after the other @ rows.
   fileRows: PreparedRow<MentionItem>[]
   slashRows: PreparedRow<SlashItem>[]
   taskReferences: Record<string, TaskReferenceData>
