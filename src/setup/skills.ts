@@ -14,23 +14,6 @@ import {
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
-const LEGACY_SKILLS = [
-  'pnyx-hydra',
-  'pnyx-hydra-workers',
-  'pnyx-hydra-columns',
-  'pnyx-hydra-firstmate',
-  'pnyx-firstmate-as-hydra',
-  'pnyx-setup',
-  'pnyx-worker',
-  'pnyx-inscribe',
-  'pnyx-orchestrate',
-  'pnyx-manage-workers',
-  'pnyx-arrange-columns',
-  'pnyx-set-up',
-  'pnyx-cli',
-  'pnyx-report-progress',
-  'pnyx',
-] as const
 const SOURCE = join(
   import.meta.dirname,
   '..',
@@ -43,41 +26,6 @@ export const skillSource = ({ name }: { name: string }) => join(
   name,
   'SKILL.md',
 )
-
-function removeLegacyTitanSkills({
-  folder,
-}: {
-  folder: string
-}) {
-  for (const name of LEGACY_SKILLS.filter(name => name !== 'pnyx-worker' && name !== 'pnyx')) {
-    const path = join(
-      folder,
-      '.agents',
-      'skills',
-      name,
-    )
-
-    if (!lstatSync(
-      path,
-      { throwIfNoEntry: false },
-    )?.isDirectory()) {
-      continue
-    }
-
-    const files = readdirSync(path)
-
-    if (files.length === 1 && files[0] === 'SKILL.md'
-      && lstatSync(join(
-        path,
-        'SKILL.md',
-      )).isFile()) {
-      rmSync(
-        path,
-        { recursive: true },
-      )
-    }
-  }
-}
 
 function syncReferences({
   shippedFolder,
@@ -196,8 +144,6 @@ export function prepareHelperFolder({
     { recursive: true },
   )
 
-  removeLegacyTitanSkills({ folder })
-
   for (const name of TITAN_SKILLS) {
     rmSync(
       join(
@@ -241,7 +187,6 @@ export function prepareTitanFolder({
     folder,
     { recursive: true },
   )
-  removeLegacyTitanSkills({ folder })
   const installed = copySkills({
     folder,
     names: TITAN_SKILLS,
@@ -437,67 +382,6 @@ export function setupSkills(
     }
   }
 
-  const folders = [...new Set(links.map(link => dirname(link.path)))]
-  const legacy = folders.flatMap(folder => LEGACY_SKILLS.flatMap(name => {
-    const path = join(
-      folder,
-      name,
-    )
-
-    if (!lstatSync(
-      path,
-      { throwIfNoEntry: false },
-    )?.isSymbolicLink()) {
-      return []
-    }
-
-    const source = resolve(
-      folder,
-      readlinkSync(path),
-    )
-
-    if (basename(source) !== name || basename(dirname(source)) !== 'skills') {
-      return []
-    }
-
-    try {
-      const pkg = JSON.parse(readFileSync(
-        join(
-          dirname(source),
-          '..',
-          'package.json',
-        ),
-        'utf8',
-      ))
-
-      if (![
-        'pnyx',
-        'pnyx-axi',
-        'othrys',
-        'othrys-axi',
-      ].includes(pkg.name)) {
-        return []
-      }
-    } catch {
-      return []
-    }
-
-    return [
-      {
-        name,
-        path,
-        source,
-        change: 'removed',
-      },
-    ]
-  }))
-
-  if (!preview) {
-    for (const link of legacy) {
-      unlinkSync(link.path)
-    }
-  }
-
   const skills = links.map(link => {
     const keep = link.status === 'ready' || link.status === 'conflict'
     const change = remove ? (link.owned ? 'removed' : 'unchanged') : keep ? 'unchanged' : 'installed'
@@ -525,10 +409,7 @@ export function setupSkills(
   })
 
   return {
-    skills: [
-      ...skills,
-      ...legacy,
-    ],
+    skills,
     ...(preview ? { preview: 'nothing written; rerun without --preview to apply' } : {}),
     help: [remove ? 'Run `othrys setup skills` to install them again' : `New sessions can load ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} in any project or copy`],
   }

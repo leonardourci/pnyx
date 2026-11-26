@@ -110,7 +110,7 @@ function quote({ value }: { value: string }): string {
 }
 
 function isOthrys({ handler }: { handler: Handler }): boolean {
-  return typeof handler.command === 'string' && /\/(?:othrys|pnyx)-hook\.sh(?:['"\s]|$)/.test(handler.command)
+  return typeof handler.command === 'string' && /\/othrys-hook\.sh(?:['"\s]|$)/.test(handler.command)
 }
 
 function readConfig({ path }: { path: string }): Config {

@@ -113,47 +113,6 @@ export function serviceFile({
     `${label}${extension}`,
   )
 
-  if (!existsSync(path) && existsSync(agents)) {
-    const definition = SERVICE_DEFINITIONS[platform === 'linux' ? 'systemd' : 'launchd']
-    const legacy = readdirSync(agents).sort()
-      .find(name => {
-        if (!name.endsWith(extension) || !/^local\.pnyx\.server\.[0-9a-f]{16}\.(plist|service)$/.test(name)) {
-          return false
-        }
-
-        const stored = definition.read({
-          text: readFileSync(
-            join(
-              agents,
-              name,
-            ),
-            'utf8',
-          ),
-        })
-
-        return canonical({
-          path: serviceHome({
-            name,
-            storedHome: stored.storedHome,
-            userHome,
-          }),
-        }) === canonical({ path: othrysHome() })
-      })
-
-    if (legacy) {
-      return {
-        label: basename(
-          legacy,
-          extension,
-        ),
-        path: join(
-          agents,
-          legacy,
-        ),
-      }
-    }
-  }
-
   return {
     label,
     path,
@@ -301,9 +260,9 @@ const systemdSetting = ({
 
 const SERVICE_DEFINITIONS = {
   launchd: {
-    pattern: /^local\.(?:othrys|pnyx)\.(server|board)\.[0-9a-f]{16}\.plist$/,
+    pattern: /^local\.othrys\.server\.[0-9a-f]{16}\.plist$/,
     read: ({ text }: { text: string }) => {
-      const storedHome = /<key>(?:OTHRYS_HOME|PNYX_HOME)<\/key>\s*<string>([^<]*)<\/string>/.exec(text)?.[1]
+      const storedHome = /<key>OTHRYS_HOME<\/key>\s*<string>([^<]*)<\/string>/.exec(text)?.[1]
       const argumentsXml = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(text)?.[1] ?? ''
 
       return {
@@ -313,12 +272,12 @@ const SERVICE_DEFINITIONS = {
     },
   },
   systemd: {
-    pattern: /^local\.(?:othrys|pnyx)\.server\.[0-9a-f]{16}\.service$/,
+    pattern: /^local\.othrys\.server\.[0-9a-f]{16}\.service$/,
     read: ({ text }: { text: string }) => ({
       storedHome: systemdSetting({
         text,
         key: 'Environment',
-      }).find(variable => /^(?:OTHRYS_HOME|PNYX_HOME)=/.test(variable))
+      }).find(variable => variable.startsWith('OTHRYS_HOME='))
         ?.split('=')
         .slice(1)
         .join('='),
@@ -333,16 +292,14 @@ const SERVICE_DEFINITIONS = {
 
 // A service file without a stored home served the default home of the build that wrote it.
 const serviceHome = ({
-  name,
   storedHome,
   userHome,
 }: {
-  name: string
   storedHome?: string
   userHome: string
 }) => storedHome ?? join(
   userHome,
-  name.startsWith('local.pnyx.') ? '.pnyx' : '.othrys',
+  '.othrys',
 )
 
 function requireAvailableServicePort({
@@ -376,13 +333,12 @@ function requireAvailableServicePort({
       ),
     })
     const otherHome = serviceHome({
-      name,
       storedHome,
       userHome: homedir(),
     })
 
     if (canonical({ path: otherHome }) === canonical({ path: home })) {
-      if (name !== basename(path) && name.includes('.server.')) {
+      if (name !== basename(path)) {
         throw new TitanError({
           code: 'CONFLICT',
           message: `Multiple login services use this home: ${name} and ${basename(path)}`,
@@ -413,8 +369,6 @@ type ServiceResult = {
   log?: string
   plist?: string
   unit?: string
-  replaces?: string[]
-  replaced?: string[]
   help?: string[]
 }
 
@@ -699,40 +653,6 @@ export function setupService({
 
   const domain = `gui/${process.getuid!()}`
   const homeEntry = `<key>OTHRYS_HOME</key><string>${xml({ text: home })}</string>`
-  // Services from before one server ran every Titan each ran one Titan of this home; they are replaced.
-  const replaced = (() => {
-    try {
-      return readdirSync(agents).filter(name => {
-        if (!/^local\.(?:othrys|pnyx)\.board\.[0-9a-f]{16}\.plist$/.test(name)) {
-          return false
-        }
-
-        const stored = SERVICE_DEFINITIONS.launchd.read({
-          text: readFileSync(
-            join(
-              agents,
-              name,
-            ),
-            'utf8',
-          ),
-        })
-
-        return canonical({
-          path: serviceHome({
-            name,
-            storedHome: stored.storedHome,
-            userHome,
-          }),
-        }) === canonical({ path: home })
-      })
-        .map(name => join(
-          agents,
-          name,
-        ))
-    } catch {
-      return []
-    }
-  })()
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -752,7 +672,6 @@ export function setupService({
       service: remove ? 'would remove' : 'would install',
       path,
       plist: remove ? undefined : plist,
-      replaces: replaced,
     }
   }
 
@@ -811,19 +730,6 @@ export function setupService({
     }
   }
 
-  for (const old of replaced) {
-    stopJob({
-      label: basename(
-        old,
-        '.plist',
-      ),
-    })
-    rmSync(
-      old,
-      { force: true },
-    )
-  }
-
   stopJob({ label })
 
   if (remove) {
@@ -835,7 +741,6 @@ export function setupService({
     return {
       service: 'removed',
       path,
-      replaced,
     }
   }
 
@@ -885,7 +790,6 @@ export function setupService({
     service: 'installed',
     path,
     log,
-    replaced,
     help: INSTALLED_HELP,
   }
 }

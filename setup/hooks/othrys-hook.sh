@@ -14,12 +14,11 @@ case $event in '' | *[!A-Za-z]*) exit 0 ;; esac
 
 home=${0%/*}
 home=${home%/hooks}
-selected_home=${OTHRYS_HOME:-${PNYX_HOME:-}}
-case $selected_home in /*) home=$selected_home ;; esac
-hydra_name=${OTHRYS_TITAN:-${PNYX_HYDRA:-default}}
+case ${OTHRYS_HOME:-} in /*) home=$OTHRYS_HOME ;; esac
+hydra_name=${OTHRYS_TITAN:-default}
 case $hydra_name in [!A-Za-z0-9]* | *[!A-Za-z0-9._-]*) exit 0 ;; esac
 task=
-worker_task=${OTHRYS_TASK:-${PNYX_TASK:-}}
+worker_task=${OTHRYS_TASK:-}
 case $worker_task in '' | *[!A-Za-z0-9._:\$-]*) ;; *) task="\"task\":\"$worker_task\"," ;; esac
 
 terminal=
@@ -63,11 +62,7 @@ $hook_clock
 EOF
 id="hook-$hook_seconds$hook_milliseconds-$$"
 hydra_dir=$home/hydras/$hydra_name
-# A Titan is a folder in hydras/, or in boards/ until an older one moves. An unknown id is dropped
-# instead of starting a new Titan; only the default one is made on first use.
-if [ ! -d "$hydra_dir" ] && [ -d "$home/boards/$hydra_name" ]; then
-  hydra_dir=$home/boards/$hydra_name
-fi
+# An unknown Titan id is dropped instead of starting a new Titan; only the default one is made on first use.
 [ -d "$hydra_dir" ] || [ "$hydra_name" = default ] || exit 0
 spool=$hydra_dir/spool
 [ -d "$spool" ] || mkdir -p "$spool" || exit 0
