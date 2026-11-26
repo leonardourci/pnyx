@@ -52,12 +52,12 @@ export function defaultActor(): string {
 
 export function requirePermissionApprover({
   actor,
-  hydraId,
+  titanId,
   card,
   session,
 }: {
   actor: string
-  hydraId: string
+  titanId: string
   card: Pick<Card, 'id' | 'key'>
   session?: string
 }): void {
@@ -66,7 +66,7 @@ export function requirePermissionApprover({
   const env = requestEnv()
   const hydraIdentity = actor === 'hydra' || env.OTHRYS_ACTOR === 'hydra' || env.OTHRYS_TASK === TITAN_CARD
   const ownTitan = card.id === TITAN_CARD && hydraIdentity
-    && (env.OTHRYS_TITAN === undefined || env.OTHRYS_TITAN === hydraId)
+    && (env.OTHRYS_TITAN === undefined || env.OTHRYS_TITAN === titanId)
   const ownSession = session !== undefined && [
     actor,
     env.OTHRYS_ACTOR,

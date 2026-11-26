@@ -25,7 +25,7 @@ import type { Writer } from '#app/writer.ts'
 
 // A message reaching a hosted agent: persisted steering or a direct input, and the direct reply settled on the provider's receipt.
 export function createHostedDelivery({
-  hydraId,
+  titanId,
   fenced,
   live,
   at,
@@ -40,7 +40,7 @@ export function createHostedDelivery({
   ringSteering,
   unnotifiedSteering,
 }: {
-  hydraId: string
+  titanId: string
   fenced(): boolean
   live: Map<string, Live>
   at(): string
@@ -215,7 +215,7 @@ export function createHostedDelivery({
     if (ownerActor({ actor })) {
       await denyForMessage({
         task: findCard({
-          state: loadTitan({ hydraId }).state,
+          state: loadTitan({ titanId }).state,
           ref,
         }).id,
         actor,
@@ -234,18 +234,18 @@ export function createHostedDelivery({
           })
 
           requireHandoffAvailable({
-            hydraId,
+            titanId,
             task: card.id,
           })
 
           const settling = copySettling({
-            hydraId,
+            titanId,
             task: card.id,
           })
 
           if (direct) {
             requireCopyAvailable({
-              hydraId,
+              titanId,
               task: card.id,
             })
           }
@@ -336,7 +336,7 @@ export function createHostedDelivery({
     }
 
     if (copySettling({
-      hydraId,
+      titanId,
       task: card.id,
     })) {
       return {

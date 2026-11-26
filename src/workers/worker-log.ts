@@ -28,15 +28,15 @@ const CODES = new Set<WorkerCode>([
 ])
 
 export function workerTaskDir({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task: string
 }): string {
-  const card = loadTitan({ hydraId }).state.cards[task]
+  const card = loadTitan({ titanId }).state.cards[task]
   const dir = reportDirectory({
-    hydraFolder: hydraDir({ hydraId }),
+    hydraFolder: hydraDir({ titanId }),
     task,
     recorded: card?.workerLogDir,
   })
@@ -320,10 +320,10 @@ export function foldWorkerLog({
 }
 
 export function followWorkerLogs({
-  hydraId,
+  titanId,
   changed,
 }: {
-  hydraId: string
+  titanId: string
   changed(): void
 }) {
   const watches = new Map<string, ReturnType<typeof watchPath>>()
@@ -385,7 +385,7 @@ export function followWorkerLogs({
 
         try {
           const more = await withWriter({
-            hydraId,
+            titanId,
             fn: ({ writer }) => foldWorkerLog({
               writer,
               task: card.id,
@@ -403,7 +403,7 @@ export function followWorkerLogs({
 
       try {
         const dir = workerTaskDir({
-          hydraId,
+          titanId,
           task: card.id,
         })
         const watcher = watchPath({
@@ -423,7 +423,7 @@ export function followWorkerLogs({
         log({
           level: 'warn',
           operation: 'read worker log',
-          hydraId,
+          titanId,
           taskId: card.id,
           error,
         })

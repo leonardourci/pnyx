@@ -20,12 +20,12 @@ const trackers = new Set<() => void>()
 
 // What each hosted session and login reported about its usage, and the usage views built from it.
 export function createUsageTracker({
-  hydraId,
+  titanId,
   streamed,
   usageChanged,
   usages = new Map<string, Omit<HostedUsage, 'type'>>(),
 }: {
-  hydraId: string
+  titanId: string
   streamed({ session }: { session: string }): void
   // Rebuilds and pushes the usage of every session in the Titan, once for all of them.
   usageChanged(): void
@@ -97,7 +97,7 @@ export function createUsageTracker({
     spend = {},
     readings = {},
   }) => {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const effective = effectiveDispatch()
 
     return Object.fromEntries(Object.values(state.cards).flatMap(card => {
@@ -136,7 +136,7 @@ export function createUsageTracker({
     spend = {},
     readings = {},
   } = {}) => {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const card = ref ? findCard({
       state,
       ref,
@@ -166,7 +166,7 @@ export function createUsageTracker({
     card: ref,
     force = false,
   }) => {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const card = ref ? findCard({
       state,
       ref,

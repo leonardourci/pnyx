@@ -33,7 +33,7 @@ import { base } from '#app/command-meta.ts'
 
 // Starting a worker in Othrys, and continuing an outside Claude Code or Codex session in Othrys.
 export function createWorkerStarts({
-  hydraId,
+  titanId,
   live,
   closing,
   at,
@@ -45,7 +45,7 @@ export function createWorkerStarts({
   open,
   folderOf,
 }: {
-  hydraId: string
+  titanId: string
   live: Map<string, Live>
   closing(): boolean
   at(): string
@@ -147,12 +147,12 @@ export function createWorkerStarts({
       ref,
     })
     requireHandoffAvailable({
-      hydraId,
+      titanId,
       task: target.id,
     })
 
     requireCopyAvailable({
-      hydraId,
+      titanId,
       task: target.id,
     })
 
@@ -308,11 +308,11 @@ export function createWorkerStarts({
           steeringWorker: `${id}:attach`,
         }),
         signal: taskController({
-          hydraId,
+          titanId,
           task: target.id,
         }).signal,
         spawned: taskChildren({
-          hydraId,
+          titanId,
           task: target.id,
         }).spawned,
       })
@@ -511,7 +511,7 @@ export function createWorkerStarts({
                   ...meta,
                   id: transaction.id,
                 },
-                cardId: '$board',
+                cardId: '$all',
               }),
               type: 'apply.recorded',
               data: { digest: transaction.digest },
@@ -557,7 +557,7 @@ export function createWorkerStarts({
       }
 
       const claimed = transaction ? await withWriter({
-        hydraId,
+        titanId,
         transaction,
         fn: claim,
       }) as ReturnType<typeof claim> : await write({ fn: claim })
@@ -586,7 +586,7 @@ export function createWorkerStarts({
         }
       }
 
-      const started = loadTitan({ hydraId }).state.cards[claimed.task] as Card & { agent: AgentRef }
+      const started = loadTitan({ titanId }).state.cards[claimed.task] as Card & { agent: AgentRef }
       const entry = open({
         card: started,
         session,

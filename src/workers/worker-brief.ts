@@ -21,18 +21,18 @@ const TITAN_SKILL = join(
 )
 
 function workerPrompt({
-  hydraId,
+  titanId,
   id,
   title,
 }: {
-  hydraId: string
+  titanId: string
   id: string
   title: string
 }): string {
   return [
-    `You are the Othrys worker for task ${id} "${title}" on Titan ${hydraId}. Follow the ${REPORT_PROGRESS_SKILL} skill when it is installed.`,
+    `You are the Othrys worker for task ${id} "${title}" on Titan ${titanId}. Follow the ${REPORT_PROGRESS_SKILL} skill when it is installed.`,
     `Append one line to "${workerTaskDir({
-      hydraId,
+      titanId,
       task: id,
     })}/worker.log" using needs-you: <question>, blocked: <why>, done: <summary>, link: <url> <label>, or note: <progress>. Othrys observes running and idle automatically.`,
   ].join(' ')
@@ -40,14 +40,14 @@ function workerPrompt({
 
 // Every worker Othrys starts opens with the same scope and authority, then where its job stops.
 function workerHeader({
-  hydraId,
+  titanId,
   id,
   stops = [],
   ownerNotes = '',
   hydraNotes = '',
   projectNotes = '',
 }: {
-  hydraId: string
+  titanId: string
   id: string
   stops?: string[]
   ownerNotes?: string
@@ -65,10 +65,10 @@ function workerHeader({
   ] : []
 
   return [
-    `<othrys-worker task="${id}" hydra="${hydraId}">`,
-    `You are a worker that Titan supervises on Othrys Titan ${hydraId}, for task ${id} only. Report through this task’s worker.log.`,
+    `<othrys-worker task="${id}" hydra="${titanId}">`,
+    `You are a worker that Titan supervises on Othrys Titan ${titanId}, for task ${id} only. Report through this task’s worker.log.`,
     recordContext({
-      hydraId,
+      titanId,
       task: id,
     }),
     'When an ID-only steering notice arrives, read the full instruction in these files, then use its supplied othrys task ack action for each exact ID and assignment. Acknowledge only what you read; keep the same IDs on retries. A read receipt never means completed work or permission approval.',
@@ -103,12 +103,12 @@ function replacingNote({
 }
 
 export async function taskPrompt({
-  hydraId,
+  titanId,
   card,
   prompt,
   replacing,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
   prompt?: string
   replacing?: string
@@ -117,26 +117,26 @@ export async function taskPrompt({
     identity: {
       ...requestEnv(),
       OTHRYS_ACTOR: `worker:${card.id}`,
-      OTHRYS_TITAN: hydraId,
+      OTHRYS_TITAN: titanId,
       OTHRYS_TASK: card.id,
     },
     cwd: requestCwd(),
     run: async () => {
       const instructions = prompt ?? workerPrompt({
-        hydraId,
+        titanId,
         id: card.id,
         title: card.title,
       })
       const ownerNotes = (await ownerMemory({})).workers?.text
-      const state = loadTitan({ hydraId }).state
+      const state = loadTitan({ titanId }).state
       const project = await projectWorkerContext({
-        hydraId,
+        titanId,
         state,
         project: card.project,
       })
 
       const header = workerHeader({
-        hydraId,
+        titanId,
         id: card.id,
         ownerNotes,
         hydraNotes: state.hydraMemory?.workers?.text,
@@ -167,6 +167,6 @@ export async function taskPrompt({
   })
 }
 
-export const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
-  `You are Titan, the orchestrator of the Othrys Titan "${hydraId}". Read ${TITAN_SKILL} and follow it; the skills it names are beside it in ${dirname(dirname(TITAN_SKILL))}. `
-  + recordContext({ hydraId })
+export const hydraPrompt = ({ titanId }: { titanId: string }) =>
+  `You are Titan, the orchestrator of the Othrys Titan "${titanId}". Read ${TITAN_SKILL} and follow it; the skills it names are beside it in ${dirname(dirname(TITAN_SKILL))}. `
+  + recordContext({ titanId })

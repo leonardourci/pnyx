@@ -46,17 +46,17 @@ function contextSize({ session }: { session: AgentSession }): number {
 }
 
 function handoffBlocked({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task: string
 }): boolean {
   return handoffPending({
-    hydraId,
+    titanId,
     task,
   }) || copySettling({
-    hydraId,
+    titanId,
     task,
   })
 }
@@ -76,18 +76,18 @@ function workerIdle({
 }
 
 async function releaseQueue({
-  hydraId,
+  titanId,
   session,
   reason,
   task,
 }: {
-  hydraId: string
+  titanId: string
   session: string
   reason: string
   task: AgentSession['taskId'] | undefined
 }) {
   await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       const current = writer.state.sessions?.[session]?.taskId
 
@@ -164,17 +164,17 @@ function unsafeWorker({
 
 // The checkout each other live worker's folder belongs to, read before the write.
 async function workerRoots({
-  hydraId,
+  titanId,
   session,
 }: {
-  hydraId: string
+  titanId: string
   session: AgentSession
 }): Promise<Map<string, string | undefined>> {
   const roots = new Map<string, string | undefined>()
 
   for (const other of otherWorkers({
-    hydraId,
-    state: loadTitan({ hydraId }).state,
+    titanId,
+    state: loadTitan({ titanId }).state,
     session,
   })) {
     const cwd = other.agent.cwd
@@ -191,20 +191,20 @@ async function workerRoots({
 }
 
 function assertUnshared({
-  hydraId,
+  titanId,
   state,
   session,
   root,
   roots,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   session: AgentSession
   root: string
   roots: ReadonlyMap<string, string | undefined>
 }) {
   if (otherWorkers({
-    hydraId,
+    titanId,
     state,
     session,
   }).some(other => {
@@ -217,13 +217,13 @@ function assertUnshared({
 }
 
 async function landedBranch({
-  hydraId,
+  titanId,
   card,
   session,
   readLanding,
 }: {
   readLanding: typeof pullRequestLanding
-  hydraId: string
+  titanId: string
   card: Card
   session: AgentSession
 }) {
@@ -253,12 +253,12 @@ async function landedBranch({
   }
 
   assertUnshared({
-    hydraId,
-    state: loadTitan({ hydraId }).state,
+    titanId,
+    state: loadTitan({ titanId }).state,
     session,
     root,
     roots: await workerRoots({
-      hydraId,
+      titanId,
       session,
     }),
   })
@@ -334,12 +334,12 @@ async function landedBranch({
 }
 
 async function refreshLinks({
-  hydraId,
+  titanId,
   card,
   readPR,
   readLanding,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
   readPR: typeof pullRequestState
   readLanding: typeof pullRequestLanding
@@ -356,7 +356,7 @@ async function refreshLinks({
 
     if (state && state !== link.state) {
       await withWriter({
-        hydraId,
+        titanId,
         fn: ({ writer }) => {
           const current = writer.state.cards[card.id]?.links.find(l => l.url === link.url)
 
@@ -395,7 +395,7 @@ async function refreshLinks({
 
       if (landing) {
         await refreshConfirmedProject({
-          hydraId,
+          titanId,
           cardId: card.id,
           url: link.url,
           proof: {
@@ -410,14 +410,14 @@ async function refreshLinks({
 }
 
 async function deliverHandoffs({
-  hydraId,
+  titanId,
   active,
 }: {
-  hydraId: string
+  titanId: string
   active(): boolean
 }) {
   const events = scanEvents({
-    hydraId,
+    titanId,
     types: ['task.session'],
   })
 
@@ -426,7 +426,7 @@ async function deliverHandoffs({
       continue
     }
 
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const card = state.cards[event.cardId]
     const id = `brief:${event.id}`
 
@@ -437,14 +437,14 @@ async function deliverHandoffs({
       card,
     }).ready || card.sessionIds?.[0] !== event.data.session
       || receipt && receipt.state !== 'failed' || handoffPending({
-      hydraId,
+      titanId,
       task: card.id,
     })) {
       continue
     }
 
     await sendReply({
-      hydraId,
+      titanId,
       request: {
         card: card.id,
         expectedSession: event.data.session,
@@ -455,10 +455,10 @@ async function deliverHandoffs({
     })
   }
 
-  const current = loadTitan({ hydraId }).state
+  const current = loadTitan({ titanId }).state
 
   return Boolean(scanEvents({
-    hydraId,
+    titanId,
     types: ['task.session'],
   }).find(event => {
     if (event.type !== 'task.session' || !event.data.handoff || event.data.brief === undefined) {
@@ -473,7 +473,7 @@ async function deliverHandoffs({
 }
 
 export async function advanceQueues({
-  hydraId,
+  titanId,
   now = Date.now(),
   readPR = pullRequestState,
   readLanding = pullRequestLanding,
@@ -481,7 +481,7 @@ export async function advanceQueues({
   active = () => true,
   state: initial,
 }: {
-  hydraId: string
+  titanId: string
   now?: number
   readPR?({ url }: { url: string }): Promise<LinkState | undefined>
   readLanding?: typeof pullRequestLanding
@@ -503,7 +503,7 @@ export async function advanceQueues({
       return false
     }
 
-    let state = loadTitan({ hydraId }).state
+    let state = loadTitan({ titanId }).state
     const session = state.sessions?.[id]
     const reason = unsafeWorker({
       state,
@@ -514,7 +514,7 @@ export async function advanceQueues({
 
     if (reason) {
       await releaseQueue({
-        hydraId,
+        titanId,
         session: id,
         task: session?.taskId,
         reason,
@@ -537,12 +537,12 @@ export async function advanceQueues({
 
     try {
       await refreshLinks({
-        hydraId,
+        titanId,
         card: current,
         readPR,
         readLanding,
       })
-      state = loadTitan({ hydraId }).state
+      state = loadTitan({ titanId }).state
 
       const attached = state.sessions?.[id]
 
@@ -572,11 +572,11 @@ export async function advanceQueues({
       })[0]
 
       if (!next || handoffBlocked({
-        hydraId,
+        titanId,
         task: card.id,
       })
         || handoffBlocked({
-          hydraId,
+          titanId,
           task: next.id,
         }) || !taskReadiness({
         state,
@@ -598,7 +598,7 @@ export async function advanceQueues({
       const targetRevision = next.revision
       const prepared = await landedBranch({
         readLanding,
-        hydraId,
+        titanId,
         card,
         session: attached,
       })
@@ -615,12 +615,12 @@ export async function advanceQueues({
         }
 
         brief = await taskPrompt({
-          hydraId,
+          titanId,
           card: next,
           prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Append updates to this task's worker.log.`,
         })
 
-        const currentState = loadTitan({ hydraId }).state
+        const currentState = loadTitan({ titanId }).state
         const currentSource = currentState.cards[card.id]
         const currentTarget = workerQueue({
           state: currentState,
@@ -638,13 +638,13 @@ export async function advanceQueues({
         active,
         prepare,
         hydraName: branchTitanName({
-          hydraId,
+          titanId,
           state,
         }),
         task: next.id,
         title: next.title,
         reserved: recordedBranches({
-          hydraId,
+          titanId,
           state,
           project: prepared.project,
         }),
@@ -659,7 +659,7 @@ export async function advanceQueues({
       }
 
       const roots = await workerRoots({
-        hydraId,
+        titanId,
         session: attached,
       })
       const unchanged = await matchesCheckout({
@@ -674,8 +674,8 @@ export async function advanceQueues({
       }
 
       assertUnshared({
-        hydraId,
-        state: loadTitan({ hydraId }).state,
+        titanId,
+        state: loadTitan({ titanId }).state,
         session: attached,
         root: prepared.root,
         roots,
@@ -686,10 +686,10 @@ export async function advanceQueues({
       }
 
       if (handoffBlocked({
-        hydraId,
+        titanId,
         task: card.id,
       }) || handoffBlocked({
-        hydraId,
+        titanId,
         task: next.id,
       })) {
         continue
@@ -697,7 +697,7 @@ export async function advanceQueues({
 
       const eventId = randomUUID()
       const handoffFile = saveHandoff({
-        hydraId,
+        titanId,
         intent: {
           eventId,
           session: id,
@@ -736,7 +736,7 @@ export async function advanceQueues({
         }
 
         recorded = Boolean(await withWriter({
-          hydraId,
+          titanId,
           fn: ({ writer }) => {
             drainSpool({ writer })
             const source = writer.state.cards[card.id]
@@ -767,7 +767,7 @@ export async function advanceQueues({
             }
 
             assertUnshared({
-              hydraId,
+              titanId,
               state: writer.state,
               session: attached,
               root: prepared.root,
@@ -815,7 +815,7 @@ export async function advanceQueues({
         if (appendAttempted) {
           try {
             recorded = Boolean(readHandoffEvent({
-              hydraId,
+              titanId,
               eventId,
             }))
           } catch (outcomeError) {
@@ -834,7 +834,7 @@ export async function advanceQueues({
           log({
             level: 'warn',
             operation: 'confirm committed worker handoff',
-            hydraId,
+            titanId,
             taskId: next.id,
             error,
           })
@@ -844,12 +844,12 @@ export async function advanceQueues({
       if (!recorded) {
         try {
           const rollbackRoots = await workerRoots({
-            hydraId,
+            titanId,
             session: attached,
           })
           assertUnshared({
-            hydraId,
-            state: loadTitan({ hydraId }).state,
+            titanId,
+            state: loadTitan({ titanId }).state,
             session: attached,
             root: prepared.root,
             roots: rollbackRoots,
@@ -887,14 +887,14 @@ export async function advanceQueues({
       log({
         level: 'error',
         operation: 'worker handoff',
-        hydraId,
+        titanId,
         taskId: current.id,
         error,
       })
 
       if (active()) {
         await releaseQueue({
-          hydraId,
+          titanId,
           session: id,
           task: current.id,
           reason: errorText({ error }),
@@ -905,7 +905,7 @@ export async function advanceQueues({
 
   if (active()) {
     return deliverHandoffs({
-      hydraId,
+      titanId,
       active,
     })
   }

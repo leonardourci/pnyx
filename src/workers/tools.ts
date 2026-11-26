@@ -26,20 +26,20 @@ export function toolNames({ names }: { names: string[] }): string[] {
 }
 
 export async function recordTools({
-  hydraId,
+  titanId,
   task,
   grant = [],
   revoke = [],
   meta,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   grant?: string[]
   revoke?: string[]
   meta: Meta
 }) {
   return await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => writeTools({
       writer,
       task,
@@ -159,12 +159,12 @@ export function toolInstructions({
 export function toolEnvironment({
   env,
   tools,
-  hydraId,
+  titanId,
   task,
 }: {
   env: NodeJS.ProcessEnv
   tools: string[]
-  hydraId: string
+  titanId: string
   task?: string
 }): NodeJS.ProcessEnv {
   // A session with no task, as the routine helper, never has a browser.
@@ -174,7 +174,7 @@ export function toolEnvironment({
 
   return {
     ...env,
-    CHROME_DEVTOOLS_AXI_SESSION: `othrys-${hydraId}-${task === TITAN_CARD ? 'hydra' : task}`,
+    CHROME_DEVTOOLS_AXI_SESSION: `othrys-${titanId}-${task === TITAN_CARD ? 'hydra' : task}`,
     CHROME_DEVTOOLS_AXI_HEADED: '0',
     CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '0',
     CHROME_DEVTOOLS_AXI_BROWSER_URL: '',

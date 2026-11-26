@@ -14,7 +14,7 @@ export function applyDispatchProposal({
   state: TitanState
   event: TitanEvent
 }): boolean {
-  if (event.type === 'hydra.dispatch-proposed') {
+  if (event.type === 'titan.dispatch-proposed') {
     state.dispatchProposals = [
       ...(state.dispatchProposals ?? []).filter(p => p.token !== event.data.token),
       structuredClone(event.data),
@@ -23,7 +23,7 @@ export function applyDispatchProposal({
     return true
   }
 
-  if (event.type === 'hydra.dispatch-progress') {
+  if (event.type === 'titan.dispatch-progress') {
     const proposal = state.dispatchProposals?.find(p => p.token === event.data.token)
 
     if (proposal) {
@@ -34,7 +34,7 @@ export function applyDispatchProposal({
     return true
   }
 
-  if (event.type === 'hydra.dispatch-resolved') {
+  if (event.type === 'titan.dispatch-resolved') {
     state.dispatchProposals = (state.dispatchProposals ?? [])
       .filter(p => p.token !== event.data.token)
 

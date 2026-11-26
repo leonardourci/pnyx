@@ -6,12 +6,12 @@ import { required } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 
 export async function toolsCommand({
-  hydraId,
+  titanId,
   ref,
   values,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   ref?: string
   values: Record<string, unknown>
   meta: Meta
@@ -20,7 +20,7 @@ export async function toolsCommand({
     value: ref,
     what: 'task id',
   })
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const card = findCard({
     state,
     ref: task,
@@ -49,7 +49,7 @@ export async function toolsCommand({
   }
 
   const result = await recordTools({
-    hydraId,
+    titanId,
     task: card.id,
     grant: values.grant as string[] | undefined,
     revoke: values.revoke as string[] | undefined,
@@ -57,7 +57,7 @@ export async function toolsCommand({
   })
 
   const delivery = result.changed && card.agent?.host === 'othrys' ? await askHost({
-    hydraId,
+    titanId,
     body: {
       action: 'tools-changed',
       task: card.id,

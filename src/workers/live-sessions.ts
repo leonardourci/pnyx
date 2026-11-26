@@ -73,7 +73,7 @@ function firstOwnerMessage({
 }
 
 export interface LiveSessionScope {
-  hydraId: string
+  titanId: string
   live: Map<string, Live>
   closing(): boolean
   controller: AbortController
@@ -159,7 +159,7 @@ export interface LiveSessionScope {
 
 export function createLiveSessions({
   getOwner,
-  hydraId,
+  titanId,
   live,
   closing,
   streamed,
@@ -182,7 +182,7 @@ export function createLiveSessions({
     permanent?: boolean
     failed?: boolean
   }) => {
-    if (entry.owner && entry.owner.hydraId !== hydraId) {
+    if (entry.owner && entry.owner.titanId !== titanId) {
       entry.owner.retire({
         key,
         entry,
@@ -204,7 +204,7 @@ export function createLiveSessions({
 
     if (permanent && entry.task !== TITAN_CARD) {
       taskController({
-        hydraId,
+        titanId,
         task: entry.task,
       }).abort()
     }
@@ -222,14 +222,14 @@ export function createLiveSessions({
       entry.session.close()
       log({
         operation: 'session.close',
-        hydraId,
+        titanId,
         taskId: entry.task,
         sessionId: key,
       })
     }
 
     if (permanent && entry.activity === 'working') {
-      const agent = loadTitan({ hydraId }).state.sessions?.[key]?.agent
+      const agent = loadTitan({ titanId }).state.sessions?.[key]?.agent
 
       if (agent) {
         note({
@@ -276,7 +276,7 @@ export function createLiveSessions({
                 actor: 'othrys',
               },
               change: {
-                type: 'hydra.received',
+                type: 'titan.received',
                 data: {
                   message,
                   at: taken,
@@ -329,13 +329,13 @@ export function createLiveSessions({
     const env = environment(card.id === TITAN_CARD ? { hydra: true } : {
       task: card.id,
       steeringWorker: steeringWorkerIdentity({
-        state: loadTitan({ hydraId: currentOwner().hydraId }).state,
+        state: loadTitan({ titanId: currentOwner().titanId }).state,
         card,
       }),
     })
 
     const compactOwner = () => {
-      const state = loadTitan({ hydraId: currentOwner().hydraId }).state
+      const state = loadTitan({ titanId: currentOwner().titanId }).state
 
       return sessionOwner({
         state,
@@ -365,12 +365,12 @@ export function createLiveSessions({
             env,
           }) : env,
           signal: card.id === TITAN_CARD ? currentOwner().controller.signal : taskController({
-            hydraId: currentOwner().hydraId,
+            titanId: currentOwner().titanId,
             task: card.id,
           }).signal,
           spawned: card.id === TITAN_CARD ? currentOwner().children.spawned
             : taskChildren({
-              hydraId: currentOwner().hydraId,
+              titanId: currentOwner().titanId,
               task: card.id,
             }).spawned,
         })
@@ -382,7 +382,7 @@ export function createLiveSessions({
         return
       }
 
-      const current = loadTitan({ hydraId: currentOwner().hydraId }).state.cards[card.id]
+      const current = loadTitan({ titanId: currentOwner().titanId }).state.cards[card.id]
 
       if (current?.agent && sessionId({ agent: current.agent }) === key
         && current.steeringGeneration === card.steeringGeneration) {
@@ -436,7 +436,7 @@ export function createLiveSessions({
                   id: item.id ?? randomUUID(),
                   text: item.text,
                   original: item.original,
-                  actor: item.id ? loadTitan({ hydraId: currentOwner().hydraId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'othrys' : 'othrys',
+                  actor: item.id ? loadTitan({ titanId: currentOwner().titanId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'othrys' : 'othrys',
                   route: card.id === TITAN_CARD ? 'hydra' : 'direct',
                   accepted: card.id === TITAN_CARD,
                   agent: item.agent,
@@ -459,7 +459,7 @@ export function createLiveSessions({
               return
             }
 
-            const current = loadTitan({ hydraId: currentOwner().hydraId }).state.cards[card.id]
+            const current = loadTitan({ titanId: currentOwner().titanId }).state.cards[card.id]
 
             if (!activeCompaction({ card: current })) {
               await compactChange({
@@ -481,7 +481,7 @@ export function createLiveSessions({
           let inlineSteering: string[] | undefined
 
           if (item.steeringIds) {
-            const current = loadTitan({ hydraId: currentOwner().hydraId }).state.cards[card.id]
+            const current = loadTitan({ titanId: currentOwner().titanId }).state.cards[card.id]
 
             const ids = pendingSteeringIds({
               card: current,
@@ -501,7 +501,7 @@ export function createLiveSessions({
             if (item.inline && item.id) {
               item.text = steeringMessages({
                 task: current.id,
-                hydraId: currentOwner().hydraId,
+                titanId: currentOwner().titanId,
                 messages: (current.steering ?? []).filter(message => ids.includes(message.id)),
               })
               entry.delivered.set(
@@ -558,7 +558,7 @@ export function createLiveSessions({
             original,
             root: hydrasDir(),
             ownerMessageId: firstOwnerMessage({
-              state: loadTitan({ hydraId: currentOwner().hydraId }).state,
+              state: loadTitan({ titanId: currentOwner().titanId }).state,
               card: card.id,
               input: item.id,
               steering: inlineSteering,
@@ -574,7 +574,7 @@ export function createLiveSessions({
           return
         }
 
-        const state = loadTitan({ hydraId: currentOwner().hydraId }).state
+        const state = loadTitan({ titanId: currentOwner().titanId }).state
         const current = state.cards[entry.task]
 
         if (entry.task !== TITAN_CARD && current && closedTask({
@@ -589,7 +589,7 @@ export function createLiveSessions({
           background({
             name: 'closed agent cleanup',
             run: () => taskChildren({
-              hydraId: currentOwner().hydraId,
+              titanId: currentOwner().titanId,
               task: entry.task,
             }).stop({ task: entry.task }),
           })
@@ -670,7 +670,7 @@ export function createLiveSessions({
           turnStarted = performance.now()
           log({
             operation: 'turn.start',
-            hydraId: currentOwner().hydraId,
+            titanId: currentOwner().titanId,
             taskId: card.id,
             sessionId: key,
             provider: card.agent.provider,
@@ -727,7 +727,7 @@ export function createLiveSessions({
         if (receipt && (refused || receipt.phase === 'taken')) {
           log({
             operation: refused ? 'message.refused' : 'message.taken',
-            hydraId: currentOwner().hydraId,
+            titanId: currentOwner().titanId,
             taskId: card.id,
             sessionId: key,
             correlationId: receipt.inputId,
@@ -789,7 +789,7 @@ export function createLiveSessions({
         if (typeof received === 'object' && received.type === 'turn-ended') {
           log({
             operation: 'turn.end',
-            hydraId: currentOwner().hydraId,
+            titanId: currentOwner().titanId,
             taskId: card.id,
             sessionId: key,
             provider: card.agent.provider,
@@ -893,7 +893,7 @@ export function createLiveSessions({
         }
 
         if (typeof activity !== 'string' && activity.type === 'compaction') {
-          await syncCompactions({ state: loadTitan({ hydraId: currentOwner().hydraId }).state })
+          await syncCompactions({ state: loadTitan({ titanId: currentOwner().titanId }).state })
           const current = compactOwner()
 
           if (!current?.agent || sessionId({ agent: current.agent }) !== key) {
@@ -1101,7 +1101,7 @@ export function createLiveSessions({
 
         if (activity === 'finished') {
           entry.stopping = false
-          const current = loadTitan({ hydraId: currentOwner().hydraId }).state.cards[card.id]
+          const current = loadTitan({ titanId: currentOwner().titanId }).state.cards[card.id]
           const pending = entry.input.pending({
             includes: ({ steeringIds }) => {
               if (!steeringIds) {
@@ -1211,7 +1211,7 @@ export function createLiveSessions({
       return
     }
 
-    const pendingTools = loadTitan({ hydraId: currentOwner().hydraId }).state.cards[card.id]
+    const pendingTools = loadTitan({ titanId: currentOwner().titanId }).state.cards[card.id]
     const unapplied = pendingTools?.toolsRevision !== pendingTools?.toolsApplied
     retire({
       key,
@@ -1251,12 +1251,12 @@ export function createLiveSessions({
     toolResume?: string
   }): Live => {
     requireHandoffAvailable({
-      hydraId,
+      titanId,
       task: card.id,
     })
 
     requireCopyAvailable({
-      hydraId,
+      titanId,
       task: card.id,
     })
 
@@ -1344,7 +1344,7 @@ export function createLiveSessions({
     task: string
     text: string
   }) => {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const card = state.cards[task]
 
     if (!card?.agent || closing()) {
@@ -1355,7 +1355,7 @@ export function createLiveSessions({
       state,
       card,
     }) || copySettling({
-      hydraId,
+      titanId,
       task,
     })) {
       deferTools({ task })

@@ -339,15 +339,15 @@ function checked({ document }: { document: unknown }): DispatchDocument {
   return document as DispatchDocument
 }
 
-type AgentsEvent = TitanEvent & { type: 'board.agents' }
+type AgentsEvent = TitanEvent & { type: 'titan.agents' }
 
 // A Titan's old agents, as `rule migrate` used to turn them into rules.
-function legacyAgents({ hydraId }: { hydraId: string }): Fields | undefined {
+function legacyAgents({ titanId }: { titanId: string }): Fields | undefined {
   const agents = eventsOrLegacy({
-    hydraId,
-    types: ['board.agents'],
+    titanId,
+    types: ['titan.agents'],
   })
-    .filter((event): event is AgentsEvent => event.type === 'board.agents')
+    .filter((event): event is AgentsEvent => event.type === 'titan.agents')
     .at(-1)?.data.agents ?? {}
 
   const list = ({ agent }: { agent: AgentConfig }): Candidate[] => {
@@ -396,8 +396,8 @@ interface TitanFiles {
 }
 
 function hydraFiles(): TitanFiles[] {
-  return hydraIds().flatMap(hydraId => {
-    const dir = hydraDir({ hydraId })
+  return hydraIds().flatMap(titanId => {
+    const dir = hydraDir({ titanId })
     const dispatch = join(
       dir,
       'heads-dispatch.json',
@@ -433,7 +433,7 @@ function hydraFiles(): TitanFiles[] {
     }
 
     if (!files.dispatch) {
-      files.legacy = legacyAgents({ hydraId })
+      files.legacy = legacyAgents({ titanId })
     }
 
     return files.dispatch || files.accounts || files.legacy ? [files] : []

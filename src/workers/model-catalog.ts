@@ -94,14 +94,14 @@ type CommandSuggestion = {
 
 // The agent commands and model lists the composer and pickers offer, cached per harness, login and folder.
 export function createCatalogs({
-  hydraId,
+  titanId,
   providers,
   liveSession,
   closing,
   environment,
   saveCatalog,
 }: {
-  hydraId: string
+  titanId: string
   providers: Record<ProviderId, Provider>
   liveSession({ key }: { key: string }): HostedSession | undefined
   closing(): boolean
@@ -131,11 +131,11 @@ export function createCatalogs({
     ])
 
     const retained = () => {
-      const saved = loadTitan({ hydraId }).state.cards[card.id]?.compaction?.catalogs
+      const saved = loadTitan({ titanId }).state.cards[card.id]?.compaction?.catalogs
       const commands = commandCatalogs.get(cacheKey) ?? saved?.[cacheKey] ?? []
       const matches = card.agent?.provider === harness
       const session = matches && card.agent ? sessionId({ agent: card.agent }) : undefined
-      const operation = loadTitan({ hydraId }).state.cards[card.id]?.compaction?.operations
+      const operation = loadTitan({ titanId }).state.cards[card.id]?.compaction?.operations
         .findLast(operation => operation.session === session)
       const unavailable = operation?.state === 'failed' && operation.unsupported ? operation.error : undefined
       const native = commands.some(item => item.command === '/compact') || !providers[harness].compact ? commands : [
@@ -179,7 +179,7 @@ export function createCatalogs({
             cacheKey,
             found,
           )
-          const saved = loadTitan({ hydraId }).state.cards[card.id]?.compaction?.catalogs
+          const saved = loadTitan({ titanId }).state.cards[card.id]?.compaction?.catalogs
           const previous = saved?.[cacheKey]
 
           if (JSON.stringify(previous) !== JSON.stringify(found)) {
@@ -229,7 +229,7 @@ export function createCatalogs({
 
     const key = `${harness}:${account ? loginFolder({ account }) : ''}`
     const provider = providers[providerIdOf({ harness })]
-    const cwd = hydraDir({ hydraId })
+    const cwd = hydraDir({ titanId })
 
     const withFolderDefaults = async ({ models }: { models: ModelOption[] }) => provider.defaults({
       cwd,

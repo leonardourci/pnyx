@@ -27,10 +27,10 @@ export interface TaskMessageReceipt {
 }
 
 export async function sendTaskMessage({
-  hydraId,
+  titanId,
   request,
 }: {
-  hydraId: string
+  titanId: string
   request: Pick<ReplyRequest, 'card' | 'text' | 'id' | 'actor'>
 }): Promise<TaskMessageReceipt> {
   if (!request.text.trim()) {
@@ -46,7 +46,7 @@ export async function sendTaskMessage({
     actor: request.actor ?? 'cli',
   }
   const target = await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       drainSpool({ writer })
       const card = findCard({
@@ -87,7 +87,7 @@ export async function sendTaskMessage({
 
   try {
     hydra = await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const id = `task-context:${target.id}:${reply}`
 
@@ -100,7 +100,7 @@ export async function sendTaskMessage({
             },
             cardId: target.id,
             change: {
-              type: 'hydra.message',
+              type: 'titan.message',
               data: {
                 task: target.id,
                 text: request.text,
@@ -108,7 +108,7 @@ export async function sendTaskMessage({
                 action: 'send',
                 hydra: hydraConfig({
                   state: writer.state,
-                  id: hydraId,
+                  id: titanId,
                 }).hydra.id,
               },
             },
@@ -163,7 +163,7 @@ export async function sendTaskMessage({
     detail,
     route,
   }: TaskDelivery & { route: string }) => await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       const known = writer.state.cards[target.id]?.replies?.find(r => r.id === reply)
       const decision = decideReply({
@@ -202,7 +202,7 @@ export async function sendTaskMessage({
   } else if (target.agent) {
     try {
       const receipt = await sendReply({
-        hydraId,
+        titanId,
         request: {
           ...request,
           card: target.id,

@@ -15,7 +15,7 @@ const LISTING = [
 ]
 
 interface AgentIds {
-  hydraId: string
+  titanId: string
   taskId?: string
   sessionId?: string
 }
@@ -33,8 +33,8 @@ export function moveAgentMemory({
   to: string
 }): void {
   for (const ids of agents.values()) {
-    if (ids.taskId === task && ids.hydraId === from) {
-      ids.hydraId = to
+    if (ids.taskId === task && ids.titanId === from) {
+      ids.titanId = to
     }
   }
 }

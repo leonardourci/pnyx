@@ -31,11 +31,11 @@ export function notificationReceipt({ result }: NotificationResult): ReplyState 
 // The owner's instructions themselves, first time they reach the worker; the inbox keeps them as the record.
 export function steeringMessages({
   task,
-  hydraId,
+  titanId,
   messages,
 }: {
   task: string
-  hydraId: string
+  titanId: string
   messages: {
     id: string
     text: string
@@ -45,7 +45,7 @@ export function steeringMessages({
     `New instructions for task ${task}, in order (Othrys inbox IDs ${JSON.stringify(messages.map(message => message.id))}):`,
     messages.map(message => message.text).join('\n\n---\n\n'),
     `Othrys marks them read once you receive this. ${recordContext({
-      hydraId,
+      titanId,
       task,
     })} Apply them in order and report progress and blockers separately. A repeated notice is not a new instruction.`,
   ].join('\n\n')
@@ -53,16 +53,16 @@ export function steeringMessages({
 
 export function steeringNotice({
   task,
-  hydraId,
+  titanId,
   ids,
   claim,
 }: {
   task: string
-  hydraId: string
+  titanId: string
   ids: string[]
   claim: SteeringClaim
 }): string {
-  const assignment = [...nativeHome().references({ hydra: hydraId })].findLast(([
+  const assignment = [...nativeHome().references({ hydra: titanId })].findLast(([
     , position,
   ]) => position === claim.generation)?.[0]
 
@@ -86,11 +86,11 @@ export function steeringNotice({
     '--generation',
     quote({ value: JSON.stringify({ native: assignment }) }),
     '--titan',
-    quote({ value: hydraId }),
+    quote({ value: titanId }),
   ].join(' ')).join('\n')
 
   return `${STEERING_NOTICE}${JSON.stringify(ids)}. ${recordContext({
-    hydraId,
+    titanId,
     task,
   })} Read the full instructions before acknowledging these exact IDs with the supplied assignment reference:\n${acknowledgement}\nAn acknowledgement means read, never completed work. Apply the pending messages in order; report progress and blockers separately. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
 }

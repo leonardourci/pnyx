@@ -63,17 +63,17 @@ function recordRecovery({
 }
 
 export async function followUpSteering({
-  hydraId,
+  titanId,
   now = Date.now(),
   notify = notifySteering,
   probe = terminalPresence,
 }: {
-  hydraId: string
+  titanId: string
   now?: number
   notify?: typeof notifySteering
   probe?({ session }: { session: AgentSession }): Presence
 }): Promise<void> {
-  const observed = loadTitan({ hydraId }).state
+  const observed = loadTitan({ titanId }).state
 
   for (const previous of Object.values(observed.cards)) {
     const cardId = previous.id
@@ -96,7 +96,7 @@ export async function followUpSteering({
     }
 
     const reserved = await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         const card = writer.state.cards[cardId]
@@ -185,7 +185,7 @@ export async function followUpSteering({
 
     try {
       outcome = await notify({
-        hydraId,
+        titanId,
         card: cardId,
         message: reserved.message,
         attempt: reserved.id,
@@ -199,7 +199,7 @@ export async function followUpSteering({
     }
 
     await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         const card = writer.state.cards[cardId]

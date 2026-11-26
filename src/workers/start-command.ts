@@ -50,7 +50,7 @@ export function namedProjectCommand({
 }
 
 export async function startCommand({
-  hydraId,
+  titanId,
   role,
   task,
   prompt,
@@ -59,7 +59,7 @@ export async function startCommand({
   commandName,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   role: 'worker' | 'hydra'
   task?: string
   prompt?: string
@@ -70,7 +70,7 @@ export async function startCommand({
 }): Promise<Output> {
   const id = meta.id ?? randomUUID()
   const claimed = await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       drainSpool({ writer })
       const target = role === 'worker' ? findCard({
@@ -91,12 +91,12 @@ export async function startCommand({
       })
       const config = hydraConfig({
         state: writer.state,
-        id: hydraId,
+        id: titanId,
       })
 
       if (!commandName && !config.command) {
         throw new TitanError({
-          message: `Titan ${hydraId} has no start command`,
+          message: `Titan ${titanId} has no start command`,
           code: 'NO_COMMAND',
           help: ['Configure the Titan start command in Settings.'],
         })
@@ -117,7 +117,7 @@ export async function startCommand({
 
       if (!command) {
         throw new TitanError({
-          message: `Titan ${hydraId} has no start command`,
+          message: `Titan ${titanId} has no start command`,
           code: 'NO_COMMAND',
           help: ['Configure the Titan start command in Settings.'],
         })
@@ -143,9 +143,9 @@ export async function startCommand({
               id: `${id}:config`,
               ifRevision: undefined,
             },
-            cardId: '$board',
+            cardId: '$all',
             change: {
-              type: 'board.configured',
+              type: 'titan.configured',
               data: config,
             },
           }),
@@ -176,28 +176,28 @@ export async function startCommand({
     cwd: claimed.cwd,
     env: {
       OTHRYS_HOME: othrysHome(),
-      OTHRYS_TITAN: hydraId,
+      OTHRYS_TITAN: titanId,
       OTHRYS_WORKER_HOME: othrysHome(),
       OTHRYS_TASK: target,
       OTHRYS_TASK_DIR: workerTaskDir({
-        hydraId,
+        titanId,
         task: target,
       }),
       OTHRYS_ROLE: role,
       OTHRYS_TASK_TITLE: claimed.card?.title ?? 'Titan',
       OTHRYS_PROMPT: claimed.card
         ? await taskPrompt({
-          hydraId,
+          titanId,
           card: claimed.card,
           prompt,
-        }) : prompt ?? hydraPrompt({ hydraId }),
+        }) : prompt ?? hydraPrompt({ titanId }),
       OTHRYS_HARNESS: harness ?? '',
       OTHRYS_FOLDER: claimed.cwd,
     },
   })
   const text = `Started ${role === 'hydra' ? 'Titan' : 'a worker'} with ${commandName ? `project command ${commandName}` : 'the Titan command'} in ${claimed.cwd}`
   await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       applyDecision({
         writer,
@@ -249,8 +249,8 @@ export async function startCommand({
     folder: claimed.cwd,
     help: [
       role === 'hydra'
-        ? `Its first session becomes the Titan; read titan.log in Titan ${hydraId}`
-        : `Its session attaches to ${target} when its hooks first report; read tasks/${target}/task.log in Titan ${hydraId}`,
+        ? `Its first session becomes the Titan; read titan.log in Titan ${titanId}`
+        : `Its session attaches to ${target} when its hooks first report; read tasks/${target}/task.log in Titan ${titanId}`,
     ],
   }
 }

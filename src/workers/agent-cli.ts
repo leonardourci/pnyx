@@ -17,14 +17,14 @@ import { sendReply } from './reply.ts'
 const READBACK_MS = 1000
 
 function agentSummary({
-  hydraId,
+  titanId,
   ref,
 }: {
-  hydraId: string
+  titanId: string
   ref: string
 }): Output {
   const card = findCard({
-    state: loadTitan({ hydraId }).state,
+    state: loadTitan({ titanId }).state,
     ref,
   })
   const provider = card.agent?.provider
@@ -83,7 +83,7 @@ export const agent = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options,
@@ -103,7 +103,7 @@ export const agent = guard({
       }
 
       return askHost({
-        hydraId,
+        titanId,
         body: {
           action: 'compact',
           card: ref,
@@ -122,7 +122,7 @@ export const agent = guard({
       }
 
       return agentSummary({
-        hydraId,
+        titanId,
         ref,
       })
     }
@@ -132,7 +132,7 @@ export const agent = guard({
       value,
     ] = positionals as [string, string, string]
     const card = findCard({
-      state: loadTitan({ hydraId }).state,
+      state: loadTitan({ titanId }).state,
       ref,
     })
     const provider = card.agent?.provider
@@ -160,7 +160,7 @@ export const agent = guard({
     // What the session reported before, with everything it has recorded folded in,
     // so the readback compares like with like.
     const settled = async () => await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         harvestTranscripts({
@@ -193,7 +193,7 @@ export const agent = guard({
         }
 
     const receipt = await sendReply({
-      hydraId,
+      titanId,
       request: {
         card: card.id,
         ...typed,

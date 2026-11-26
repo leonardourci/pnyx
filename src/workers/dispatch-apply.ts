@@ -144,16 +144,16 @@ function eventMeta({ meta }: { meta: Meta }): Meta {
 }
 
 function raisesCandidatePermission({
-  hydraId,
+  titanId,
   before,
   after,
 }: {
-  hydraId: string
+  titanId: string
   before: DispatchDocument
   after: DispatchDocument
 }): boolean {
-  const callerTitanId = requestEnv().OTHRYS_TITAN || hydraId
-  const state = loadTitan({ hydraId: callerTitanId }).state
+  const callerTitanId = requestEnv().OTHRYS_TITAN || titanId
+  const state = loadTitan({ titanId: callerTitanId }).state
   // The running harness is the fallback Titan keeps; its own configured agent would hide what the rules change.
   const previousTitan = hydraCandidate({
     state: { cards: state.cards },
@@ -264,11 +264,11 @@ function changeDescription({ change }: { change: DispatchChange }): string {
 }
 
 async function dispatchNotice({
-  hydraId,
+  titanId,
   entry,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   entry: ChangeEntry
   meta: Meta
 }): Promise<void> {
@@ -278,7 +278,7 @@ async function dispatchNotice({
 
   const changes = entry.changes.map(change => changeDescription({ change }))
   await settingsNotice({
-    hydraId,
+    titanId,
     meta,
     changeId: `dispatch:${entry.id}`,
     text: `Changed ${changes.join('; ')}`,
@@ -287,13 +287,13 @@ async function dispatchNotice({
 
 // One patch, checked whole: every rule, account and order change goes through here.
 export async function applyDispatch({
-  hydraId,
+  titanId,
   envelope,
   meta,
   check = false,
   proposeIt = false,
 }: {
-  hydraId: string
+  titanId: string
   envelope: DispatchEnvelope
   meta: Meta
   check?: boolean
@@ -324,7 +324,7 @@ export async function applyDispatch({
         }
 
         await dispatchNotice({
-          hydraId,
+          titanId,
           entry: seen,
           meta,
         })
@@ -412,7 +412,7 @@ export async function applyDispatch({
       }
 
       if (hydraActor({ actor: meta.actor }) && raisesCandidatePermission({
-        hydraId,
+        titanId,
         before: document,
         after,
       })) {
@@ -446,7 +446,7 @@ export async function applyDispatch({
 
       commitChange({ entry })
       await dispatchNotice({
-        hydraId,
+        titanId,
         entry,
         meta,
       })
@@ -557,12 +557,12 @@ function saveProposal({
 }
 
 export async function resolveProposal({
-  hydraId,
+  titanId,
   action,
   token,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   action: 'confirm' | 'dismiss'
   token: string
   meta: Meta
@@ -577,7 +577,7 @@ export async function resolveProposal({
   return withAsyncRegistryLock({
     fn: async () => {
       const state = await withWriter({
-        hydraId,
+        titanId,
         fn: ({ writer }) => writer.state,
       })
       const proposal = state.dispatchProposals?.find(p => p.token === token)
@@ -610,14 +610,14 @@ export async function resolveProposal({
       }
 
       await withWriter({
-        hydraId,
+        titanId,
         fn: ({ writer }) => {
           const decision = hydraEvent({
             state: writer.state,
             meta: eventMeta({ meta }),
             cardId: TITAN_CARD,
             change: {
-              type: 'hydra.dispatch-resolved',
+              type: 'titan.dispatch-resolved',
               data: {
                 token,
                 action: action === 'confirm' ? 'confirmed' : 'dismissed',

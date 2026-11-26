@@ -140,7 +140,7 @@ export async function checkAttachments({
     const seen = seenAt({ session })
 
     return {
-      task: session.taskId ?? '$hydra',
+      task: session.taskId ?? '$titan',
       session: session.id,
       harness: session.agent.provider,
       folder: session.agent.cwd ?? session.launch?.folder ?? 'unknown',

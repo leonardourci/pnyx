@@ -207,12 +207,12 @@ function transcriptHas({
 // What each unconfirmed reply needs now; pure apart from reading the log and transcripts.
 // tried holds the resends sent so far by retry id and time, as one that failed before its receipt leaves no record.
 function replyFollowUps({
-  hydraId,
+  titanId,
   state,
   tried,
   now,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   tried: Map<string, number>
   now: number
@@ -234,7 +234,7 @@ function replyFollowUps({
   const sent = sentReplies({
     wanted,
     events: scanEvents({
-      hydraId,
+      titanId,
       cardIds: cards.map(card => card.id),
       types: ['card.replied'],
     }),
@@ -356,13 +356,13 @@ function recordArrived({
 
 // Confirms, resends, or hands to unconfirmed each reply its route could not confirm.
 export async function followUpReplies({
-  hydraId,
+  titanId,
   tried,
   resend,
   unconfirmed,
   now = Date.now(),
 }: {
-  hydraId: string
+  titanId: string
   tried: Map<string, number>
   resend({
     card,
@@ -385,8 +385,8 @@ export async function followUpReplies({
   now?: number
 }): Promise<void> {
   const followUps = replyFollowUps({
-    hydraId,
-    state: loadTitan({ hydraId }).state,
+    titanId,
+    state: loadTitan({ titanId }).state,
     tried,
     now,
   })
@@ -394,7 +394,7 @@ export async function followUpReplies({
   for (const followUp of followUps) {
     if (followUp.kind === 'confirm') {
       await withWriter({
-        hydraId,
+        titanId,
         fn: ({ writer }) => {
           drainSpool({ writer })
           recordArrived({
@@ -425,7 +425,7 @@ export async function followUpReplies({
 
       if (state === 'delivered') {
         await withWriter({
-          hydraId,
+          titanId,
           fn: ({ writer }) => recordArrived({
             writer,
             card: followUp.card,

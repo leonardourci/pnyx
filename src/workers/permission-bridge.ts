@@ -20,14 +20,14 @@ import type { Writer } from '#app/writer.ts'
 
 // A provider's permission prompt as a recorded request on its card, and the waiter its answer resolves.
 export function createPermissionBridge({
-  hydraId,
+  titanId,
   live,
   closing,
   at,
   write,
   note,
 }: {
-  hydraId: string
+  titanId: string
   live: Map<string, Live>
   closing(): boolean
   at(): string
@@ -140,7 +140,7 @@ export function createPermissionBridge({
       promise,
       resolve,
     } = Promise.withResolvers<PermissionDecision>()
-    const cards = Object.values(loadTitan({ hydraId }).state.cards)
+    const cards = Object.values(loadTitan({ titanId }).state.cards)
     const previous = cards.flatMap(card => card.permissions ?? [])
       .find(request => {
         const same = request.session === key && request.nativeId === nativeId
@@ -292,7 +292,7 @@ export function createPermissionBridge({
         if (choice === 'allow') {
           requirePermissionApprover({
             actor,
-            hydraId,
+            titanId,
             card,
             session: request.session,
           })
@@ -414,7 +414,7 @@ export function createPermissionBridge({
       id,
       waiting,
     ] of pending) {
-      if (waiting.entry.owner && waiting.entry.owner.hydraId !== hydraId) {
+      if (waiting.entry.owner && waiting.entry.owner.titanId !== titanId) {
         continue
       }
 
@@ -450,7 +450,7 @@ export function createPermissionBridge({
     task: string
     actor: string
   }) => {
-    const card = loadTitan({ hydraId }).state.cards[task]
+    const card = loadTitan({ titanId }).state.cards[task]
 
     for (const request of card?.permissions ?? []) {
       if (request.status === 'pending' && pending.has(request.id)) {

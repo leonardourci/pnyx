@@ -107,7 +107,7 @@ export function createLiveSettings({
                 actor,
               },
               change: {
-                type: 'hydra.agent-used',
+                type: 'titan.agent-used',
                 data: {
                   ...usedAgent,
                   mode: value,

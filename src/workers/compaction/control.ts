@@ -29,7 +29,7 @@ export interface CompactionHandoff {
 
 // Inputs held while an agent compacts, the deadline that fails a silent compaction, and releasing them in order.
 export function createCompactionControl({
-  hydraId,
+  titanId,
   compactionDelay,
   queuedTitan,
   closing,
@@ -41,7 +41,7 @@ export function createCompactionControl({
   statusChanged,
   released,
 }: {
-  hydraId: string
+  titanId: string
   compactionDelay: number
   queuedTitan: Set<string>
   closing(): boolean
@@ -136,7 +136,7 @@ export function createCompactionControl({
                 return
               }
 
-              const { cards } = loadTitan({ hydraId }).state
+              const { cards } = loadTitan({ titanId }).state
               const card = Object.values(cards).find(candidate => candidate.compaction?.operations
                 .some(known => known.id === operation.id && known.state === 'running'))
 
@@ -304,7 +304,7 @@ export function createCompactionControl({
     setTimeout(
       () => {
         void (async () => {
-          const card = loadTitan({ hydraId }).state.cards[id]
+          const card = loadTitan({ titanId }).state.cards[id]
 
           if (!card || compactionBusy({ card })) {
             return
@@ -322,7 +322,7 @@ export function createCompactionControl({
               return
             }
 
-            if (compactionBusy({ card: loadTitan({ hydraId }).state.cards[id] })) {
+            if (compactionBusy({ card: loadTitan({ titanId }).state.cards[id] })) {
               return
             }
 
@@ -343,7 +343,7 @@ export function createCompactionControl({
                 ))
               }
 
-              const state = loadTitan({ hydraId }).state
+              const state = loadTitan({ titanId }).state
               const message = state.hydraMessages?.find(message => message.id === input.id)
               const marker = hydraDeliveryId({
                 message: message ?? { id: input.id },
@@ -369,7 +369,7 @@ export function createCompactionControl({
               })
 
               if (input.route === 'direct') {
-                while (!closing() && loadTitan({ hydraId }).state.cards[id]?.compaction?.inputs
+                while (!closing() && loadTitan({ titanId }).state.cards[id]?.compaction?.inputs
                   .some(queued => queued.id === input.id)) {
                   await new Promise(resolve => setTimeout(
                     resolve,
@@ -398,7 +398,7 @@ export function createCompactionControl({
         })().catch((error: Error) => log({
           level: 'error',
           operation: 'compact.queue',
-          hydraId,
+          titanId,
           taskId: id,
           error,
         }))
@@ -409,7 +409,7 @@ export function createCompactionControl({
               return
             }
 
-            const current = loadTitan({ hydraId }).state.cards[id]
+            const current = loadTitan({ titanId }).state.cards[id]
 
             if (advanced && current?.compaction?.inputs.length
               && !compactionBusy({ card: current })) {

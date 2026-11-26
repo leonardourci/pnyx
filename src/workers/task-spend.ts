@@ -106,7 +106,7 @@ export function spendInputs({
   const assignments: SpendInputs['assignments'] = []
 
   for (const event of events) {
-    if (event.type === 'board.configured') {
+    if (event.type === 'titan.configured') {
       configurations.push({
         at: event.at,
         session: event.data.hydra.session,

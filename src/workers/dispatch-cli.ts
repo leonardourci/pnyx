@@ -76,20 +76,20 @@ function checkedName({ value }: { value: string }): string {
 }
 
 async function apply({
-  hydraId,
+  titanId,
   patch,
   values,
   propose,
   summary,
 }: {
-  hydraId: string
+  titanId: string
   patch: Record<string, unknown>
   values: Values
   propose: boolean
   summary: string
 }): Promise<Output> {
   return await applyDispatch({
-    hydraId,
+    titanId,
     envelope: {
       version: 1,
       patch,
@@ -243,7 +243,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
     positionals,
-    hydraId,
+    titanId,
   } = parse({
     args,
     options: OPTIONS,
@@ -261,7 +261,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
 
   if (action === 'confirm' || action === 'dismiss') {
     return await resolveProposal({
-      hydraId,
+      titanId,
       action,
       token: required({
         value: positionals[1],
@@ -272,7 +272,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'list') {
-    const { state } = loadTitan({ hydraId })
+    const { state } = loadTitan({ titanId })
     const help = [
       'Titan chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
       'Run `othrys rule show` for the editable document and its revision',
@@ -283,7 +283,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
     }
 
     return {
-      hydraId,
+      titanId,
       ...effectiveDispatch(),
       revision: dispatchRevision(),
       proposals: proposalStatus({ state }),
@@ -341,7 +341,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
     const envelope = parseEnvelope({ value: readEnvelope({ values }) })
 
     return await applyDispatch({
-      hydraId,
+      titanId,
       envelope,
       meta: meta({ values }),
       check: Boolean(values.check),
@@ -369,7 +369,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
     }
   }
 
-  requireTitan({ hydraId })
+  requireTitan({ titanId })
   const document = savedDocument()
 
   if (action === 'accounts') {
@@ -405,7 +405,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
     }
 
     return await apply({
-      hydraId,
+      titanId,
       patch,
       values,
       propose,
@@ -455,7 +455,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   return await apply({
-    hydraId,
+    titanId,
     patch,
     values,
     propose,
@@ -488,7 +488,7 @@ async function accountCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
     positionals,
-    hydraId,
+    titanId,
   } = parse({
     args,
     options: OPTIONS,
@@ -498,12 +498,12 @@ async function accountCommand({ args }: { args: string[] }): Promise<Output> {
 
   if (action === 'list') {
     return {
-      hydraId,
+      titanId,
       accounts: effectiveDispatch().accounts,
     }
   }
 
-  requireTitan({ hydraId })
+  requireTitan({ titanId })
   const key = checkedName({
     value: required({
       value: positionals[1],
@@ -525,7 +525,7 @@ async function accountCommand({ args }: { args: string[] }): Promise<Output> {
   })
 
   return await apply({
-    hydraId,
+    titanId,
     patch,
     values,
     propose,

@@ -51,13 +51,13 @@ export function validateCardInput({
 }
 
 export async function queueCardInput({
-  hydraId,
+  titanId,
   task,
   text,
   agent,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   text: string
   agent: AgentConfig
@@ -72,7 +72,7 @@ export async function queueCardInput({
   const id = meta.id ?? randomUUID()
 
   return await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       const card = findCard({
         state: writer.state,
@@ -191,11 +191,11 @@ function agentChange({
 }
 
 export function createCardInputs({
-  hydraId,
+  titanId,
   live,
   host,
 }: {
-  hydraId: string
+  titanId: string
   live: Map<string, Live>
   host(): Host
 }) {
@@ -214,7 +214,7 @@ export function createCardInputs({
     detail?: string
     session?: string
   }) => await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       const current = writer.state.cards[card.id]?.replies?.find(saved => saved.id === reply.id)
 
@@ -275,7 +275,7 @@ export function createCardInputs({
 
         if (previous) {
           history.push(recordContext({
-            hydraId,
+            titanId,
             task: card.id,
           }))
           history.push(`Read the previous session ${JSON.stringify(previous)} completely before continuing.`)
@@ -298,7 +298,7 @@ export function createCardInputs({
           ...override
         } = agent
         const started = await startTask({
-          hydraId,
+          titanId,
           task: card.id,
           via: 'othrys',
           harness: targetHarness,
@@ -385,7 +385,7 @@ export function createCardInputs({
       sending.add(card.id)
       // Reconcile can run while a writer is open; sends begin after that transaction commits.
       setImmediate(() => {
-        const current = loadTitan({ hydraId }).state.cards[card.id]
+        const current = loadTitan({ titanId }).state.cards[card.id]
 
         if (!current || current.replies?.find(saved => saved.id === reply.id)?.state !== 'queued') {
           sending.delete(card.id)
@@ -396,7 +396,7 @@ export function createCardInputs({
         background({
           name: 'card.send',
           context: {
-            hydraId,
+            titanId,
             taskId: card.id,
           },
           run: () => deliver({

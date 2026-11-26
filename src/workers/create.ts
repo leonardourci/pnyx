@@ -107,14 +107,14 @@ const WAIT_RECEIPTS: Record<Wait, ({ card }: { card: Card }) => Output> = {
 }
 
 async function recordWait({
-  hydraId,
+  titanId,
   task,
   wait,
   values,
   meta,
   operation,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   wait: Wait
   values: Values
@@ -149,7 +149,7 @@ async function recordWait({
   }
 
   await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => applyDecision({
       writer,
       decision: decide({ state: writer.state }),
@@ -158,20 +158,20 @@ async function recordWait({
 }
 
 async function startCreated({
-  hydraId,
+  titanId,
   task,
   flags,
   meta,
   operation,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   flags: ReturnType<typeof startFlags>
   meta: Meta
   operation: string
 }): Promise<Output> {
   const startId = `${operation}:start`
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
 
   if (startRecorded({
     state,
@@ -186,7 +186,7 @@ async function startCreated({
 
   try {
     const started = await startTask({
-      hydraId,
+      titanId,
       task,
       ...flags,
       meta: {
@@ -198,7 +198,7 @@ async function startCreated({
 
     return {
       launch: 'started',
-      worker: loadTitan({ hydraId }).state.cards[task]?.sessionIds?.[0] ?? 'none',
+      worker: loadTitan({ titanId }).state.cards[task]?.sessionIds?.[0] ?? 'none',
       ...started,
     }
   } catch (error) {
@@ -207,7 +207,7 @@ async function startCreated({
     }
 
     await noteOnce({
-      hydraId,
+      titanId,
       task,
       source: 'othrys:create',
       text: [
@@ -230,17 +230,17 @@ async function startCreated({
 }
 
 export async function createCommand({
-  hydraId,
+  titanId,
   positionals,
   values,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   positionals: string[]
   values: Values
   meta: Meta
 }): Promise<Output> {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const chosen = chooseWait({ values })
   const flags = startFlags({ values })
   startRoute({
@@ -259,12 +259,12 @@ export async function createCommand({
     action: 'create',
     values,
     positionals,
-    hydraId,
+    titanId,
     meta,
   }))!
   const task = (created.card as { id: string }).id
   const operation = meta.id ?? task
-  const filed = loadTitan({ hydraId }).state
+  const filed = loadTitan({ titanId }).state
   const queuedBefore = Object.hasOwn(
     filed.eventIds,
     `${operation}:queue`,
@@ -278,7 +278,7 @@ export async function createCommand({
 
   if (wait === 'queue' || wait === 'depend') {
     await recordWait({
-      hydraId,
+      titanId,
       task,
       wait,
       values,
@@ -290,12 +290,12 @@ export async function createCommand({
   const receipt = wait
     ? WAIT_RECEIPTS[wait]({
       card: findCard({
-        state: loadTitan({ hydraId }).state,
+        state: loadTitan({ titanId }).state,
         ref: task,
       }),
     })
     : await startCreated({
-      hydraId,
+      titanId,
       task,
       flags,
       meta,

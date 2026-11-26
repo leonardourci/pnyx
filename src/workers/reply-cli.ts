@@ -23,7 +23,7 @@ export const reply = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options,
@@ -106,7 +106,7 @@ export const reply = guard({
 
     const send = values['task-message'] ? (await import('./task-message.ts')).sendTaskMessage : sendReply
     const receipt = await send({
-      hydraId,
+      titanId,
       request: {
         card: ref,
         text: text!,
@@ -122,7 +122,7 @@ export const reply = guard({
       },
     })
     const out: Output = { reply: receipt }
-    const current = loadTitan({ hydraId }).state.cards[receipt.card]
+    const current = loadTitan({ titanId }).state.cards[receipt.card]
     const savedAnswer = current?.replies?.find(saved => saved.id === receipt.reply
       && saved.accepted)
     const source = savedAnswer?.decision?.fromMessage
@@ -134,7 +134,7 @@ export const reply = guard({
       if (receipt.state === 'failed' && !recordError) {
         help.push(`Retry with reply ${receipt.card} --text "Resend saved answer" --idempotency-key ${receipt.reply}`)
       } else if (receipt.state !== 'delivered' || recordError) {
-        help.push(`Check the worker's session. Only if it never arrived, run task answer ${receipt.card} ${savedAnswer.answers} --from-message ${source.id} --event-id ${receipt.reply} --undelivered --reason "Retry saved delivery" --titan ${hydraId}`)
+        help.push(`Check the worker's session. Only if it never arrived, run task answer ${receipt.card} ${savedAnswer.answers} --from-message ${source.id} --event-id ${receipt.reply} --undelivered --reason "Retry saved delivery" --titan ${titanId}`)
       }
 
       out.help = help
@@ -155,9 +155,9 @@ export const reply = guard({
     } else if (receipt.state === 'delivery_unknown') {
       out.help = ['The message may have landed; a retry with the same key does not resend. When its session has a transcript, Othrys checks it once the session is idle and resends a missing message up to twice itself']
     } else if (receipt.state === 'queued') {
-      out.help = [`Read tasks/${receipt.card}/task.log in Titan ${hydraId} or inspect the session before sending again. A retry with the same key does not resend.`]
+      out.help = [`Read tasks/${receipt.card}/task.log in Titan ${titanId} or inspect the session before sending again. A retry with the same key does not resend.`]
     } else {
-      out.help = [`Read tasks/${receipt.card}/task.log in Titan ${hydraId} for its receipts`]
+      out.help = [`Read tasks/${receipt.card}/task.log in Titan ${titanId} for its receipts`]
     }
 
     return out

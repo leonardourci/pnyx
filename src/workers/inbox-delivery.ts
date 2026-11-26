@@ -14,19 +14,19 @@ import { steeringNotice, type NotificationResult } from './inbox-notice.ts'
 import { sameClaim, steeringClaim, steeringHeld } from './steering.ts'
 
 export async function notifySteering({
-  hydraId,
+  titanId,
   card: cardId,
   message: messageId,
   attempt,
   now = Date.now(),
 }: {
-  hydraId: string
+  titanId: string
   card: string
   message: string
   attempt: string
   now?: number
 }): Promise<NotificationResult> {
-  const card = loadTitan({ hydraId }).state.cards[cardId]
+  const card = loadTitan({ titanId }).state.cards[cardId]
   const message = card?.steering?.find(message => message.id === messageId)
   const claim = card && steeringClaim({ card })
 
@@ -38,7 +38,7 @@ export async function notifySteering({
   }
 
   if (handoffPending({
-    hydraId,
+    titanId,
     task: cardId,
   })) {
     return {
@@ -48,7 +48,7 @@ export async function notifySteering({
   }
 
   if (copySettling({
-    hydraId,
+    titanId,
     task: cardId,
   })) {
     return {
@@ -84,7 +84,7 @@ export async function notifySteering({
 
   try {
     release = taskLease({
-      hydraId,
+      titanId,
       task: cardId,
       actor: 'main',
       message: true,
@@ -102,7 +102,7 @@ export async function notifySteering({
 
   try {
     const canSend = async () => await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         const current = writer.state.cards[cardId]
@@ -134,7 +134,7 @@ export async function notifySteering({
       const route = found.route
       const text = steeringNotice({
         task: card.id,
-        hydraId,
+        titanId,
         ids: [message.id],
         claim,
       })
@@ -142,7 +142,7 @@ export async function notifySteering({
       if (route.kind === 'othrys') {
         try {
           const accepted = await askHost({
-            hydraId,
+            titanId,
             body: {
               action: 'send',
               card: card.id,
@@ -185,7 +185,7 @@ export async function notifySteering({
     }
 
     await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const current = writer.state.cards[cardId]
         const pending = current?.steering?.find(message => message.id === messageId)

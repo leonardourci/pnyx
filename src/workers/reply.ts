@@ -90,10 +90,10 @@ export function invalid({
 }
 
 export async function sendReply({
-  hydraId,
+  titanId,
   request,
 }: {
-  hydraId: string
+  titanId: string
   request: ReplyRequest
 }): Promise<ReplyReceipt> {
   const { answer } = request
@@ -123,7 +123,7 @@ export async function sendReply({
   })
 
   const queued = await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       drainSpool({ writer })
       const card = findCard({
@@ -132,7 +132,7 @@ export async function sendReply({
       })
 
       requireHandoffAvailable({
-        hydraId,
+        titanId,
         task: card.id,
       })
 
@@ -303,7 +303,7 @@ export async function sendReply({
         if (open.kind === 'permission' && checked.answer.choice === 'allow') {
           requirePermissionApprover({
             actor: request.actor ?? 'cli',
-            hydraId,
+            titanId,
             card,
             session: cardSessionId({ card }),
           })
@@ -418,7 +418,7 @@ export async function sendReply({
   }
 
   if (queued.steering && copySettling({
-    hydraId,
+    titanId,
     task: queued.card,
   })) {
     return {
@@ -446,7 +446,7 @@ export async function sendReply({
     }
   } else if (queued.steering && route.kind !== 'othrys') {
     const notice = await notifySteering({
-      hydraId,
+      titanId,
       card,
       message: queued.steering,
       attempt: queued.notificationAttempt,
@@ -457,7 +457,7 @@ export async function sendReply({
     }
   } else {
     outcome = await deliver({
-      hydraId,
+      titanId,
       card,
       reply,
       route,
@@ -479,7 +479,7 @@ export async function sendReply({
 
   try {
     await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         const data = {

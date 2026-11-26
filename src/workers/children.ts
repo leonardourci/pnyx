@@ -84,8 +84,8 @@ function recordedProcess({ value }: { value: unknown }): boolean {
   return validPid && validStart && validTask && validPreserveTools
 }
 
-const childrenPath = ({ hydraId }: { hydraId: string }) => join(
-  hydraDir({ hydraId }),
+const childrenPath = ({ titanId }: { titanId: string }) => join(
+  hydraDir({ titanId }),
   'children.json',
 )
 
@@ -133,16 +133,16 @@ const verified = ({
 }) === start
 
 export function trackChildren({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task?: string
 }) {
   const path = task ? join(
     taskRuntimeDir({ task }),
     'children.json',
-  ) : childrenPath({ hydraId })
+  ) : childrenPath({ titanId })
   const live = new Map<number, Recorded>()
   const save = () => replaceFile({
     path,

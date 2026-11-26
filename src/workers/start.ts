@@ -183,10 +183,10 @@ export function freeTask({
 
 // The harness catalogs the Titan's server reads; one it cannot read is left out, so its models are not checked.
 async function hostedOffers({
-  hydraId,
+  titanId,
   harnesses,
 }: {
-  hydraId: string
+  titanId: string
   harnesses: Harness[]
 }): Promise<Partial<Record<Harness, string[]>>> {
   const offers: Partial<Record<Harness, string[]>> = {}
@@ -194,7 +194,7 @@ async function hostedOffers({
   await Promise.all([...new Set(harnesses)].map(async harness => {
     try {
       const { models } = await askHost({
-        hydraId,
+        titanId,
         body: {
           action: 'models',
           harness,
@@ -233,14 +233,14 @@ function unappliedFlags({ given }: { given: Record<StartFlag, unknown> }): strin
 }
 
 async function steerAttached({
-  hydraId,
+  titanId,
   card,
   worker,
   prompt,
   unapplied,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
   worker: string
   prompt?: string
@@ -270,7 +270,7 @@ async function steerAttached({
 
   try {
     const sent = await sendReply({
-      hydraId,
+      titanId,
       request: {
         card: card.id,
         expectedSession: worker,
@@ -306,23 +306,23 @@ async function steerAttached({
 }
 
 function leaseOrWait({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task: string
 }): { release: () => void } | { waiting: Output } {
   try {
     return {
       release: taskLease({
-        hydraId,
+        titanId,
         task,
         actor: 'main',
       }),
     }
   } catch (error) {
     const otherTurn = error instanceof TitanError && error.code === 'TASK_LEASED' && !copySettling({
-      hydraId,
+      titanId,
       task,
     })
 
@@ -342,16 +342,16 @@ function leaseOrWait({
 }
 
 async function leaveQueue({
-  hydraId,
+  titanId,
   card,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
   meta: Meta
 }): Promise<string | undefined> {
   const session = await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       const queued = writer.state.cards[card.id]?.queue?.session
 
@@ -380,12 +380,12 @@ async function leaveQueue({
 }
 
 async function noteOpen({
-  hydraId,
+  titanId,
   task,
   open,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   open: Blocker[]
   meta: Meta
@@ -395,7 +395,7 @@ async function noteOpen({
   }
 
   await noteOnce({
-    hydraId,
+    titanId,
     task,
     source: 'othrys:start',
     text: [
@@ -407,7 +407,7 @@ async function noteOpen({
 }
 
 export async function startTask({
-  hydraId,
+  titanId,
   task,
   via,
   rule,
@@ -422,7 +422,7 @@ export async function startTask({
   commandName,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   task: string
   replacement?: string
   inputId?: string
@@ -444,19 +444,19 @@ export async function startTask({
     override,
     tools,
   })
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const card = findCard({
     state,
     ref: task,
   })
 
   requireHandoffAvailable({
-    hydraId,
+    titanId,
     task: card.id,
   })
 
   requireCopyAvailable({
-    hydraId,
+    titanId,
     task: card.id,
   })
 
@@ -484,7 +484,7 @@ export async function startTask({
     })
 
     return steerAttached({
-      hydraId,
+      titanId,
       card,
       worker,
       prompt,
@@ -505,7 +505,7 @@ export async function startTask({
   }
 
   const leased = leaseOrWait({
-    hydraId,
+    titanId,
     task: card.id,
   })
 
@@ -523,7 +523,7 @@ export async function startTask({
       started: Output
       unqueued?: string
     }): Promise<Output> => {
-      const current = loadTitan({ hydraId }).state
+      const current = loadTitan({ titanId }).state
       const open = startBlockers({
         state: current,
         card: findCard({
@@ -533,7 +533,7 @@ export async function startTask({
       })
 
       await noteOpen({
-        hydraId,
+        titanId,
         task: card.id,
         open,
         meta,
@@ -576,7 +576,7 @@ export async function startTask({
       const named = list.filter(c => (!harness || c.harness === harness)
         && (override?.model || c.model))
       const offers = await hostedOffers({
-        hydraId,
+        titanId,
         harnesses: named.map(c => c.harness),
       })
 
@@ -602,14 +602,14 @@ export async function startTask({
       ? selectedCommand?.bringsOwnFolder : Boolean(state.config?.commandOwnsFolder)
     const ownFolder = command && ownsFolder
     const unqueued = await leaveQueue({
-      hydraId,
+      titanId,
       card,
       meta,
     })
 
     const folder = replacement ? given
       : await taskFolder({
-        hydraId,
+        titanId,
         task,
         folder: given,
         inPlace,
@@ -620,7 +620,7 @@ export async function startTask({
     if (command) {
       return await guided({
         started: await startCommand({
-          hydraId,
+          titanId,
           role: 'worker',
           task,
           prompt,
@@ -634,7 +634,7 @@ export async function startTask({
     }
 
     const started = await askHost({
-      hydraId,
+      titanId,
       body: {
         action: 'start',
         inputId,
@@ -643,7 +643,7 @@ export async function startTask({
         task: card.id,
         ...(replacement ? { replacement } : {}),
         prompt: await taskPrompt({
-          hydraId,
+          titanId,
           card,
           prompt,
           replacing: replacement,

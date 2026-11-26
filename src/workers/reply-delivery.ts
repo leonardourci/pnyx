@@ -17,14 +17,14 @@ export function routeName({ route }: { route: ReplyRoute }): string {
 const CONFIRM_SETTLE_MS = 1500
 
 export async function deliver({
-  hydraId,
+  titanId,
   card,
   reply,
   route,
   request,
   keys,
 }: {
-  hydraId: string
+  titanId: string
   card: string
   reply: string
   route: ReplyRoute
@@ -46,7 +46,7 @@ export async function deliver({
 
   if (route.kind === 'othrys') {
     return hostReply({
-      hydraId,
+      titanId,
       card,
       text,
       inputId: reply,
@@ -75,7 +75,7 @@ export async function deliver({
   await delay(CONFIRM_SETTLE_MS)
 
   if (await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       drainSpool({ writer })
 
@@ -102,7 +102,7 @@ export async function deliver({
 }
 
 async function hostReply({
-  hydraId,
+  titanId,
   card,
   text,
   setting,
@@ -111,7 +111,7 @@ async function hostReply({
   actor,
   inputId,
 }: {
-  hydraId: string
+  titanId: string
   card: string
   text: string
   setting?: ReplyRequest['setting']
@@ -122,7 +122,7 @@ async function hostReply({
 }): Promise<Delivery> {
   try {
     const accepted = await askHost({
-      hydraId,
+      titanId,
       body: setting
         ? {
           action: 'set',

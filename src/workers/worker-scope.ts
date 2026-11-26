@@ -100,12 +100,12 @@ function targetOf({
 function requireOwnTask({
   task,
   ref,
-  hydraId,
+  titanId,
   what,
 }: {
   task: string
   ref: string | undefined
-  hydraId: string
+  titanId: string
   what: string
 }): void {
   if (!ref) {
@@ -118,7 +118,7 @@ function requireOwnTask({
   }
 
   const card = findCard({
-    state: loadTitan({ hydraId }).state,
+    state: loadTitan({ titanId }).state,
     ref,
   })
 
@@ -211,7 +211,7 @@ function checkWorkerScope({
       words,
       values,
     }),
-    hydraId: commandTitan({ hydra: typeof values.hydra === 'string' ? values.hydra : undefined }),
+    titanId: commandTitan({ hydra: typeof values.hydra === 'string' ? values.hydra : undefined }),
     what: command,
   })
 }

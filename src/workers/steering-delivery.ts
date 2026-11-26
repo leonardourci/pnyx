@@ -28,12 +28,12 @@ function keyForSteering({
 
 // A worker's steering inbox reaching its session: the doorbell with the words or the IDs, and marking read what it took.
 export function createSteeringDelivery({
-  hydraId,
+  titanId,
   at,
   write,
   note,
 }: {
-  hydraId: string
+  titanId: string
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
@@ -84,7 +84,7 @@ export function createSteeringDelivery({
     return [
       steeringNotice({
         task: card.id,
-        hydraId,
+        titanId,
         ids,
         claim,
       }),

@@ -17,8 +17,8 @@ import { compactCommand } from './compact-command.ts'
 
 const ACTIVITY_READ_BYTES = 1024 * 1024
 
-export async function restoreSessionActivity({ hydraId }: { hydraId: string }): Promise<void> {
-  const state = loadTitan({ hydraId }).state
+export async function restoreSessionActivity({ titanId }: { titanId: string }): Promise<void> {
+  const state = loadTitan({ titanId }).state
 
   for (const session of Object.values(state.sessions ?? {})) {
     const path = session.agent.transcriptPath
@@ -59,7 +59,7 @@ export async function restoreSessionActivity({ hydraId }: { hydraId: string }): 
         }
 
         const committed = await withWriter({
-          hydraId,
+          titanId,
           fn: ({ writer }) => {
             const bound = writer.state.sessions?.[session.id]
 
@@ -213,7 +213,7 @@ export async function restoreSessionActivity({ hydraId }: { hydraId: string }): 
       log({
         level: 'warn',
         operation: 'session activity recovery',
-        hydraId,
+        titanId,
         sessionId: session.id,
         error,
       })

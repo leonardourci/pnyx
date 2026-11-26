@@ -31,7 +31,7 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
   const {
     values,
     positionals,
-    hydraId,
+    titanId,
   } = parse({
     args,
     positionals: 3,
@@ -62,11 +62,11 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
     }
 
     if (!actor.actor.startsWith('worker:')) {
-      return read({ writer: { state: loadTitan({ hydraId }).state } })
+      return read({ writer: { state: loadTitan({ titanId }).state } })
     }
 
     return await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const card = inboxTask({
           writer,
@@ -147,7 +147,7 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
   }
 
   return await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       if (action === 'enqueue') {
         const message = enqueueSteering({
@@ -261,7 +261,7 @@ export async function acknowledgeInstruction({ args }: { args: string[] }): Prom
   const {
     values,
     positionals,
-    hydraId,
+    titanId,
   } = parse({
     args,
     positionals: 2,
@@ -310,7 +310,7 @@ export async function acknowledgeInstruction({ args }: { args: string[] }): Prom
   const identity = workerIdentity({ actor: m.actor })
 
   return await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       const card = inboxTask({
         writer,
@@ -324,7 +324,7 @@ export async function acknowledgeInstruction({ args }: { args: string[] }): Prom
         })
       }
 
-      const generation = nativeHome().references({ hydra: hydraId })
+      const generation = nativeHome().references({ hydra: titanId })
         .get(assignment)
 
       if (generation === undefined) {

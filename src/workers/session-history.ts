@@ -4,22 +4,22 @@ import { scanEvents } from '#app/event-log.ts'
 import { loadTitan } from '#app/store.ts'
 
 export function taskSessions({
-  hydraId,
+  titanId,
   ids,
 }: {
-  hydraId: string
+  titanId: string
   ids: Set<string>
 }): Set<string> {
   const sessions = new Set<string>()
 
-  for (const session of Object.values(loadTitan({ hydraId }).state.sessions ?? {})) {
+  for (const session of Object.values(loadTitan({ titanId }).state.sessions ?? {})) {
     if (ids.has(session.originCardId) || ids.has(session.taskId ?? '')) {
       sessions.add(session.id)
     }
   }
 
   for (const event of scanEvents({
-    hydraId,
+    titanId,
     cardIds: [...ids],
     types: [
       'task.session',

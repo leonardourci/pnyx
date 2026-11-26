@@ -103,11 +103,11 @@ export function resumesInARow({
 
 // A worker's cut turn is resumed at most once per cut, and at most MAX_RESUMES times in a row.
 export function findWorkerTurnToResume({
-  hydraId,
+  titanId,
   state,
   agent,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   agent: AgentRef
 }): string | undefined {
@@ -131,7 +131,7 @@ export function findWorkerTurnToResume({
   }
 
   const observations = scanChanges({
-    hydraId,
+    titanId,
     cardId: session?.launchId ? undefined : cardId,
     types: ['session.observed'],
     descending: true,
@@ -171,7 +171,7 @@ export function findWorkerTurnToResume({
   if (launchSeq !== undefined && (!lastTurn || launchSeq > lastTurn.seq)
     && (boundary === undefined || launchSeq > boundary)) {
     lastTurn = readChanges({
-      hydraId,
+      titanId,
       seqs: [launchSeq],
     })[0]
   }
@@ -179,7 +179,7 @@ export function findWorkerTurnToResume({
   if (!lastTurn || resumesInARow({
     turn: lastTurn,
     read: ({ seq }) => readChanges({
-      hydraId,
+      titanId,
       seqs: [seq],
     })[0],
   }) >= MAX_RESUMES) {

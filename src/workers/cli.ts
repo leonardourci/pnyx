@@ -84,12 +84,12 @@ type Attachment = Extract<TitanEvent, { type: 'task.session' }>
 
 // Attachment is durable even when delivery fails.
 export async function afterAttach({
-  hydraId,
+  titanId,
   result,
   attachment,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   result: Output
   attachment: Attachment
   meta: Meta
@@ -98,15 +98,15 @@ export async function afterAttach({
     return result
   }
 
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
 
   try {
     const brief = await sendReply({
-      hydraId,
+      titanId,
       request: {
         card: attachment.cardId,
         text: await taskPrompt({
-          hydraId,
+          titanId,
           card: state.cards[attachment.cardId]!,
         }),
         expectedSession: attachment.data.session,

@@ -167,18 +167,18 @@ export async function restoreCheckout({
 }
 
 export const otherWorkers = ({
-  hydraId,
+  titanId,
   state,
   session,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   session: AgentSession
 }) => hydraIds().flatMap(id => {
-  const current = id === hydraId ? state : loadTitan({ hydraId: id }).state
+  const current = id === titanId ? state : loadTitan({ titanId: id }).state
 
   return Object.values(current.sessions ?? {})
-    .filter(s => (id !== hydraId || s.id !== session.id) && s.taskId && s.agent.cwd && s.activity !== 'ended')
+    .filter(s => (id !== titanId || s.id !== session.id) && s.taskId && s.agent.cwd && s.activity !== 'ended')
 })
 
 interface HandoffIntent {
@@ -194,19 +194,19 @@ interface HandoffIntent {
   previousHead: string
 }
 
-const handoffsDir = ({ hydraId }: { hydraId: string }) => join(
-  hydraDir({ hydraId }),
+const handoffsDir = ({ titanId }: { titanId: string }) => join(
+  hydraDir({ titanId }),
   'handoffs',
 )
 
 export function saveHandoff({
-  hydraId,
+  titanId,
   intent,
 }: {
-  hydraId: string
+  titanId: string
   intent: HandoffIntent
 }): string {
-  const dir = handoffsDir({ hydraId })
+  const dir = handoffsDir({ titanId })
   privateDir({ dir })
   const key = createHash('sha256').update(intent.session)
     .digest('hex')
@@ -258,8 +258,8 @@ function readHandoff({ path }: { path: string }): HandoffIntent {
   return intent as HandoffIntent
 }
 
-function handoffFiles({ hydraId }: { hydraId: string }): string[] {
-  const dir = handoffsDir({ hydraId })
+function handoffFiles({ titanId }: { titanId: string }): string[] {
+  const dir = handoffsDir({ titanId })
   let files: string[]
 
   try {
@@ -279,13 +279,13 @@ function handoffFiles({ hydraId }: { hydraId: string }): string[] {
 }
 
 export function handoffPending({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task: string
 }): boolean {
-  return handoffFiles({ hydraId }).some(path => {
+  return handoffFiles({ titanId }).some(path => {
     const intent = readHandoff({ path })
 
     return intent.source === task || intent.target === task
@@ -293,14 +293,14 @@ export function handoffPending({
 }
 
 export function requireHandoffAvailable({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task: string
 }): void {
   if (handoffPending({
-    hydraId,
+    titanId,
     task,
   })) {
     throw new TitanError({
@@ -312,11 +312,11 @@ export function requireHandoffAvailable({
 }
 
 async function completeHandoff({
-  hydraId,
+  titanId,
   intent,
   event,
 }: {
-  hydraId: string
+  titanId: string
   intent: HandoffIntent
   event: Extract<TitanEvent, { type: 'task.session' }>
 }): Promise<void> {
@@ -328,7 +328,7 @@ async function completeHandoff({
         intent.target,
       ]
       const missing = tasks.filter(task => !home.files.has({
-        hydra: hydraId,
+        hydra: titanId,
         task,
         id: event.id,
       }))
@@ -337,9 +337,9 @@ async function completeHandoff({
         return
       }
 
-      const before = structuredClone(loadTitan({ hydraId }).state)
-      const positions = home.files.positions({ hydra: hydraId })
-      const ids = home.references({ hydra: hydraId })
+      const before = structuredClone(loadTitan({ titanId }).state)
+      const positions = home.files.positions({ hydra: titanId })
+      const ids = home.references({ hydra: titanId })
 
       for (const task of tasks) {
         const position = positions?.tasks.get(task)?.position
@@ -354,7 +354,7 @@ async function completeHandoff({
           path: join(
             taskFiles({
               home: home.path,
-              hydra: hydraId,
+              hydra: titanId,
               task,
             }),
             'task.log',
@@ -402,7 +402,7 @@ async function completeHandoff({
 
       for (const task of missing) {
         home.position({
-          hydra: hydraId,
+          hydra: titanId,
           scope: task,
           id: event.id,
           seq: event.seq,
@@ -414,28 +414,28 @@ async function completeHandoff({
           task,
           ids,
           basis: home.files.value({
-            hydra: hydraId,
+            hydra: titanId,
             task,
           })?.state,
         })
         await home.files.changeTask({
-          hydra: hydraId,
+          hydra: titanId,
           task,
           decide: () => [fact],
         })
       }
 
-      reloadTitan({ hydraId })
+      reloadTitan({ titanId })
     },
   })
 }
 
 // Runs before any worker resumes, so its checkout agrees with the committed assignment.
-export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise<void> {
+export async function recoverHandoffs({ titanId }: { titanId: string }): Promise<void> {
   const recover = async ({ path }: { path: string }) => {
     const intent = readHandoff({ path })
     const event = readHandoffEvent({
-      hydraId,
+      titanId,
       eventId: intent.eventId,
     })
     const committed = event?.type === 'task.session' && event.cardId === intent.target
@@ -448,13 +448,13 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
 
     if (committed) {
       await completeHandoff({
-        hydraId,
+        titanId,
         intent,
         event,
       })
     }
 
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const assigned = state.sessions?.[intent.session]
     const expectedTask = committed ? intent.target : intent.source
     const copy = state.cards[expectedTask]?.copy
@@ -470,7 +470,7 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
     }
 
     for (const session of otherWorkers({
-      hydraId,
+      titanId,
       state,
       session: assigned,
     })) {
@@ -499,14 +499,14 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
     clearHandoff({ path })
   }
 
-  for (const path of handoffFiles({ hydraId })) {
+  for (const path of handoffFiles({ titanId })) {
     try {
       await recover({ path })
     } catch (error) {
       log({
         level: 'error',
         operation: 'recover handoff',
-        hydraId,
+        titanId,
         error,
       })
     }
@@ -514,16 +514,16 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
 }
 
 export function readHandoffEvent({
-  hydraId,
+  titanId,
   eventId,
 }: {
-  hydraId: string
+  titanId: string
   eventId: string
 }): TitanEvent | undefined {
-  reloadTitan({ hydraId })
+  reloadTitan({ titanId })
 
   return readEvents({
-    hydraId,
+    titanId,
     ids: [eventId],
     limit: 1,
   })[0]
