@@ -228,7 +228,7 @@ export function createStallChecks({
 
       const worker = card as Card & { agent: AgentRef }
 
-      if (card.agent.host !== 'pnyx') {
+      if (card.agent.host !== 'othrys') {
         return []
       }
 

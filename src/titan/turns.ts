@@ -515,7 +515,7 @@ export function createTitanTurns({
 
       await write({
         fn: ({ writer }) => {
-          if (previous?.agent?.host === 'pnyx') {
+          if (previous?.agent?.host === 'othrys') {
             record({
               writer,
               agent: previous.agent,
@@ -541,7 +541,7 @@ export function createTitanTurns({
       let prepared: HostedSession | undefined
 
       try {
-        if (previous?.agent && previous.agent.host !== 'pnyx') {
+        if (previous?.agent && previous.agent.host !== 'othrys') {
           throw new TitanError({
             message: 'This Titan already has an outside agent. Continue it in its own harness.',
             code: 'NO_ROUTE',
@@ -576,7 +576,7 @@ export function createTitanTurns({
             chosen: settings,
           })
         const stopping = Boolean(running && running.stopping)
-        const joinsTurn = actor !== 'pnyx' && sameSession && !stopping
+        const joinsTurn = actor !== 'othrys' && sameSession && !stopping
 
         while (!joinsTurn && previousAgent && running?.activity === 'working'
           && live.get(sessionId({ agent: previousAgent })) === running && !closing()) {
@@ -656,7 +656,7 @@ export function createTitanTurns({
           provider,
           sessionId: prepared!.id,
           cwd,
-          host: 'pnyx',
+          host: 'othrys',
           ...(prepared?.path ? { transcriptPath: prepared.path } : {}),
           ...(dispatch ? {
             account: dispatch.account,
@@ -704,7 +704,7 @@ export function createTitanTurns({
                   attention: [],
                 },
                 source: {
-                  adapter: 'pnyx',
+                  adapter: 'othrys',
                   objectId: ref.sessionId,
                   observedAt: at(),
                 },
@@ -913,7 +913,7 @@ export function createTitanTurns({
     }
 
     // An Othrys wake waits for the running turn outside the chain, so owner messages sent meanwhile still join that turn.
-    if (actor === 'pnyx' && (waitingWakes > 0 || hydraBusy())) {
+    if (actor === 'othrys' && (waitingWakes > 0 || hydraBusy())) {
       waitingWakes += 1
       const previous = wakeTurn
       wakeTurn = (async () => {
@@ -1028,7 +1028,7 @@ export function createTitanTurns({
             cardId: TITAN_CARD,
             meta: {
               at: at(),
-              actor: 'pnyx',
+              actor: 'othrys',
             },
             change: {
               type: 'hydra.context-delivered',
@@ -1052,7 +1052,7 @@ export function createTitanTurns({
             cardId: TITAN_CARD,
             meta: {
               at: at(),
-              actor: 'pnyx',
+              actor: 'othrys',
             },
             change: {
               type: 'hydra.helper-acknowledged',

@@ -30,7 +30,7 @@ export function stopTitanInputs({
       cardId: TITAN_CARD,
       meta: {
         at,
-        actor: 'pnyx',
+        actor: 'othrys',
       },
       change: {
         type: 'hydra.input-stopped',

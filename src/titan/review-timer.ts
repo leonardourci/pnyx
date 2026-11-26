@@ -195,7 +195,7 @@ export function startReviewTimer({
             state: writer.state,
             meta: {
               at: new Date(time).toISOString(),
-              actor: 'pnyx',
+              actor: 'othrys',
             },
             cardId: TITAN_CARD,
             change: {

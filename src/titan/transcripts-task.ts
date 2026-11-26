@@ -23,7 +23,7 @@ function waitingReason({ card }: { card: Card }) {
     return undefined
   }
 
-  if (card.agent.host !== 'pnyx') {
+  if (card.agent.host !== 'othrys') {
     return 'Waiting for the worker to read its inbox'
   }
 

@@ -189,7 +189,7 @@ export function createTitanOperations({
           operation,
           meta: {
             at: at(),
-            actor: 'pnyx',
+            actor: 'othrys',
           },
         }),
       })
@@ -260,7 +260,7 @@ export function createTitanOperations({
           recapId = `operation:${id}`
           await host().hydra({
             id: recapId,
-            actor: 'pnyx',
+            actor: 'othrys',
             ...recap,
           })
         } else {
@@ -280,7 +280,7 @@ export function createTitanOperations({
             operation: ended,
             meta: {
               at: at(),
-              actor: 'pnyx',
+              actor: 'othrys',
             },
           }),
         })
@@ -340,7 +340,7 @@ export function createTitanOutage({
     retry: planRetry,
     run: () => host().hydra({
       id: `back:${down.seq}`,
-      actor: 'pnyx',
+      actor: 'othrys',
       ...recapText({
         state: loadTitan({ hydraId }).state,
         since: down.since,
@@ -368,7 +368,7 @@ export function createTitanOutage({
       fn: ({ writer }) => {
         const meta = {
           at: new Date(now).toISOString(),
-          actor: 'pnyx',
+          actor: 'othrys',
         }
         applyDecision({
           writer,
@@ -487,12 +487,12 @@ export function createTitanOutage({
         const down = writer.state.hydraStatus?.state === 'down'
         const now = at()
 
-        if (previous?.agent?.host === 'pnyx') {
+        if (previous?.agent?.host === 'othrys') {
           record({
             writer,
             agent: previous.agent,
             input: { activity: 'finished' },
-            actor: 'pnyx',
+            actor: 'othrys',
           })
         }
 
@@ -504,7 +504,7 @@ export function createTitanOutage({
             input: { activity: 'finished' },
             meta: {
               at: now,
-              actor: 'pnyx',
+              actor: 'othrys',
             },
           }),
         })
@@ -516,7 +516,7 @@ export function createTitanOutage({
               state: writer.state,
               meta: {
                 at: now,
-                actor: 'pnyx',
+                actor: 'othrys',
               },
               cardId: TITAN_CARD,
               change: {
@@ -550,7 +550,7 @@ export function createTitanOutage({
               state: writer.state,
               meta: {
                 at: now,
-                actor: 'pnyx',
+                actor: 'othrys',
               },
               cardId: TITAN_CARD,
               change: {

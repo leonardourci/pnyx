@@ -119,7 +119,7 @@ export function hydraMessages({
   }
 
   const claims = new Map<TitanMessage, ThreadEntry>(), claimed = new Set<ThreadEntry>()
-  const pairable = messages.filter(message => message.actor !== TITAN_ACTOR && message.actor !== 'pnyx' && !message.stopped)
+  const pairable = messages.filter(message => message.actor !== TITAN_ACTOR && message.actor !== 'othrys' && !message.stopped)
   const messageIds = new Set(messages.map(message => message.id))
 
   const claim = ({
@@ -178,7 +178,7 @@ export function hydraMessages({
 
   for (const message of messages) {
     const report = reportActor({ actor: message.actor })
-    const role = message.actor === TITAN_ACTOR ? 'assistant' : message.actor === 'pnyx' ? 'Othrys' : 'user'
+    const role = message.actor === TITAN_ACTOR ? 'assistant' : message.actor === 'othrys' ? 'Othrys' : 'user'
     const copies = deliveredWords({ message })
     const entered = message.enteredText ?? message.text
     const shown = message.details ? `${entered}\n\n${message.details}` : entered
@@ -229,7 +229,7 @@ export function hydraMessages({
         final: message.actor === TITAN_ACTOR ? true : undefined,
         text: shown,
         at: message.at,
-        hidden: boundaries && message.kind !== 'divider' && (message.actor === 'pnyx' || !!message.fromMessage || message.id.endsWith(':line')),
+        hidden: boundaries && message.kind !== 'divider' && (message.actor === 'othrys' || !!message.fromMessage || message.id.endsWith(':line')),
         ...(message.task ? { task: message.task } : {}),
       }
       recorded.push(entry)

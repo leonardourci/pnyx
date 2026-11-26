@@ -417,7 +417,7 @@ export function findTitanTurnToResume({
   }).find(event => {
     const fields = sessionFields({ event })
 
-    return fields?.activity === 'finished' && event.actor === 'pnyx'
+    return fields?.activity === 'finished' && event.actor === 'othrys'
       && fields.agent?.sessionId === agent.sessionId && fields.agent.provider === agent.provider
       && fields.agent.agentId === agent.agentId
   })

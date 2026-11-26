@@ -58,7 +58,7 @@ export function applyTitan({
             kind: 'divider',
             text: `Switched to ${change.next.model ?? change.next.harness}`,
             at: event.at,
-            actor: 'pnyx',
+            actor: 'othrys',
             hydra: hydraConfig({ state }).hydra.id,
           },
         ]
@@ -100,7 +100,7 @@ export function applyTitan({
           kind: 'divider',
           text: operationLabel(event.data),
           at: event.at,
-          actor: 'pnyx',
+          actor: 'othrys',
           // The chat shows the messages of the Titan it is configured as.
           hydra: hydraConfig({ state }).hydra.id,
         },

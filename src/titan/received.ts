@@ -65,7 +65,7 @@ export function failTitanInput({
       state: writer.state,
       cardId: TITAN_CARD,
       meta: {
-        actor: 'pnyx',
+        actor: 'othrys',
         at,
       },
       change: {

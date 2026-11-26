@@ -72,7 +72,7 @@ export function createWakeQueue({
 
     return host().hydra({
       id,
-      actor: 'pnyx',
+      actor: 'othrys',
       text,
     })
       .finally(() => wakeTasks.delete(id))
@@ -267,7 +267,7 @@ export function createWakeQueue({
       if (helperPending()) {
         return host().hydra({
           id: `helper-outcomes:${state.seq}`,
-          actor: 'pnyx',
+          actor: 'othrys',
           text: '<othrys-wake>The routine helper left outcomes or handed a batch back. Handle the pending records below; relay owner outcomes in one plain line each with full links.</othrys-wake>',
         })
       }

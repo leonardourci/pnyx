@@ -317,7 +317,7 @@ export function applyHistory({
       kind: 'divider',
       text: label,
       at: event.at,
-      actor: 'pnyx',
+      actor: 'othrys',
       hydra: state.config?.hydra.id ?? 'hydra',
     },
   ]

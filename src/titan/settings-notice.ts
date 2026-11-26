@@ -31,7 +31,7 @@ export async function settingsNotice({
         meta: {
           id: `settings:${changeId}`,
           at: meta.at,
-          actor: 'pnyx',
+          actor: 'othrys',
         },
         change: {
           type: 'hydra.message',

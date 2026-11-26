@@ -81,7 +81,7 @@ export function deliveredInputs({
 }): Set<ThreadEntry> {
   const inputs = entries.filter(entry => ownMessage({ entry }))
   const adoptedFromTerminal = agent?.resume === true
-  const startedByOthrys = agent?.host === 'pnyx' && !adoptedFromTerminal
+  const startedByOthrys = agent?.host === 'othrys' && !adoptedFromTerminal
 
   if (startedByOthrys) {
     return new Set(inputs)

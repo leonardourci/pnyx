@@ -91,13 +91,13 @@ export function hydraDelivery({ message }: { message: Pick<TitanMessage, 'id' | 
 }
 
 export function hostedTitan({ state }: { state: TitanState }): boolean {
-  return state.cards[TITAN_CARD]?.agent?.host === 'pnyx'
+  return state.cards[TITAN_CARD]?.agent?.host === 'othrys'
 }
 
 export function othrysRunsTitan({ state }: { state: TitanState }): boolean {
   const agent = state.cards[TITAN_CARD]?.agent
 
-  return !agent || agent.host === 'pnyx'
+  return !agent || agent.host === 'othrys'
 }
 
 // The mode a hosted Titan's session runs in, once it matches the composer's; none mid-switch.

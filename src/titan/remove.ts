@@ -258,7 +258,7 @@ export async function finishTitanRemoval({ id }: { id: string }): Promise<Output
   }
 
   const actor = {
-    actor: 'pnyx',
+    actor: 'othrys',
     at: new Date().toISOString(),
   }
 
