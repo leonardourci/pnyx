@@ -1,4 +1,4 @@
-import { canonicalCommandName, parseCommandArgs } from '#app/command-aliases.ts'
+import { parseArgs } from 'node:util'
 import { inform, withCommandNotices } from '#app/command-notices.ts'
 import { workerScope } from '#app/command-registry.ts'
 import { commandTitan, guard, type Options } from '#app/cli-support.ts'
@@ -32,7 +32,7 @@ const COMMAND_OPTIONS = new Map<string, Options>([
     LINK_OPTIONS,
   ],
   [
-    'hydra',
+    'titan',
     TITAN_OPTIONS,
   ],
 ])
@@ -60,7 +60,7 @@ function split({
   const {
     values,
     positionals,
-  } = parseCommandArgs({
+  } = parseArgs({
     args: nested ? args.slice(1) : args,
     options: nested ?? COMMAND_OPTIONS.get(name) ?? TASK_OPTIONS,
     allowPositionals: true,
@@ -76,7 +76,7 @@ function split({
   }
 }
 
-// The task a command line writes to: named one word later for the nested task subcommands, by --task for hydra send.
+// The task a command line writes to: named one word later for the nested task subcommands, by --task for titan send.
 function targetOf({
   name,
   words,
@@ -86,7 +86,7 @@ function targetOf({
   words: string[]
   values: Record<string, string | boolean | (string | boolean)[] | undefined>
 }): string | undefined {
-  if (name === 'hydra') {
+  if (name === 'titan') {
     return typeof values.task === 'string' ? values.task : undefined
   }
 
@@ -111,7 +111,7 @@ function requireOwnTask({
   if (!ref) {
     inform({
       reason: `${what} has no worker task target`,
-      clear: 'Use othrys board to find the task ID.',
+      clear: 'Use othrys titan to find the task ID.',
     })
 
     return
@@ -188,7 +188,7 @@ function checkWorkerScope({
     return
   }
 
-  if (name === 'hydra' && values.action !== undefined) {
+  if (name === 'titan' && values.action !== undefined) {
     inform({
       reason: 'Worker requested a Titan action',
       clear: 'Append a note line to the assigned worker.log for a progress report.',
@@ -211,7 +211,7 @@ function checkWorkerScope({
       words,
       values,
     }),
-    titanId: commandTitan({ hydra: typeof values.hydra === 'string' ? values.hydra : undefined }),
+    titanId: commandTitan({ titan: typeof values.titan === 'string' ? values.titan : undefined }),
     what: command,
   })
 }
@@ -225,7 +225,7 @@ export function workerScoped<T extends Record<string, Command>>({ commands }: { 
   ]) => {
     const check = guard({
       handler: ({ args }) => checkWorkerScope({
-        name: canonicalCommandName({ name }),
+        name: name,
         args,
       }),
     })

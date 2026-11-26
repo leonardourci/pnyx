@@ -324,7 +324,7 @@ export async function acknowledgeInstruction({ args }: { args: string[] }): Prom
         })
       }
 
-      const generation = nativeHome().references({ hydra: titanId })
+      const generation = nativeHome().references({ titan: titanId })
         .get(assignment)
 
       if (generation === undefined) {

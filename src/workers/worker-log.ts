@@ -1,7 +1,7 @@
 import { closeSync, constants, existsSync, fstatSync, openSync, readSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { loadTitan } from '#app/store.ts'
-import { hydraDir } from '#app/home-migration.ts'
+import { titanDir } from '#app/home-migration.ts'
 import { taskRuntimeDir } from '#store/paths.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { privateDir } from '#store/storage.ts'
@@ -36,7 +36,7 @@ export function workerTaskDir({
 }): string {
   const card = loadTitan({ titanId }).state.cards[task]
   const dir = reportDirectory({
-    hydraFolder: hydraDir({ titanId }),
+    titanFolder: titanDir({ titanId }),
     task,
     recorded: card?.workerLogDir,
   })
@@ -46,11 +46,11 @@ export function workerTaskDir({
 }
 
 function reportDirectory({
-  hydraFolder,
+  titanFolder,
   task,
   recorded,
 }: {
-  hydraFolder: string
+  titanFolder: string
   task: string
   recorded?: string
 }): string {
@@ -59,7 +59,7 @@ function reportDirectory({
   }
 
   const legacy = resolve(
-    hydraFolder,
+    titanFolder,
     'tasks',
     task,
   )
@@ -86,7 +86,7 @@ export function foldWorkerLog({
 
   const path = join(
     reportDirectory({
-      hydraFolder: writer.dir,
+      titanFolder: writer.dir,
       task,
       recorded: card.workerLogDir,
     }),

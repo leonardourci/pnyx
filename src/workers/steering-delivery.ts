@@ -1,4 +1,4 @@
-import { hydrasDir } from '#app/home-migration.ts'
+import { titansDir } from '#app/home-migration.ts'
 import { attachedImages } from '#titan/images.ts'
 import { acknowledgeSteering, recordSteeringAttempt } from './inbox.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
@@ -78,7 +78,7 @@ export function createSteeringDelivery({
     const messages = (card.steering ?? []).filter(message => ids.includes(message.id))
     const images = messages.flatMap(message => attachedImages({
       text: message.text,
-      root: hydrasDir(),
+      root: titansDir(),
     }))
 
     return [

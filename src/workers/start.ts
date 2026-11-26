@@ -133,7 +133,7 @@ function requireLiveTask({
     throw new TitanError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Use othrys board'],
+      help: ['Use othrys titan'],
     })
   }
 

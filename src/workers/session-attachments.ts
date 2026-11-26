@@ -135,7 +135,7 @@ export function sessionTask({
     return state.cards[task]
   }
 
-  return state.config?.hydra.session === parent ? state.cards[TITAN_CARD] : undefined
+  return state.config?.titan.session === parent ? state.cards[TITAN_CARD] : undefined
 }
 
 export function projectedAttention({

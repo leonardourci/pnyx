@@ -275,7 +275,7 @@ export function decideSession({
     })
   }
 
-  if (target && state.config?.hydra.session === session.id) {
+  if (target && state.config?.titan.session === session.id) {
     throw new TitanError({
       message: 'Titan cannot also be a task worker',
       code: 'CONFLICT',

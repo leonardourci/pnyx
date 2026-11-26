@@ -62,7 +62,7 @@ export function steeringNotice({
   ids: string[]
   claim: SteeringClaim
 }): string {
-  const assignment = [...nativeHome().references({ hydra: titanId })].findLast(([
+  const assignment = [...nativeHome().references({ titan: titanId })].findLast(([
     , position,
   ]) => position === claim.generation)?.[0]
 

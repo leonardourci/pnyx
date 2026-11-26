@@ -7,7 +7,7 @@ import type { Output } from '#app/cli-support.ts'
 import { ApplyError, type ApplyIssue } from '#app/apply/schema.ts'
 import { asRecord } from '#app/command-validation.ts'
 import { withWriter } from '#app/writer.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { settingsNotice } from '#titan/settings-notice.ts'
 import { TitanError } from '#store/errors.ts'
@@ -17,8 +17,8 @@ import type { DispatchProposal } from './model.ts'
 import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, type DispatchChange, type DispatchDocument, type DispatchIssue } from './dispatch-check.ts'
 import { commitChange, loginFolder, lockedDocument, readChanges, savedDocument, type Account, type ChangeEntry } from './dispatch-config.ts'
 import { raisesPermission, workerMode } from './permission-level.ts'
-import { hydraCandidate } from '#titan/agent-choice.ts'
-import { hydraActor, requestEnv } from '#app/request-context.ts'
+import { titanCandidate } from '#titan/agent-choice.ts'
+import { titanActor, requestEnv } from '#app/request-context.ts'
 import { loadTitan } from '#app/store.ts'
 import { isDeepStrictEqual } from 'node:util'
 
@@ -155,11 +155,11 @@ function raisesCandidatePermission({
   const callerTitanId = requestEnv().OTHRYS_TITAN || titanId
   const state = loadTitan({ titanId: callerTitanId }).state
   // The running harness is the fallback Titan keeps; its own configured agent would hide what the rules change.
-  const previousTitan = hydraCandidate({
+  const previousTitan = titanCandidate({
     state: { cards: state.cards },
     dispatch: before,
   })
-  const nextTitan = hydraCandidate({
+  const nextTitan = titanCandidate({
     state: { cards: state.cards },
     dispatch: after,
   })
@@ -411,7 +411,7 @@ export async function applyDispatch({
         })
       }
 
-      if (hydraActor({ actor: meta.actor }) && raisesCandidatePermission({
+      if (titanActor({ actor: meta.actor }) && raisesCandidatePermission({
         titanId,
         before: document,
         after,
@@ -567,7 +567,7 @@ export async function resolveProposal({
   token: string
   meta: Meta
 }): Promise<Output> {
-  if (hydraActor({ actor: meta.actor })) {
+  if (titanActor({ actor: meta.actor })) {
     inform({
       reason: 'Dispatch proposal answered by an agent',
       clear: 'othrys rule show',
@@ -612,7 +612,7 @@ export async function resolveProposal({
       await withWriter({
         titanId,
         fn: ({ writer }) => {
-          const decision = hydraEvent({
+          const decision = titanEvent({
             state: writer.state,
             meta: eventMeta({ meta }),
             cardId: TITAN_CARD,

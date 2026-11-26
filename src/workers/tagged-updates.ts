@@ -38,16 +38,16 @@ export function copyTagged({
       cardId: card.id,
       note: {
         kind: 'context',
-        source: 'hydra',
+        source: 'titan',
         text: redact({ text: paragraph.text }),
-        ref: `hydra-reply:${turn}:${index}`,
+        ref: `titan-reply:${turn}:${index}`,
       },
       at,
     })
   })
 
   for (const id of asks) {
-    const message = writer.state.hydraMessages?.find(item => item.id === id)
+    const message = writer.state.titanMessages?.find(item => item.id === id)
 
     // Workers and Othrys also write Titan messages; only the owner's chat counts as an ask.
     if (!message || message.action !== 'send' || !ownerActor({ actor: message.actor })) {
@@ -67,7 +67,7 @@ export function copyTagged({
             source: 'owner',
             text: redact({ text: message.text }),
             at: message.at,
-            ref: `hydra-ask:${id}`,
+            ref: `titan-ask:${id}`,
           },
           at,
         })

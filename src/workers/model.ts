@@ -249,7 +249,7 @@ interface NativeTurn {
 
 export interface AgentSession {
   turn?: NativeTurn
-  hydraTurn?: NativeTurn
+  titanTurn?: NativeTurn
   turnFinishedSeq?: number
   wakeStarted?: string
   wakeHandled?: string

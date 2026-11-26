@@ -5,7 +5,7 @@ import { recordCompaction } from '#workers/compaction/record.ts'
 import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { reportActor } from '#titan/titan.ts'
-import { hydraDeliveryId } from '#titan/received.ts'
+import { titanDeliveryId } from '#titan/received.ts'
 import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { sessionId } from '#workers/session-attachments.ts'
@@ -244,7 +244,7 @@ export function createCompactionControl({
     state: TitanState
     session: string
     fallback: string
-  }) => state.cards[session === state.config?.hydra.session
+  }) => state.cards[session === state.config?.titan.session
     ? TITAN_CARD : state.sessions?.[session]?.taskId ?? fallback]
 
   const syncCompactions = async ({ state }: { state: TitanState }) => {
@@ -326,8 +326,8 @@ export function createCompactionControl({
               return
             }
 
-            if (input.route === 'hydra') {
-              await host().hydra({
+            if (input.route === 'titan') {
+              await host().titan({
                 text: input.text,
                 original: input.original,
                 actor: input.actor,
@@ -344,8 +344,8 @@ export function createCompactionControl({
               }
 
               const state = loadTitan({ titanId }).state
-              const message = state.hydraMessages?.find(message => message.id === input.id)
-              const marker = hydraDeliveryId({
+              const message = state.titanMessages?.find(message => message.id === input.id)
+              const marker = titanDeliveryId({
                 message: message ?? { id: input.id },
                 release: input.accepted,
               })

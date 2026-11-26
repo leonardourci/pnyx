@@ -30,10 +30,10 @@ export function recordTitanTurn({
     session.wakeStarted = event.id
   }
 
-  session.hydraTurn = {
+  session.titanTurn = {
     id: event.id,
     seq: event.seq,
-    resumes: event.id.startsWith('resume:') ? (session.hydraTurn?.resumes ?? 0) + 1 : 0,
+    resumes: event.id.startsWith('resume:') ? (session.titanTurn?.resumes ?? 0) + 1 : 0,
     finishedThrough: session.turnFinishedSeq ?? 0,
   }
 }
@@ -326,7 +326,7 @@ export function applySessionFacts({
     ].includes(fields.activity)
     const changed = fields.activity !== session.sessionActivity
 
-    if (ended && changed && state.hydraSessions?.includes(session.id)) {
+    if (ended && changed && state.titanSessions?.includes(session.id)) {
       state.nativeTimes = [
         ...state.nativeTimes ?? [],
         {
@@ -350,8 +350,8 @@ export function applySessionFacts({
     session.activityObservedAt = activityAt
   }
 
-  if (fileOrdered && state.config?.hydra.session === session.id) {
-    const input = source.cursor && state.hydraMessages?.find(message =>
+  if (fileOrdered && state.config?.titan.session === session.id) {
+    const input = source.cursor && state.titanMessages?.find(message =>
       ownerInputUuid({ id: message.id }) === source.cursor)
     const inputSeq = input && state.eventIds[input.id]
 
@@ -371,8 +371,8 @@ export function applySessionFacts({
       })
     }
 
-    if (fields.activity === 'finished' && session.hydraTurn) {
-      session.turnFinishedSeq = session.hydraTurn.seq
+    if (fields.activity === 'finished' && session.titanTurn) {
+      session.turnFinishedSeq = session.titanTurn.seq
     }
   }
 

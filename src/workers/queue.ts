@@ -20,7 +20,7 @@ export function queueWorker({
   const card = session.taskId ? state.cards[session.taskId] : undefined
 
   return card && liveTask({ card }) && interactive({ session })
-    && session.id !== state.config?.hydra.session && session.activity !== 'ended'
+    && session.id !== state.config?.titan.session && session.activity !== 'ended'
     && session.sessionActivity !== 'ended' ? card : undefined
 }
 

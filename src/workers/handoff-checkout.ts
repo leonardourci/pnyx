@@ -5,7 +5,7 @@ import { realpathSync, readdirSync, readFileSync, rmSync, existsSync } from 'nod
 import { join } from 'node:path'
 import { git as projectGit } from '#projects/git.ts'
 import { sameProjectPath } from '#projects/identity.ts'
-import { hydraDir, hydraIds } from '#app/home-migration.ts'
+import { titanDir, titanIds } from '#app/home-migration.ts'
 import { log } from '#app/diagnostics.ts'
 import { loadTitan, reloadTitan } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
@@ -174,7 +174,7 @@ export const otherWorkers = ({
   titanId: string
   state: TitanState
   session: AgentSession
-}) => hydraIds().flatMap(id => {
+}) => titanIds().flatMap(id => {
   const current = id === titanId ? state : loadTitan({ titanId: id }).state
 
   return Object.values(current.sessions ?? {})
@@ -195,7 +195,7 @@ interface HandoffIntent {
 }
 
 const handoffsDir = ({ titanId }: { titanId: string }) => join(
-  hydraDir({ titanId }),
+  titanDir({ titanId }),
   'handoffs',
 )
 
@@ -328,7 +328,7 @@ async function completeHandoff({
         intent.target,
       ]
       const missing = tasks.filter(task => !home.files.has({
-        hydra: titanId,
+        titan: titanId,
         task,
         id: event.id,
       }))
@@ -338,8 +338,8 @@ async function completeHandoff({
       }
 
       const before = structuredClone(loadTitan({ titanId }).state)
-      const positions = home.files.positions({ hydra: titanId })
-      const ids = home.references({ hydra: titanId })
+      const positions = home.files.positions({ titan: titanId })
+      const ids = home.references({ titan: titanId })
 
       for (const task of tasks) {
         const position = positions?.tasks.get(task)?.position
@@ -354,7 +354,7 @@ async function completeHandoff({
           path: join(
             taskFiles({
               home: home.path,
-              hydra: titanId,
+              titan: titanId,
               task,
             }),
             'task.log',
@@ -402,7 +402,7 @@ async function completeHandoff({
 
       for (const task of missing) {
         home.position({
-          hydra: titanId,
+          titan: titanId,
           scope: task,
           id: event.id,
           seq: event.seq,
@@ -414,12 +414,12 @@ async function completeHandoff({
           task,
           ids,
           basis: home.files.value({
-            hydra: titanId,
+            titan: titanId,
             task,
           })?.state,
         })
         await home.files.changeTask({
-          hydra: titanId,
+          titan: titanId,
           task,
           decide: () => [fact],
         })

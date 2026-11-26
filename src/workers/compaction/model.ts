@@ -18,7 +18,7 @@ export interface CompactInput {
   text: string
   original?: string
   actor: string
-  route: 'hydra' | 'steering' | 'direct'
+  route: 'titan' | 'steering' | 'direct'
   accepted?: boolean
   agent?: AgentConfig
   at: string

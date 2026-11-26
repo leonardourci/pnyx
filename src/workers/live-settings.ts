@@ -1,9 +1,9 @@
 import { inform } from '#app/command-notices.ts'
 import { applyDecision } from '#app/decision.ts'
 import type { Host, Live } from '#app/host-types.ts'
-import { hydraActor } from '#app/request-context.ts'
+import { titanActor } from '#app/request-context.ts'
 import type { Writer } from '#app/writer.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
@@ -76,7 +76,7 @@ export function createLiveSettings({
           })
         }
 
-        if (hydraActor({ actor }) && setting === 'mode' && agentPermissionIncreases({
+        if (titanActor({ actor }) && setting === 'mode' && agentPermissionIncreases({
           card,
           value,
         })) {
@@ -93,13 +93,13 @@ export function createLiveSettings({
           actor,
         })
 
-        const usedAgent = writer.state.hydraAgent
+        const usedAgent = writer.state.titanAgent
 
         // Wakes retain this agent, so permission controls must update its saved mode too.
         if (card.id === TITAN_CARD && setting === 'mode' && usedAgent && usedAgent.mode !== value) {
           applyDecision({
             writer,
-            decision: hydraEvent({
+            decision: titanEvent({
               state: writer.state,
               cardId: TITAN_CARD,
               meta: {

@@ -2,10 +2,10 @@ import { inform } from '#app/command-notices.ts'
 import type { Harness } from './providers.ts'
 import type { Card } from '#tasks/model.ts'
 import type { TitanState } from '#app/model.ts'
-import { hydraMode } from '#titan/titan.ts'
+import { titanMode } from '#titan/titan.ts'
 import { findOption } from './controls.ts'
 import { PROVIDERS, harnessOf, providerIdOf } from './providers.ts'
-import { hydraActor } from '#app/request-context.ts'
+import { titanActor } from '#app/request-context.ts'
 
 const PERMISSION_LEVELS: Record<Harness, Record<string, number>> = {
   claude: {
@@ -36,7 +36,7 @@ export function workerMode({
     return mode
   }
 
-  const inherited = hydraMode({ state })
+  const inherited = titanMode({ state })
 
   if (inherited && inherited !== 'plan' && findOption({
     provider: providerIdOf({ harness }),
@@ -63,7 +63,7 @@ export function noticePermissionIncrease({
   before?: string
   after?: string
 }): void {
-  const hydraRaises = after !== undefined && hydraActor({ actor }) && raisesPermission({
+  const titanRaises = after !== undefined && titanActor({ actor }) && raisesPermission({
     harness,
     before: workerMode({
       state,
@@ -73,7 +73,7 @@ export function noticePermissionIncrease({
     after,
   })
 
-  if (hydraRaises) {
+  if (titanRaises) {
     inform({
       reason: 'Worker permission level increased',
       clear: 'Change the permission mode in the worker composer.',

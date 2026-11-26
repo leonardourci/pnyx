@@ -48,7 +48,7 @@ export type AgentUsage = {
     tokens?: number
     cost?: number
     worker?: number
-    hydra?: number
+    titan?: number
     unavailable: number
     sharedTitan: boolean
   }
@@ -297,16 +297,16 @@ const fastModel = ({
 })?.fast === true
 
 // Fast in a Titan's composer reaches an agent only where its model has a Fast tier.
-export async function hydraFastReaches({
-  hydraFast,
+export async function titanFastReaches({
+  titanFast,
   models,
   model,
 }: {
-  hydraFast?: boolean
+  titanFast?: boolean
   models(): Promise<ModelOption[]>
   model?: string
 }): Promise<boolean> {
-  if (!hydraFast) {
+  if (!titanFast) {
     return false
   }
 

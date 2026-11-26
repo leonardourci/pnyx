@@ -189,7 +189,7 @@ export function createPermissionBridge({
           }
 
           const session = writer.state.sessions?.[key]
-          const current = session?.id === writer.state.config?.hydra.session
+          const current = session?.id === writer.state.config?.titan.session
             ? writer.state.cards[TITAN_CARD]
             : session?.taskId ? writer.state.cards[session.taskId] : undefined
 

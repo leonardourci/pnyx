@@ -4,7 +4,7 @@ import type { Decision, TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { completedOutcome } from '#tasks/dependencies.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
@@ -245,7 +245,7 @@ export function decideQueue({
     return { skipped: 'unchanged' }
   }
 
-  return hydraEvent({
+  return titanEvent({
     state,
     meta,
     cardId: card.id,

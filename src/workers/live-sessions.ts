@@ -1,4 +1,4 @@
-import { hydrasDir } from '#app/home-migration.ts'
+import { titansDir } from '#app/home-migration.ts'
 import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { taskChildren, taskController, trackTaskSession, untrackTaskSession, type TaskSessionOwner } from '#app/task-runtime.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
@@ -11,7 +11,7 @@ import { log } from '#app/diagnostics.ts'
 import { logAgentMemory } from './agent-memory.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { inbox } from '#titan/update-queue.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { ownerActor } from '#app/actors.ts'
 import type { TitanState } from '#app/model.ts'
@@ -66,7 +66,7 @@ function firstOwnerMessage({
     return untakenCardSend ? sent.id : undefined
   }
 
-  const message = state.hydraMessages?.find(message => message.id === input)
+  const message = state.titanMessages?.find(message => message.id === input)
   const untaken = message && ownerActor({ actor: message.actor }) && !message.received
 
   return untaken ? message.id : undefined
@@ -138,11 +138,11 @@ export interface LiveSessionScope {
     taskId?: string
   }): Provider
   environment({
-    hydra,
+    titan,
     task,
     steeringWorker,
   }: {
-    hydra?: boolean
+    titan?: boolean
     task?: string
     steeringWorker?: string
   }): NodeJS.ProcessEnv
@@ -267,7 +267,7 @@ export function createLiveSessions({
         })) {
           applyDecision({
             writer,
-            decision: hydraEvent({
+            decision: titanEvent({
               state: writer.state,
               cardId: TITAN_CARD,
               meta: {
@@ -326,7 +326,7 @@ export function createLiveSessions({
     const resumeTools: TaskSessionOwner['resumeTools'] = ({ ...input }) => currentOwner().resumeTools(input)
 
     let failure: string | undefined
-    const env = environment(card.id === TITAN_CARD ? { hydra: true } : {
+    const env = environment(card.id === TITAN_CARD ? { titan: true } : {
       task: card.id,
       steeringWorker: steeringWorkerIdentity({
         state: loadTitan({ titanId: currentOwner().titanId }).state,
@@ -346,7 +346,7 @@ export function createLiveSessions({
 
     try {
       const contract = card.id === TITAN_CARD
-        ? turns().hydraSession({ agent: card.agent }) : { allow: WORKER_COMMANDS }
+        ? turns().titanSession({ agent: card.agent }) : { allow: WORKER_COMMANDS }
 
       if (!entry.session) {
         entry.session = await providerOf({
@@ -436,8 +436,8 @@ export function createLiveSessions({
                   id: item.id ?? randomUUID(),
                   text: item.text,
                   original: item.original,
-                  actor: item.id ? loadTitan({ titanId: currentOwner().titanId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'othrys' : 'othrys',
-                  route: card.id === TITAN_CARD ? 'hydra' : 'direct',
+                  actor: item.id ? loadTitan({ titanId: currentOwner().titanId }).state.titanMessages?.find(message => message.id === item.id)?.actor ?? 'othrys' : 'othrys',
+                  route: card.id === TITAN_CARD ? 'titan' : 'direct',
                   accepted: card.id === TITAN_CARD,
                   agent: item.agent,
                 },
@@ -556,7 +556,7 @@ export function createLiveSessions({
             id: item.id ?? randomUUID(),
             text: item.text,
             original,
-            root: hydrasDir(),
+            root: titansDir(),
             ownerMessageId: firstOwnerMessage({
               state: loadTitan({ titanId: currentOwner().titanId }).state,
               card: card.id,
@@ -698,7 +698,7 @@ export function createLiveSessions({
               if (selected && pending) {
                 applyDecision({
                   writer,
-                  decision: hydraEvent({
+                  decision: titanEvent({
                     state: writer.state,
                     cardId: card.id,
                     meta: {

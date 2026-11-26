@@ -56,7 +56,7 @@ export function usageFor({
       tokens: spend?.total,
       cost: usageNumber({ value: reading.cost }),
       worker: spend?.worker,
-      hydra: spend?.hydra,
+      titan: spend?.titan,
       unavailable: spend?.unavailable ?? 0,
       sharedTitan: spend?.sharedTitan ?? false,
     },

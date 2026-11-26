@@ -44,19 +44,19 @@ function workerHeader({
   id,
   stops = [],
   ownerNotes = '',
-  hydraNotes = '',
+  titanNotes = '',
   projectNotes = '',
 }: {
   titanId: string
   id: string
   stops?: string[]
   ownerNotes?: string
-  hydraNotes?: string
+  titanNotes?: string
   projectNotes?: string
 }): string {
   const notes = [
     ownerNotes,
-    hydraNotes,
+    titanNotes,
     projectNotes,
   ].filter(Boolean)
   const standing = notes.length ? [
@@ -65,7 +65,7 @@ function workerHeader({
   ] : []
 
   return [
-    `<othrys-worker task="${id}" hydra="${titanId}">`,
+    `<othrys-worker task="${id}" titan="${titanId}">`,
     `You are a worker that Titan supervises on Othrys Titan ${titanId}, for task ${id} only. Report through this task’s worker.log.`,
     recordContext({
       titanId,
@@ -139,7 +139,7 @@ export async function taskPrompt({
         titanId,
         id: card.id,
         ownerNotes,
-        hydraNotes: state.hydraMemory?.workers?.text,
+        titanNotes: state.titanMemory?.workers?.text,
         projectNotes: project.workers,
         stops: taskStops({
           state,
@@ -167,6 +167,6 @@ export async function taskPrompt({
   })
 }
 
-export const hydraPrompt = ({ titanId }: { titanId: string }) =>
+export const titanPrompt = ({ titanId }: { titanId: string }) =>
   `You are Titan, the orchestrator of the Othrys Titan "${titanId}". Read ${TITAN_SKILL} and follow it; the skills it names are beside it in ${dirname(dirname(TITAN_SKILL))}. `
   + recordContext({ titanId })

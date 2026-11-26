@@ -17,7 +17,7 @@ import { DEFAULT_PROVIDER, PROVIDERS, harnessOf, knownProvider } from './provide
 import { sessionId, withoutInterrupted } from './session-attachments.ts'
 import { decideSession } from './sessions.ts'
 import { freeTask } from './start.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { decideOutcome } from '#tasks/delivery/outcome.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import type { Card } from '#tasks/model.ts'
@@ -480,7 +480,7 @@ export function createWorkerStarts({
         if (dispatch) {
           applyDecision({
             writer,
-            decision: hydraEvent({
+            decision: titanEvent({
               state: writer.state,
               meta: {
                 ...meta,

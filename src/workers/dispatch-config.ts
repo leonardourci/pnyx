@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { TitanError } from '#store/errors.ts'
 import type { AgentConfig } from './model.ts'
-import { hydraDir, hydraIds } from '#app/home-migration.ts'
+import { titanDir, titanIds } from '#app/home-migration.ts'
 import type { TitanEvent } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
@@ -395,9 +395,9 @@ interface TitanFiles {
   at: number
 }
 
-function hydraFiles(): TitanFiles[] {
-  return hydraIds().flatMap(titanId => {
-    const dir = hydraDir({ titanId })
+function titanFiles(): TitanFiles[] {
+  return titanIds().flatMap(titanId => {
+    const dir = titanDir({ titanId })
     const dispatch = join(
       dir,
       'heads-dispatch.json',
@@ -450,7 +450,7 @@ function mergeTitanFiles(): void {
     return
   }
 
-  const found = hydraFiles()
+  const found = titanFiles()
 
   if (!found.length) {
     appendJournal({ path: changesPath() })
@@ -474,12 +474,12 @@ function mergeTitanFiles(): void {
     })
   }
 
-  const pinned = (shared.rules as Fields | undefined)?.hydra
+  const pinned = (shared.rules as Fields | undefined)?.titan
 
   if (pinned) {
     dispatch = mergePatch({
       target: dispatch,
-      patch: { rules: { hydra: pinned } },
+      patch: { rules: { titan: pinned } },
     })
   }
 

@@ -8,7 +8,7 @@ import { readTranscript } from '#workers/transcript-read.ts'
 
 export interface TaskSpend {
   worker?: number
-  hydra?: number
+  titan?: number
   total?: number
   unavailable: number
   sharedTitan: boolean
@@ -17,7 +17,7 @@ export interface TaskSpend {
 // Only what attribution reads from the Titan, small enough to hand to the spend worker.
 export interface SpendInputs {
   tasks: string[]
-  hydraSession?: string
+  titanSession?: string
   sessions: {
     id: string
     taskId?: string | null
@@ -109,7 +109,7 @@ export function spendInputs({
     if (event.type === 'titan.configured') {
       configurations.push({
         at: event.at,
-        session: event.data.hydra.session,
+        session: event.data.titan.session,
       })
     } else if (event.type === 'task.session') {
       assignments.push({
@@ -123,7 +123,7 @@ export function spendInputs({
 
   return {
     tasks,
-    hydraSession: state.config?.hydra.session,
+    titanSession: state.config?.titan.session,
     sessions: Object.values(state.sessions ?? {}).map(session => ({
       id: session.id,
       taskId: session.taskId,
@@ -151,9 +151,9 @@ export function spendFor({ inputs }: { inputs: SpendInputs }): Record<string, Ta
     time: Date.parse(configuration.at),
     session: configuration.session,
   }))
-  const hydraSessions = new Set<string | undefined>([
+  const titanSessions = new Set<string | undefined>([
     ...configurations.map(configuration => configuration.session),
-    inputs.hydraSession,
+    inputs.titanSession,
   ])
   const bySession = new Map<string, {
     time: number
@@ -187,7 +187,7 @@ export function spendFor({ inputs }: { inputs: SpendInputs }): Record<string, Ta
       tasks.add(session.taskId)
     }
 
-    const wasTitan = hydraSessions.has(session.id)
+    const wasTitan = titanSessions.has(session.id)
     const identity = session.agent.transcriptPath ?? session.id
     // A transcript shared by several sessions counts once per task.
     const candidates = wasTitan ? inputs.tasks : inputs.tasks.filter(task => tasks.has(task))
@@ -224,20 +224,20 @@ export function spendFor({ inputs }: { inputs: SpendInputs }): Record<string, Ta
       const time = row.at ? Date.parse(row.at) : undefined
 
       if (wasTitan) {
-        let hydraSession = configurations.length ? undefined : inputs.hydraSession
+        let titanSession = configurations.length ? undefined : inputs.titanSession
 
         if (time !== undefined) {
           for (const configuration of configurations) {
             if (configuration.time <= time) {
-              hydraSession = configuration.session
+              titanSession = configuration.session
             }
           }
         }
 
-        if (session.id === hydraSession) {
+        if (session.id === titanSession) {
           for (const task of row.tasks) {
             if (counted.has(task)) {
-              result[task]!.hydra = (result[task]!.hydra ?? 0) + row.tokens
+              result[task]!.titan = (result[task]!.titan ?? 0) + row.tokens
               result[task]!.sharedTitan ||= row.tasks.length > 1
             }
           }
@@ -269,8 +269,8 @@ export function spendFor({ inputs }: { inputs: SpendInputs }): Record<string, Ta
   }
 
   for (const spend of Object.values(result)) {
-    if (spend.worker !== undefined || spend.hydra !== undefined) {
-      spend.total = (spend.worker ?? 0) + (spend.hydra ?? 0)
+    if (spend.worker !== undefined || spend.titan !== undefined) {
+      spend.total = (spend.worker ?? 0) + (spend.titan ?? 0)
     }
   }
 

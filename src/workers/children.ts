@@ -3,7 +3,7 @@ import type { ChildProcess } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { join } from 'node:path'
-import { hydraDir } from '#app/home-migration.ts'
+import { titanDir } from '#app/home-migration.ts'
 import { processStart } from '#app/server-state.ts'
 import { othrysHome, replaceFile } from '#store/storage.ts'
 import { taskRuntimeDir } from '#store/paths.ts'
@@ -85,7 +85,7 @@ function recordedProcess({ value }: { value: unknown }): boolean {
 }
 
 const childrenPath = ({ titanId }: { titanId: string }) => join(
-  hydraDir({ titanId }),
+  titanDir({ titanId }),
   'children.json',
 )
 

@@ -123,7 +123,7 @@ export async function checkAttachments({
 }) {
   const sessions = Object.values(state.sessions ?? {})
     .filter(s => (s.taskId && state.cards[s.taskId] && liveTask({ card: state.cards[s.taskId] }))
-      || state.config?.hydra.session === s.id)
+      || state.config?.titan.session === s.id)
 
   return Promise.all(sessions.map(async session => {
     let presence: Presence

@@ -64,8 +64,8 @@ export function requirePermissionApprover({
   const worker = workerIdentity({ actor })
   const ownWorker = worker?.task === card.id || worker?.task === card.key
   const env = requestEnv()
-  const hydraIdentity = actor === 'hydra' || env.OTHRYS_ACTOR === 'hydra' || env.OTHRYS_TASK === TITAN_CARD
-  const ownTitan = card.id === TITAN_CARD && hydraIdentity
+  const titanIdentity = actor === 'titan' || env.OTHRYS_ACTOR === 'titan' || env.OTHRYS_TASK === TITAN_CARD
+  const ownTitan = card.id === TITAN_CARD && titanIdentity
     && (env.OTHRYS_TITAN === undefined || env.OTHRYS_TITAN === titanId)
   const ownSession = session !== undefined && [
     actor,

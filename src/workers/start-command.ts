@@ -7,8 +7,8 @@ import type { Output } from '#app/cli-support.ts'
 import { applyDecision } from '#app/decision.ts'
 import { requestCwd } from '#app/request-context.ts'
 import { withWriter } from '#app/writer.ts'
-import { hydraConfig } from '#titan/config.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanConfig } from '#titan/config.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { runCommand } from '#integrations/command/run.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
@@ -20,7 +20,7 @@ import type { Card } from '#tasks/model.ts'
 import { decideNote } from '#tasks/notes.ts'
 import { freeTask } from './start.ts'
 import { checkRevision, findCard } from '#tasks/push-rules.ts'
-import { hydraPrompt, taskPrompt } from './worker-brief.ts'
+import { titanPrompt, taskPrompt } from './worker-brief.ts'
 
 export function namedProjectCommand({
   state,
@@ -60,7 +60,7 @@ export async function startCommand({
   meta,
 }: {
   titanId: string
-  role: 'worker' | 'hydra'
+  role: 'worker' | 'titan'
   task?: string
   prompt?: string
   folder?: string
@@ -89,7 +89,7 @@ export async function startCommand({
         card: writer.state.cards[target],
         ifRevision: meta.ifRevision,
       })
-      const config = hydraConfig({
+      const config = titanConfig({
         state: writer.state,
         id: titanId,
       })
@@ -123,7 +123,7 @@ export async function startCommand({
         })
       }
 
-      const cwd = canonical({ path: folder }) ?? card?.folder ?? (role === 'hydra' ? requestCwd() : undefined)
+      const cwd = canonical({ path: folder }) ?? card?.folder ?? (role === 'titan' ? requestCwd() : undefined)
 
       if (!cwd || !existsSync(cwd)) {
         throw new TitanError({
@@ -133,10 +133,10 @@ export async function startCommand({
         })
       }
 
-      if (role === 'hydra' && !writer.state.configured) {
+      if (role === 'titan' && !writer.state.configured) {
         applyDecision({
           writer,
-          decision: hydraEvent({
+          decision: titanEvent({
             state: writer.state,
             meta: {
               ...meta,
@@ -190,18 +190,18 @@ export async function startCommand({
           titanId,
           card: claimed.card,
           prompt,
-        }) : prompt ?? hydraPrompt({ titanId }),
+        }) : prompt ?? titanPrompt({ titanId }),
       OTHRYS_HARNESS: harness ?? '',
       OTHRYS_FOLDER: claimed.cwd,
     },
   })
-  const text = `Started ${role === 'hydra' ? 'Titan' : 'a worker'} with ${commandName ? `project command ${commandName}` : 'the Titan command'} in ${claimed.cwd}`
+  const text = `Started ${role === 'titan' ? 'Titan' : 'a worker'} with ${commandName ? `project command ${commandName}` : 'the Titan command'} in ${claimed.cwd}`
   await withWriter({
     titanId,
     fn: ({ writer }) => {
       applyDecision({
         writer,
-        decision: hydraEvent({
+        decision: titanEvent({
           state: writer.state,
           meta: {
             ...meta,
@@ -243,12 +243,12 @@ export async function startCommand({
   })
 
   return {
-    [role === 'hydra' ? 'hydra' : 'task']: target,
+    [role === 'titan' ? 'titan' : 'task']: target,
     via: 'command',
     pid,
     folder: claimed.cwd,
     help: [
-      role === 'hydra'
+      role === 'titan'
         ? `Its first session becomes the Titan; read titan.log in Titan ${titanId}`
         : `Its session attaches to ${target} when its hooks first report; read tasks/${target}/task.log in Titan ${titanId}`,
     ],

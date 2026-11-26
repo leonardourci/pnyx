@@ -10,7 +10,7 @@ import { statSync } from 'node:fs'
 import type { TitanState } from '#app/model.ts'
 import { decideLink } from '#tasks/delivery/links.ts'
 import { decideSession } from './sessions.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import type { Card } from '#tasks/model.ts'
 import type { LinkState } from '#tasks/delivery/model.ts'
 import type { AgentSession } from './model.ts'
@@ -104,7 +104,7 @@ async function releaseQueue({
       })) {
         applyDecision({
           writer,
-          decision: hydraEvent({
+          decision: titanEvent({
             state: writer.state,
             meta: {
               ...meta(),
@@ -637,7 +637,7 @@ export async function advanceQueues({
         start: prepared.tip,
         active,
         prepare,
-        hydraName: branchTitanName({
+        titanName: branchTitanName({
           titanId,
           state,
         }),

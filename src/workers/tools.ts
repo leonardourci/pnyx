@@ -3,7 +3,7 @@ import { steeringHeld } from './steering.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { taskDone } from '#tasks/select.ts'
 import { TitanError } from '#store/errors.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { workerIdentity } from './worker-identity.ts'
@@ -113,7 +113,7 @@ export function writeTools({
     }
   }
 
-  const decision = hydraEvent({
+  const decision = titanEvent({
     state: writer.state,
     cardId: card.id,
     meta,
@@ -174,7 +174,7 @@ export function toolEnvironment({
 
   return {
     ...env,
-    CHROME_DEVTOOLS_AXI_SESSION: `othrys-${titanId}-${task === TITAN_CARD ? 'hydra' : task}`,
+    CHROME_DEVTOOLS_AXI_SESSION: `othrys-${titanId}-${task === TITAN_CARD ? 'titan' : task}`,
     CHROME_DEVTOOLS_AXI_HEADED: '0',
     CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '0',
     CHROME_DEVTOOLS_AXI_BROWSER_URL: '',

@@ -2,8 +2,8 @@ import { mentionContext } from '#titan/mentions.ts'
 import { randomUUID } from 'node:crypto'
 import { findCard } from '#tasks/push-rules.ts'
 import { decideReply } from './reply-rules.ts'
-import { hydraConfig } from '#titan/config.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanConfig } from '#titan/config.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { inform } from '#app/command-notices.ts'
 import { TitanError } from '#store/errors.ts'
@@ -22,7 +22,7 @@ export interface TaskMessageReceipt {
   state: ReplyState
   routes: {
     agent?: TaskDelivery
-    hydra: TaskDelivery
+    titan: TaskDelivery
   }
 }
 
@@ -77,22 +77,22 @@ export async function sendTaskMessage({
           text: request.text,
         }),
         id: card.id,
-        agent: known?.route ? known.route !== 'hydra' : !!card.agent,
+        agent: known?.route ? known.route !== 'titan' : !!card.agent,
         session: card.sessionIds?.[0],
-        receipt: known?.route && known.route !== 'hydra' ? known : undefined,
+        receipt: known?.route && known.route !== 'titan' ? known : undefined,
       }
     },
   })
-  let hydra: TaskDelivery
+  let titan: TaskDelivery
 
   try {
-    hydra = await withWriter({
+    titan = await withWriter({
       titanId,
       fn: ({ writer }) => {
         const id = `task-context:${target.id}:${reply}`
 
         if (!(id in writer.state.eventIds)) {
-          const decision = hydraEvent({
+          const decision = titanEvent({
             state: writer.state,
             meta: {
               ...meta,
@@ -106,10 +106,10 @@ export async function sendTaskMessage({
                 text: request.text,
                 ...(target.context ? { context: target.context } : {}),
                 action: 'send',
-                hydra: hydraConfig({
+                titan: titanConfig({
                   state: writer.state,
                   id: titanId,
-                }).hydra.id,
+                }).titan.id,
               },
             },
           })
@@ -120,7 +120,7 @@ export async function sendTaskMessage({
           }
         }
 
-        const known = writer.state.cards[target.id]?.replies?.find(r => r.id === `hydra:${reply}`)
+        const known = writer.state.cards[target.id]?.replies?.find(r => r.id === `titan:${reply}`)
 
         if (known) {
           return {
@@ -137,9 +137,9 @@ export async function sendTaskMessage({
             id: `task-context-receipt:${target.id}:${reply}`,
           },
           data: {
-            reply: `hydra:${reply}`,
+            reply: `titan:${reply}`,
             state: 'queued',
-            route: 'hydra',
+            route: 'titan',
             taskMessage: true,
           },
         })
@@ -152,7 +152,7 @@ export async function sendTaskMessage({
       },
     })
   } catch (error) {
-    hydra = {
+    titan = {
       state: 'delivery_unknown',
       detail: `Titan receipt could not be confirmed: ${(error as Error).message}`,
     }
@@ -227,14 +227,14 @@ export async function sendTaskMessage({
     }
   } else {
     await record({
-      ...hydra,
-      route: 'hydra',
+      ...titan,
+      route: 'titan',
     })
   }
 
   const routes = {
     ...(agent ? { agent } : {}),
-    hydra,
+    titan,
   }
   const states = Object.values(routes).map(r => r.state)
   const state = states.includes('failed') ? 'failed' : states.includes('delivery_unknown') ? 'delivery_unknown' : states.includes('queued') ? 'queued' : 'delivered'

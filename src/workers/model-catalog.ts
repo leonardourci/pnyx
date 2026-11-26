@@ -6,7 +6,7 @@ import { modelIds, type HostedSession, type ModelOption, type Provider } from '.
 import { HARNESSES, harnessOf, providerIdOf, type ProviderId } from './providers.ts'
 import type { Host } from '#app/host-types.ts'
 import { loadTitan } from '#app/store.ts'
-import { hydraDir } from '#app/home-migration.ts'
+import { titanDir } from '#app/home-migration.ts'
 import { accountEnv } from './dispatch.ts'
 import { accountFor } from './account-choice.ts'
 import { sessionId } from './session-attachments.ts'
@@ -229,7 +229,7 @@ export function createCatalogs({
 
     const key = `${harness}:${account ? loginFolder({ account }) : ''}`
     const provider = providers[providerIdOf({ harness })]
-    const cwd = hydraDir({ titanId })
+    const cwd = titanDir({ titanId })
 
     const withFolderDefaults = async ({ models }: { models: ModelOption[] }) => provider.defaults({
       cwd,
