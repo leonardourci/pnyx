@@ -16,8 +16,7 @@ import { taskMention } from './mentions.ts'
 import type { TitanMessage } from './model.ts'
 import type { createTitanOperations, createTitanOutage } from './operations.ts'
 import type { createWakeQueue } from './wake-queue.ts'
-import { REPLY_RULES, sealed, wakesThrough } from './wakes.ts'
-import { WAKE_HANDLED } from './wake-ids.ts'
+import { REPLY_RULES, sealed, handledWakesThrough } from './wakes.ts'
 import { ownerActor } from '#app/actors.ts'
 import { log } from '#app/diagnostics.ts'
 import { TITAN_COMMANDS } from '#app/command-registry.ts'
@@ -25,6 +24,7 @@ import { applyDecision } from '#app/decision.ts'
 import { titanAgentFolder } from '#app/home-migration.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { loadTitan } from '#app/store.ts'
+import { readEvents } from '#app/event-log.ts'
 import type { TitanState } from '#app/model.ts'
 import type { Writer } from '#app/writer.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
@@ -187,7 +187,7 @@ export function createTitanTurns({
   }
 
   let outcomesPresented = 0
-  const contextPresented = new Map<string, number>()
+  const contextPresented = new Set<string>()
 
   const readContextNote = ({
     note,
@@ -211,11 +211,15 @@ export function createTitanTurns({
       }
     }
 
-    contextPresented.set(
-      note.id,
-      note.seq,
-    )
+    contextPresented.add(note.id)
   }
+
+  const lastSavedSeq = ({ through }: { through: number }) => readEvents({
+    titanId,
+    before: through + 1,
+    descending: true,
+    limit: 1,
+  })[0]?.seq ?? 0
 
   const helperBatchesPresented = new Set<string>()
   const titanInstructions = () =>
@@ -991,10 +995,7 @@ export function createTitanTurns({
     card: Card
     activity: string
   }) => {
-    const handledThrough = wakesThrough({
-      state: writer.state,
-      pattern: WAKE_HANDLED,
-    })
+    const handledThrough = handledWakesThrough({ state: writer.state })
     // The wake this turn read counts as handled only now that the turn finished.
     const handledWake = card.id === TITAN_CARD && activity === 'finished' && readThrough() > handledThrough
     let eventId: string | undefined
@@ -1020,7 +1021,9 @@ export function createTitanTurns({
         }
       }
 
-      if (contextPresented.size && outcome?.status === 'completed') {
+      const delivered = contextPresented.size > 0 && outcome?.status === 'completed'
+
+      if (delivered || handledWake) {
         applyDecision({
           writer,
           decision: titanEvent({
@@ -1033,12 +1036,15 @@ export function createTitanTurns({
             change: {
               type: 'titan.context-delivered',
               data: {
-                through: Math.max(...contextPresented.values()),
-                ids: [...contextPresented.keys()],
+                through: handledWake ? lastSavedSeq({ through: readThrough() }) : 0,
+                ids: delivered ? [...contextPresented] : [],
               },
             },
           }),
         })
+      }
+
+      if (delivered) {
         contextPresented.clear()
       }
 

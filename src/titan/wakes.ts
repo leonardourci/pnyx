@@ -333,6 +333,16 @@ export function wakesThrough({
   )
 }
 
+export function handledWakesThrough({ state }: { state: TitanState }): number {
+  return Math.max(
+    wakesThrough({
+      state,
+      pattern: WAKE_HANDLED,
+    }),
+    state.titanHandledSeq ?? 0,
+  )
+}
+
 // A wake counts once the turn that read it finishes, so a failed turn's updates are offered again.
 export function wakeCursor({
   state,
@@ -341,10 +351,7 @@ export function wakeCursor({
   state: TitanState
   fallback: number
 }): number {
-  const handled = wakesThrough({
-    state,
-    pattern: WAKE_HANDLED,
-  })
+  const handled = handledWakesThrough({ state })
 
   if (handled > 0) {
     return handled

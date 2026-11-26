@@ -72,7 +72,7 @@ export type TitanChange = EventBase & (
     type: 'titan.context-delivered'
     data: {
       through: number
-      ids?: string[]
+      ids: string[]
     }
   }
   | RecoveryEvent
@@ -486,6 +486,7 @@ export interface TitanState {
     at: string
   }[]
   contextNotes?: import('#titan/context-notes.ts').ContextNote[]
+  titanHandledSeq?: number
   diagnosticRetries?: Record<string, RecoveryAttempt[]>
   dispatchProposals?: DispatchProposal[]
   labelColors?: SavedLabelColor[]

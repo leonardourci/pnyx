@@ -9,7 +9,6 @@ export function durableEvent({ event }: { event: TitanEvent }): boolean {
     case 'titan.received':
     case 'titan.delivered':
     case 'titan.agent-used':
-    case 'titan.context-delivered':
     case 'titan.helper-started':
     case 'titan.helper-finished':
     case 'titan.helper-acknowledged':
@@ -21,8 +20,6 @@ export function durableEvent({ event }: { event: TitanEvent }): boolean {
       return false
     case 'titan.operation':
       return event.data.kind === 'compaction'
-    case 'task.steering.handled':
-      return !event.derived
     case 'card.noted':
       return event.actor !== 'harvest' || event.data.kind !== 'context'
     default:

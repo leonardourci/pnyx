@@ -491,6 +491,80 @@ test(
 )
 
 test(
+  'a worker report Titan handled before a restart neither wakes it again nor comes back as unhandled',
+  async () => {
+    const titan = await othrys.titan()
+    const folder = titan.folder({ name: 'ledger' })
+    await titan.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Close the ledger',
+        '--key',
+        'ledger',
+        '--folder',
+        folder,
+      ],
+    })
+    othrys.claude.plan({
+      titan: titan.id,
+      text: 'watch the ledger',
+      reply: 'Watching.',
+    })
+    const session = await titan.chat({ text: 'watch the ledger' })
+    await titan.owner({
+      args: [
+        'task',
+        'start',
+        'ledger',
+      ],
+    })
+    const worker = await titan.agent({ cwd: folder })
+    await until({
+      what: 'the worker\'s first turn',
+      check: () => worker.answered === 1,
+    })
+    othrys.claude.plan({
+      titan: titan.id,
+      match: ({ text }) => text.includes('Ledger closed'),
+      reply: 'Ledger noted.',
+    })
+    await workerLine({
+      titan,
+      key: 'ledger',
+      line: 'done: Ledger closed',
+    })
+    await until({
+      what: 'Titan to finish the report wake',
+      check: () => session.received.some(text => text.includes('Ledger closed'))
+        && queue({ titanId: titan.id })?.working === false
+        && !queueBox({ titanId: titan.id })?.waiting.length,
+    })
+
+    await othrys.restart()
+
+    othrys.claude.plan({
+      titan: titan.id,
+      text: 'anything new?',
+      reply: 'Nothing new.',
+    })
+    const after = await titan.chat({ text: 'anything new?' })
+    await until({
+      what: 'Titan to answer after the restart',
+      check: () => after.answered >= 1,
+    })
+    await until({
+      what: 'Titan to settle after the restart',
+      check: () => queue({ titanId: titan.id })?.working === false,
+    })
+    expect(queueBox({ titanId: titan.id })?.waiting).toEqual([])
+    expect(after.received.join('\n')).not.toMatch(/<othrys-wake>|\[unhandled\]/)
+  },
+)
+
+test(
   '300 queued worker reports stay bounded, preserve owner messages and remain readable in files after interruption',
   async () => {
     const titan = await othrys.titan()
