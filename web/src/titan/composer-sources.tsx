@@ -26,7 +26,6 @@ export interface ComposerSources {
   taskReferences: Record<string, TaskReferenceData>
   openTask({ id }: { id: string }): void
   catalog: Catalog | null
-  // A field asks for the skills catalog while its / menu is open, and for the project files while its @ menu is.
   catalogOpen({ open }: { open: boolean }): void
   mentionOpen({ open }: { open: boolean }): void
   labelColors?: SavedLabelColor[]
@@ -55,6 +54,26 @@ function ComposerSourcesProvider({
   children: ReactNode
 }) {
   return <Sources.Provider value={sources}>{children}</Sources.Provider>
+}
+
+function useOpenInAnyField() {
+  const [
+    open,
+    setOpen,
+  ] = useState(false)
+  const fieldsOpen = useRef(0)
+  const opened = useCallback(
+    ({ open }: { open: boolean }) => {
+      fieldsOpen.current += open ? 1 : -1
+      setOpen(fieldsOpen.current > 0)
+    },
+    [],
+  )
+
+  return {
+    open,
+    opened,
+  }
 }
 
 export function useComposerSources() {
@@ -90,37 +109,20 @@ export function TitanComposerSources({
   children: ReactNode
 }) {
   const config = hydraConfig({ state }), card = state.cards[TITAN_CARD]
-  const [
-    open,
-    setOpen,
-  ] = useState(false)
-  // Several fields can have their / menu open at once; the catalog refreshes while any does.
-  const openMenus = useRef(0)
-  const catalogOpen = useCallback(
-    ({ open }: { open: boolean }) => {
-      openMenus.current += open ? 1 : -1
-      setOpen(openMenus.current > 0)
-    },
-    [],
-  )
-  const [
-    mentioning,
-    setMentioning,
-  ] = useState(false)
-  const openMentions = useRef(0)
-  const mentionOpen = useCallback(
-    ({ open }: { open: boolean }) => {
-      openMentions.current += open ? 1 : -1
-      setMentioning(openMentions.current > 0)
-    },
-    [],
-  )
+  const {
+    open: slashMenuOpen,
+    opened: catalogOpen,
+  } = useOpenInAnyField()
+  const {
+    open: mentionMenuOpen,
+    opened: mentionOpen,
+  } = useOpenInAnyField()
   const attached = (state.projects ?? []).filter(project => !project.detached)
   const projectPaths = attached.map(project => project.path)
   const files = useCachedList<ProjectFiles[]>({
     key: storageKey({ key: `files:${JSON.stringify(projectPaths)}` }),
     connected,
-    open: mentioning,
+    open: mentionMenuOpen,
     fetch: async () => (await command({
       name: 'files',
       args: [],
@@ -142,7 +144,7 @@ export function TitanComposerSources({
     provider: config.hydra.agent?.harness ?? card?.agent?.provider,
     command,
     connected,
-    open,
+    open: slashMenuOpen,
   })
   const projects = state.projects
   const titans = useKept({ value: otherTitans })

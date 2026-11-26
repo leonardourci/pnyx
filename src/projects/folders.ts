@@ -3,7 +3,10 @@ import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { hydraIds, hydrasDir } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
-import { ENTRY_LIMIT, FOLDER_LIMIT } from './folder-limit.ts'
+import { CONTENTS_LIMIT } from './folder-limit.ts'
+import { hiddenUntilDotTyped, startsWithTyped } from './folder-names.ts'
+
+const FOLDER_LIMIT = 50
 
 export interface Folder {
   name: string
@@ -11,7 +14,6 @@ export interface Folder {
 }
 export interface FolderListing {
   folders: Folder[]
-  // Listed only on request, with every entry of the folder rather than the first few.
   files?: Folder[]
   recent: Folder[]
   selected?: Folder & { empty: boolean }
@@ -66,17 +68,23 @@ export async function listFolders({
   } catch { /* Missing prefixes still complete from their parent. */ }
 
   const root = selected ? typed : dirname(typed)
-  const prefix = selected ? '' : basename(typed).toLowerCase()
+  const prefix = selected ? '' : basename(typed)
   const folders: Folder[] = []
   const files: Folder[] = []
-  const limit = withFiles ? ENTRY_LIMIT : FOLDER_LIMIT
+  const limit = withFiles ? CONTENTS_LIMIT : FOLDER_LIMIT
   const entries = await opendir(root)
 
   for await (const entry of entries) {
-    // The whole contents include hidden entries; the page hides them until a dot is typed.
-    const hidden = entry.name.startsWith('.') && !prefix.startsWith('.') && !withFiles
+    const named = startsWithTyped({
+      name: entry.name,
+      typed: prefix,
+    })
+    const hidden = !withFiles && hiddenUntilDotTyped({
+      name: entry.name,
+      typed: prefix,
+    })
 
-    if (!entry.name.toLowerCase().startsWith(prefix) || hidden) {
+    if (!named || hidden) {
       continue
     }
 
@@ -163,13 +171,11 @@ export async function listFolders({
       a,
       b,
     ) => a.name.localeCompare(b.name)),
+    files: withFiles ? files.sort((
+      a,
+      b,
+    ) => a.name.localeCompare(b.name)) : undefined,
     recent,
-    ...(withFiles ? {
-      files: files.sort((
-        a,
-        b,
-      ) => a.name.localeCompare(b.name)),
-    } : {}),
     ...(selected ? { selected } : {}),
     ...(cloneInto ? { cloneInto } : {}),
   }

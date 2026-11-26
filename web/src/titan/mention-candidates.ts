@@ -159,6 +159,7 @@ const fileRow = ({
       detail: projectTitle({ project: project.path }),
       excerpt: file,
       icons: ['file'],
+      group: 'Files',
       insert: reference({
         kind: 'file',
         value: path,
@@ -203,15 +204,14 @@ export function mentionMatches({
   rows,
   files,
   folders,
-  folderQuery,
+  filterFolders,
   typedFolder,
 }: {
   query: string
   rows: MentionRow[]
-  // Project files follow the ranked rows, so a short query still finds tasks and projects first.
   files: MentionRow[]
   folders: MentionRow[]
-  folderQuery: string
+  filterFolders: boolean
   typedFolder?: MentionItem
 }): RowMatch<MentionItem>[] {
   const listed = [
@@ -220,12 +220,12 @@ export function mentionMatches({
       query,
     }),
     ...filterRows({
-      rows: files,
-      query,
+      rows: folders,
+      query: filterFolders ? query : '',
     }),
     ...filterRows({
-      rows: folders,
-      query: folderQuery,
+      rows: files,
+      query,
     }),
   ]
 

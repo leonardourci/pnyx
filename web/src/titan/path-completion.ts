@@ -1,5 +1,6 @@
 import type { FolderListing } from '#projects/folders.ts'
-import { FOLDER_LIMIT } from '#projects/folder-limit.ts'
+import { CONTENTS_LIMIT } from '#projects/folder-limit.ts'
+import { splitPath, typedListing } from './mention-folders.ts'
 
 const commonPrefix = ({ names }: { names: string[] }) => names.reduce((
   prefix,
@@ -21,13 +22,22 @@ const commonPrefix = ({ names }: { names: string[] }) => names.reduce((
 // A path naming an existing folder is complete; the next Tab commits it instead.
 export function completePath({
   typed,
-  listing,
+  contents,
 }: {
   typed: string
-  listing: FolderListing
+  contents: FolderListing
 }): string | undefined {
   // A full listing may leave out matches, so their common prefix could complete too far.
-  if (listing.selected || !listing.folders.length || listing.folders.length >= FOLDER_LIMIT) {
+  if (contents.folders.length >= CONTENTS_LIMIT) {
+    return undefined
+  }
+
+  const listing = typedListing({
+    listing: contents,
+    name: splitPath({ path: typed }).name,
+  })
+
+  if (listing.selected || !listing.folders.length) {
     return undefined
   }
 

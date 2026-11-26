@@ -173,6 +173,8 @@ export function ComposerField({
   const query = mention?.query ?? ''
   const typed = query.trim()
   const folderPath = /^[~/]/.test(typed) ? typed : ''
+  const typedPath = !!folderPath
+  const mentioning = mention !== null
   const {
     directory,
     name: typedName,
@@ -180,8 +182,8 @@ export function ComposerField({
   const folders = useFolders({
     path: directory,
     repository: '',
-    connected: mention !== null,
-    files: true,
+    connected: mentioning,
+    files: typedPath,
   })
   const listingWhileNextLoads = useRef<FolderListing | undefined>(undefined)
 
@@ -190,21 +192,19 @@ export function ComposerField({
   }
 
   const shownListing = listingWhileNextLoads.current
+  const listingOfTypedFolder = folders?.listing
   const pathListing = useMemo(
-    () => shownListing && folderPath ? typedListing({
+    () => shownListing && typedPath ? typedListing({
       listing: shownListing,
       name: typedName,
     }) : shownListing,
     [
       shownListing,
-      folderPath,
+      typedPath,
       typedName,
     ],
   )
-  // Only the listing for the folder now typed can name the folder to add or complete the path.
-  const currentListing = folders?.listing ? pathListing : undefined
   const cloneUrl = CLONE_URL.test(typed) ? typed : ''
-  const typedPath = !!folderPath
   const folderList = useMemo(
     () => folderRows({
       folders: folderSuggestions({
@@ -223,7 +223,7 @@ export function ComposerField({
       typedPath,
     ],
   )
-  const selectedFolder = folderPath ? currentListing?.selected : undefined
+  const selectedFolder = typedPath && listingOfTypedFolder ? pathListing?.selected : undefined
   const typedFolder = useMemo(
     (): MentionItem | undefined => selectedFolder && {
       key: `folder:${selectedFolder.path}`,
@@ -262,30 +262,26 @@ export function ComposerField({
     ],
   )
   const shownQuery = useDeferredValue(query)
-  // A typed path or clone URL lists only what was found for it, so its folders are not filtered again.
-  const folderQuery = typedPath || cloneUrl ? '' : shownQuery
-  const offersFiles = !typedPath && !cloneUrl
+  const searchesByName = !typedPath && !cloneUrl
   const matched = useMemo(
     () => mentionMatches({
       query: shownQuery,
       rows,
-      files: offersFiles ? fileRows : [],
+      files: searchesByName ? fileRows : [],
       folders: folderList,
-      folderQuery,
+      filterFolders: searchesByName,
       typedFolder,
     }),
     [
       shownQuery,
       rows,
-      offersFiles,
+      searchesByName,
       fileRows,
       folderList,
-      folderQuery,
       typedFolder,
     ],
   )
   const matches = mention ? matched : []
-  const mentioning = mention !== null
   useEffect(
     () => {
       if (!mentioning) {
@@ -973,10 +969,10 @@ export function ComposerField({
             // A typed path completes like a shell: Tab extends it as text, and Tab on a complete path adds it.
             // Tab with nothing to complete leaves the path as typed; an item moved to with the arrows is picked as usual.
             const fromTop = picked <= 0
-            const listing = mention && folderPath && fromTop ? currentListing : undefined
-            const completed = listing && completePath({
+            const contents = mention && folderPath && fromTop ? listingOfTypedFolder : undefined
+            const completed = contents && completePath({
               typed: folderPath,
-              listing,
+              contents,
             })
 
             if (e.key === 'Tab' && mention && folderPath && fromTop

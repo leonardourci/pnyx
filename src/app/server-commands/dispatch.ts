@@ -253,11 +253,10 @@ export function createServerCommands({
             agents,
           })
         } else if (name === 'files') {
-          filesCommand({
+          await filesCommand({
             ws,
             id,
             args,
-            fail,
             send,
             state,
             fileIndex,

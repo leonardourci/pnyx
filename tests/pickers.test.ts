@@ -2,6 +2,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { filterRows, prepareRow } from '#titan/suggestion-matches.ts'
+import { typedListing } from '#web-titan/mention-folders.ts'
+import { completePath } from '#web-titan/path-completion.ts'
 import { startOthrys, until, type Othrys } from './setup/othrys.ts'
 import { createProject } from './setup/projects.ts'
 
@@ -173,7 +175,7 @@ interface FilesAnswer {
 }
 
 test(
-  'files lists each attached project\'s files once and again after they change, without ignored ones',
+  'files lists each attached project\'s files without ignored ones, and again after a file appears',
   async () => {
     const hydra = await othrys.hydra()
     const path = await createProject({
@@ -284,5 +286,87 @@ test(
     const plain = await listing({ files: false })
     expect(plain.folders.map(entry => entry.name)).toEqual(['src'])
     expect(plain.files).toBeUndefined()
+  },
+)
+
+test(
+  'a typed name narrows its folder\'s contents, and Tab completes only from contents listed in full',
+  () => {
+    const entries = ({ names }: { names: string[] }) => names.map(name => ({
+      name,
+      path: `/work/${name}`,
+    }))
+    const contents = {
+      folders: entries({
+        names: [
+          '.cache',
+          'app-api',
+          'app-web',
+          'docs',
+        ],
+      }),
+      files: entries({
+        names: [
+          '.env',
+          'apply.md',
+        ],
+      }),
+      recent: [],
+    }
+    const shown = ({ name }: { name: string }) => {
+      const listing = typedListing({
+        listing: contents,
+        name,
+      })
+
+      return [
+        ...listing.folders,
+        ...listing.files ?? [],
+      ].map(entry => entry.name)
+    }
+
+    expect(shown({ name: '' })).toEqual([
+      'app-api',
+      'app-web',
+      'docs',
+      'apply.md',
+    ])
+    expect(shown({ name: 'APP' })).toEqual([
+      'app-api',
+      'app-web',
+      'apply.md',
+    ])
+    expect(shown({ name: '.' })).toEqual([
+      '.cache',
+      '.env',
+    ])
+    expect(completePath({
+      typed: '/work/app',
+      contents,
+    })).toBe('/work/app-')
+
+    const capped = {
+      folders: entries({
+        names: Array.from(
+          { length: 1000 },
+          (
+            _,
+            index,
+          ) => `pkg-${String(index).padStart(
+            4,
+            '0',
+          )}-src`,
+        ),
+      }),
+      recent: [],
+    }
+    expect(typedListing({
+      listing: capped,
+      name: 'pkg-0999',
+    }).folders.map(entry => entry.name)).toEqual(['pkg-0999-src'])
+    expect(completePath({
+      typed: '/work/pkg-0999',
+      contents: capped,
+    })).toBeUndefined()
   },
 )

@@ -1,16 +1,32 @@
 import { execFile } from 'node:child_process'
 import { watch, type FSWatcher } from 'node:fs'
+import { basename } from 'node:path'
 import { promisify } from 'node:util'
+import { log } from '#app/diagnostics.ts'
 
 const run = promisify(execFile)
-// The most files one project offers to mention; a bigger repository lists its first ones by path.
-const FILE_LIMIT = 20_000
+const FILES_PER_PROJECT = 20_000
 const LIST_BUFFER = 64 * 1024 * 1024
 
 interface Entry {
   files?: Promise<string[]>
   watcher?: FSWatcher
 }
+
+const warn = ({
+  operation,
+  root,
+  error,
+}: {
+  operation: string
+  root: string
+  error: unknown
+}) => log({
+  level: 'warn',
+  operation,
+  name: basename(root),
+  error,
+})
 
 async function listFiles({ root }: { root: string }): Promise<string[]> {
   try {
@@ -27,18 +43,27 @@ async function listFiles({ root }: { root: string }): Promise<string[]> {
       ],
       { maxBuffer: LIST_BUFFER },
     )
+    const files = new Set(stdout.split('\0').filter(Boolean))
 
-    return [...new Set(stdout.split('\0').filter(Boolean))].sort().slice(
+    return [...files].sort().slice(
       0,
-      FILE_LIMIT,
+      FILES_PER_PROJECT,
     )
-  } catch {
-    // A folder outside Git, or one Git cannot read, offers no files.
+  } catch (error) {
+    const gitRefusedFolder = typeof (error as { code?: unknown }).code === 'number'
+
+    if (!gitRefusedFolder) {
+      warn({
+        operation: 'files.list',
+        root,
+        error,
+      })
+    }
+
     return []
   }
 }
 
-// Each project's file list is read once and read again only after something under it changed.
 export function createFileIndex() {
   const entries = new Map<string, Entry>()
   let closed = false
@@ -67,18 +92,34 @@ export function createFileIndex() {
       // ponytail: a watcher that fails stops caching, so every read lists the files again.
       entry.watcher.on(
         'error',
-        () => {
+        error => {
+          warn({
+            operation: 'files.watch',
+            root,
+            error,
+          })
           entry.watcher?.close()
           entry.watcher = undefined
           entry.files = undefined
         },
       )
-    } catch { /* Without a watcher every read lists the files again. */ }
+    } catch (error) {
+      warn({
+        operation: 'files.watch',
+        root,
+        error,
+      })
+    }
 
     return entry
   }
 
-  const files = ({ root }: { root: string }): Promise<string[]> => {
+  const forget = ({ root }: { root: string }) => {
+    entries.get(root)?.watcher?.close()
+    entries.delete(root)
+  }
+
+  const read = ({ root }: { root: string }): Promise<string[]> => {
     if (closed) {
       return Promise.resolve([])
     }
@@ -90,18 +131,29 @@ export function createFileIndex() {
     return listing
   }
 
+  const projectFiles = async ({ roots }: { roots: string[] }) => {
+    for (const root of entries.keys()) {
+      if (!roots.includes(root)) {
+        forget({ root })
+      }
+    }
+
+    return await Promise.all(roots.map(async root => ({
+      path: root,
+      files: await read({ root }),
+    })))
+  }
+
   const close = () => {
     closed = true
 
-    for (const entry of entries.values()) {
-      entry.watcher?.close()
+    for (const root of entries.keys()) {
+      forget({ root })
     }
-
-    entries.clear()
   }
 
   return {
-    files,
+    projectFiles,
     close,
   }
 }
