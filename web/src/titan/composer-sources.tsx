@@ -11,14 +11,13 @@ import type { TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { createContext,useCallback,useContext,useMemo,useRef,useState,type ReactNode } from 'react'
 import { useKept,useStableActions } from '#web-shared/stable.ts'
 import { useSkillsCatalog } from './skills-catalog.ts'
-import { columnRows,projectRows,taskRowsOf,titanRows } from './mention-candidates.ts'
+import { columnRows,projectRows,taskRows,titanRows } from './mention-candidates.ts'
 import type { MentionItem } from './mention-picker.tsx'
 import { slashRows,type SlashItem } from './slash-menu.tsx'
 
 // What every composer field offers to mention, open and invoke; the app provides it once.
 export interface ComposerSources {
   projects: TitanProject[]
-  // The @ and / lists, built once per source version; each field only filters them.
   mentionRows: PreparedRow<MentionItem>[]
   slashRows: PreparedRow<SlashItem>[]
   taskReferences: Record<string, TaskReferenceData>
@@ -114,7 +113,6 @@ export function TitanComposerSources({
     open,
   })
   const projects = state.projects
-  // The workspace derives these on every render; the lists rebuild only when their content changes.
   const titans = useKept({ value: otherTitans })
   const folders = useKept({ value: otherProjects })
   const actions = useStableActions({
@@ -128,7 +126,7 @@ export function TitanComposerSources({
     () => projectGroups({ state: { projects } }),
     [projects],
   )
-  const projectList = useMemo(
+  const projectsTitansAndColumns = useMemo(
     () => [
       ...projectRows({ projects: projects ?? [] }),
       ...titanRows({ titans }),
@@ -142,14 +140,14 @@ export function TitanComposerSources({
   )
   const mentionRows = useMemo(
     () => [
-      ...projectList,
-      ...taskRowsOf({
+      ...projectsTitansAndColumns,
+      ...taskRows({
         cards: Object.values(state.cards),
         references,
       }),
     ],
     [
-      projectList,
+      projectsTitansAndColumns,
       state.cards,
       references,
     ],

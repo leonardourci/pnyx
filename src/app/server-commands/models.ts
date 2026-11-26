@@ -3,7 +3,7 @@ import { knownHarness } from '#workers/providers.ts'
 import type { createHost } from '#app/host.ts'
 import type { CommandRequest } from './dispatch.ts'
 
-// `models claude|codex [<account>] [--refresh]`: the models the harness offers for the picker; --refresh asks it again.
+// `models claude|codex [<account>] [--refresh]`: the models the harness offers for the picker.
 export function modelsCommand({
   ws,
   id,
@@ -15,13 +15,13 @@ export function modelsCommand({
   agents: ReturnType<typeof createHost>
 }) {
   const refresh = args.at(-1) === '--refresh'
-  const named = refresh ? args.slice(
+  const positional = refresh ? args.slice(
     0,
     -1,
   ) : args
-  const harness = knownHarness({ name: named[0] })
+  const harness = knownHarness({ name: positional[0] })
 
-  if (named.length < 1 || named.length > 2 || !harness) {
+  if (positional.length < 1 || positional.length > 2 || !harness) {
     throw new TitanError({
       message: 'models expects claude or codex, an optional account name and an optional --refresh',
       code: 'VALIDATION_ERROR',
@@ -30,7 +30,7 @@ export function modelsCommand({
 
   void agents.models({
     harness,
-    account: named[1],
+    account: positional[1],
     refresh,
   })
     .then(models => send({

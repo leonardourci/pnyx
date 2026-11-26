@@ -11,10 +11,6 @@ beforeAll(async () => {
 
 const RELEASE_TASKS = 60
 
-interface LoadingSeen {
-  loadingSeen: string[]
-}
-
 const composerOf = ({ page }: { page: Page }) => page.locator('[data-hydra-workspace][data-active=true]').getByRole(
   'textbox',
   {
@@ -87,6 +83,10 @@ test(
     const composer = composerOf({ page })
     const options = mentionOptions({ page })
     const report = options.filter({ hasText: 'Ship the report for João Silva' })
+    const nothingMatches = page.getByText(
+      'Nothing in this Titan matches.',
+      { exact: true },
+    )
 
     for (const query of [
       '@joaosilva',
@@ -94,28 +94,22 @@ test(
       '@report silva',
       '@quarter numbers',
     ]) {
+      await composer.fill('@jsr')
+      await nothingMatches.waitFor()
       await composer.fill(query)
       await report.waitFor()
     }
-
-    await composer.fill('@jsr')
-    await page.getByText(
-      'Nothing in this Titan matches.',
-      { exact: true },
-    ).waitFor()
 
     await composer.fill('@atlasprime')
     await options.filter({ hasText: 'Atlas Prime' }).filter({ hasText: 'Titan' })
       .waitFor()
 
     await composer.fill('@release note')
-    await options.first().waitFor()
-    const rendered = await options.count()
-    expect(rendered).toBeLessThan(RELEASE_TASKS)
+    await options.first().filter({ hasText: 'Release note' })
+      .waitFor()
+    expect(await options.count()).toBeLessThan(RELEASE_TASKS)
 
-    // An unrelated task changing keeps the open list's rows in place.
-    const first = await options.first().elementHandle()
-    await first!.evaluate(row => {
+    await options.first().evaluate(row => {
       row.dataset.seen = 'kept'
     })
     await hydra.owner({
@@ -139,14 +133,10 @@ test(
       await composer.press('ArrowDown')
     }
 
-    const selected = page.getByRole(
-      'listbox',
-      { name: 'Mention' },
-    ).locator('[role=option][aria-selected=true]')
     await until({
       what: 'the last release note selected',
-      check: async () => await selected.getAttribute('id') === `${await options.last().getAttribute('id')}`
-        && await options.count() >= RELEASE_TASKS,
+      check: async () => await options.count() === RELEASE_TASKS
+        && await options.last().getAttribute('aria-selected') === 'true',
     })
   },
 )
@@ -165,9 +155,11 @@ test(
       'listbox',
       { name: 'Skills and commands' },
     )
-    await list.getByRole('option').filter({ hasText: '/add-project' })
-      .waitFor()
-    expect(await list.locator('.mention-excerpt mark').count()).toBe(0)
+    const addProject = list.getByRole('option').filter({ hasText: '/add-project' })
+    await until({
+      what: 'only the command letters of /add-project marked',
+      check: async () => (await addProject.locator('mark').allTextContents()).join('') === 'addproj',
+    })
   },
 )
 
@@ -231,14 +223,9 @@ test(
       { name: 'Back' },
     ).click()
     await page.evaluate(() => {
-      const seen: string[] = []
-      Object.assign(
-        window,
-        { loadingSeen: seen },
-      )
       new MutationObserver(() => {
         if (document.body.textContent.includes('Loading models…')) {
-          seen.push('loading')
+          document.body.dataset.loadingSeen = 'true'
         }
       }).observe(
         document.body,
@@ -251,37 +238,40 @@ test(
     })
     await openModels()
     await option({ name: 'Haiku 5.5' }).waitFor()
-    const loadingSeen = await page.evaluate(() => (window as unknown as LoadingSeen).loadingSeen)
-    expect(loadingSeen).toEqual([])
+    expect(await page.locator('body').getAttribute('data-loading-seen')).toBeNull()
 
     await option({ name: 'Sonnet 5.5' }).evaluate(row => {
       row.dataset.seen = 'kept'
     })
     const recorded = othrys.claude.models.list
-    othrys.claude.models.list = [
-      ...recorded.filter(model => model.value !== 'haiku'),
-      {
-        value: 'claude-lyra-1',
-        displayName: 'Lyra',
-        description: 'A model the harness started listing',
-      },
-    ]
-    await page.getByRole(
-      'button',
-      { name: 'Reload models' },
-    ).click()
-    await option({ name: 'Lyra' }).waitFor()
-    await option({ name: 'Haiku 5.5' }).waitFor({ state: 'detached' })
-    expect(await option({ name: 'Sonnet 5.5' }).getAttribute('data-seen')).toBe('kept')
 
-    othrys.claude.models.failure = 'Claude Code could not list its models'
-    await page.getByRole(
-      'button',
-      { name: 'Reload models' },
-    ).click()
-    await models.getByRole('alert').waitFor()
-    expect(await option({ name: 'Lyra' }).count()).toBe(1)
-    othrys.claude.models.failure = undefined
-    othrys.claude.models.list = recorded
+    try {
+      othrys.claude.models.list = [
+        ...recorded.filter(model => model.value !== 'haiku'),
+        {
+          value: 'claude-lyra-1',
+          displayName: 'Lyra',
+          description: 'A model the harness started listing',
+        },
+      ]
+      await page.getByRole(
+        'button',
+        { name: 'Reload models' },
+      ).click()
+      await option({ name: 'Lyra' }).waitFor()
+      await option({ name: 'Haiku 5.5' }).waitFor({ state: 'detached' })
+      expect(await option({ name: 'Sonnet 5.5' }).getAttribute('data-seen')).toBe('kept')
+
+      othrys.claude.models.failure = 'Claude Code could not list its models'
+      await page.getByRole(
+        'button',
+        { name: 'Reload models' },
+      ).click()
+      await models.getByRole('alert').waitFor()
+      expect(await option({ name: 'Lyra' }).count()).toBe(1)
+    } finally {
+      othrys.claude.models.failure = undefined
+      othrys.claude.models.list = recorded
+    }
   },
 )

@@ -13,7 +13,7 @@ import type { FolderListing } from '#projects/folders.ts'
 import { Textarea } from '#web-shared/ui/controls.tsx'
 import { SuggestionPicker } from '#web-shared/ui/suggestion-picker.tsx'
 import { columnLook } from '#web-tasks/view.ts'
-import { prepareRow } from '#titan/suggestion-matches.ts'
+import { filterRows,prepareRow } from '#titan/suggestion-matches.ts'
 import { useDeferredValue,useEffect,useLayoutEffect,useImperativeHandle,useMemo,useRef,useState,type KeyboardEvent,type Ref } from 'react'
 import { select,selectionEnds } from './composer-caret.ts'
 import { useComposerSources } from './composer-sources.tsx'
@@ -23,20 +23,17 @@ import { attachmentRows,folderRows,mentionMatches,taskLook } from './mention-can
 import { CLONE_URL,folderSuggestions } from './mention-folders.ts'
 import { useSlashMenu } from './slash-menu.tsx'
 
-const GOAL_ROWS = GOALS.map(text => prepareRow({
-  key: text,
-  item: {
-    key: text,
-    title: text,
-    detail: '',
-    group: 'What you want done (optional)',
-  },
-  title: text,
-})).map(row => ({
-  row,
-  ranges: [],
-  context: false,
-}))
+const GOAL_ROWS = filterRows({
+  rows: GOALS.map(text => prepareRow({
+    item: {
+      key: text,
+      title: text,
+      detail: '',
+      group: 'What you want done (optional)',
+    },
+  })),
+  query: '',
+})
 
 export interface ComposerFieldHandle {
   input: HTMLTextAreaElement | null
@@ -179,10 +176,13 @@ export function ComposerField({
     repository: '',
     connected: mention !== null,
   })
-  // The last listing stays shown while the one for the newly typed path loads, so its rows never blink out.
-  const lastListing = useRef<FolderListing | undefined>(undefined)
-  lastListing.current = folders?.listing ?? lastListing.current
-  const shownListing = lastListing.current
+  const listingWhileNextLoads = useRef<FolderListing | undefined>(undefined)
+
+  if (folders) {
+    listingWhileNextLoads.current = folders.listing
+  }
+
+  const shownListing = listingWhileNextLoads.current
   const cloneUrl = CLONE_URL.test(typed) ? typed : ''
   const typedPath = !!folderPath
   const folderList = useMemo(
@@ -241,7 +241,6 @@ export function ComposerField({
       mentionRows,
     ],
   )
-  // The text updates first; the list follows when React has time, and a newer key interrupts it.
   const shownQuery = useDeferredValue(query)
   const filterFolders = !typedPath && !cloneUrl
   const matched = useMemo(
@@ -498,8 +497,7 @@ export function ComposerField({
     [projectRequest],
   )
 
-  // A task looks like its card reference; a column shows its icon.
-  const chipLook = ({ chip }: { chip: PlacedChip }) => {
+  const chipLook =({ chip }: { chip: PlacedChip }) => {
     if (chip.kind === 'task') {
       return taskLook({ reference: taskReferences[chip.value] })
     }
@@ -564,7 +562,7 @@ export function ComposerField({
     catalog,
     rows: slashRows,
     prefix,
-    query: shownPrefix,
+    shownPrefix,
     onCatalogOpen,
     input,
     read: () => current.current,

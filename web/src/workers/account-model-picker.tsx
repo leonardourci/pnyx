@@ -46,7 +46,7 @@ export const accountName = ({
   account: effective.accounts[account],
 }) : 'No account'
 
-// A menu's title row, with a back arrow when it has somewhere to return to and an optional action at its end.
+// A menu's title row, with a back arrow when it has somewhere to return to.
 export function MenuHead({
   title,
   back,

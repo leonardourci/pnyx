@@ -6,11 +6,16 @@ import { withBuiltInSkills } from '#titan/built-in-skills.ts'
 import { useCachedList } from '#web-shared/cached-list.ts'
 import { storageKey } from './outbox.ts'
 
+const UNAVAILABLE_CATALOG: Catalog = {
+  suggestions: [],
+  unavailable: 'Commands unavailable. Close and reopen to retry.',
+}
+
 const validCatalog = ({ value }: { value: unknown }) => {
   const suggestions = (value as Partial<Catalog>).suggestions
 
   return Array.isArray(suggestions) && suggestions.every(item =>
-    typeof item.command === 'string' && typeof item.description === 'string' && typeof item.source === 'string')
+    typeof item?.command === 'string' && typeof item.description === 'string' && typeof item.source === 'string')
 }
 
 export function useSkillsCatalog({
@@ -37,20 +42,13 @@ export function useSkillsCatalog({
       name: 'catalog',
       args: [card],
     })).catalog as Catalog,
-    valid: validCatalog,
+    savedCopyValid: validCatalog,
   })
-  const catalog = list.value
-  const failed = !catalog && list.error !== undefined
+  const failed = list.error !== undefined
+  const catalog = list.value ?? (failed ? UNAVAILABLE_CATALOG : undefined)
 
   return useMemo(
     () => {
-      if (failed) {
-        return {
-          suggestions: [],
-          unavailable: 'Commands unavailable. Close and reopen to retry.',
-        }
-      }
-
       if (!catalog && card !== TITAN_CARD) {
         return null
       }
@@ -62,7 +60,6 @@ export function useSkillsCatalog({
       })
     },
     [
-      failed,
       catalog,
       card,
       provider,

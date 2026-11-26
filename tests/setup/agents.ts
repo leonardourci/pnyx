@@ -164,7 +164,6 @@ export function fakeClaude() {
     ? m.message.content.flatMap(block => block.type === 'text' ? [block.text] : [])
     : []).join('')
   const recordedAssistant = assistantRecord()
-  // The models Claude Code lists: a test can change them, or make the next reads fail.
   const models: {
     list: ModelInfo[]
     failure?: string

@@ -14,49 +14,41 @@ export interface SlashItem extends PickerItem {
   suggestion: Suggestion
 }
 
-// One row per catalog entry, matched on its command; the description shows as plain text.
 export const slashRows = ({
   catalog,
   labelColors,
 }: {
   catalog: Catalog | null
   labelColors?: SavedLabelColor[]
-}): PreparedRow<SlashItem>[] => (catalog?.suggestions ?? []).map(item => {
-  const key = `${item.projectPath ?? item.source}:${item.file ?? item.command}`
-  const title = `/${item.command.replace(
-    /^[$/]/,
-    '',
-  )}`
-
-  return prepareRow({
-    key,
-    item: {
-      key,
-      title,
-      detail: '',
-      disabled: Boolean(item.unavailable),
-      badge: item.project ? (
-        <Label
-          project
-          label={item.projectPath ?? item.project}
-          text={item.project}
-          colors={labelColors}
-        />
-      ) : undefined,
-      group: item.source,
-      excerpt: item.description,
-      icons: slashIcons({ item }),
-      suggestion: item,
-    },
-    title,
-  })
-})
+}): PreparedRow<SlashItem>[] => (catalog?.suggestions ?? []).map(item => prepareRow<SlashItem>({
+  item: {
+    key: `${item.projectPath ?? item.source}:${item.file ?? item.command}`,
+    title: `/${item.command.replace(
+      /^[$/]/,
+      '',
+    )}`,
+    detail: '',
+    disabled: Boolean(item.unavailable),
+    badge: item.project ? (
+      <Label
+        project
+        label={item.projectPath ?? item.project}
+        text={item.project}
+        colors={labelColors}
+      />
+    ) : undefined,
+    group: item.source,
+    excerpt: item.description,
+    icons: slashIcons({ item }),
+    suggestion: item,
+  },
+}))
 
 export function useSlashMenu({
   catalog,
   rows,
   prefix,
-  query,
+  shownPrefix,
   onCatalogOpen,
   input,
   read,
@@ -69,8 +61,7 @@ export function useSlashMenu({
   catalog: Catalog | null
   rows: PreparedRow<SlashItem>[]
   prefix: string | null
-  // The prefix the list shows, which may trail the typed one while the list catches up.
-  query: string
+  shownPrefix: string
   onCatalogOpen({ open }: { open: boolean }): void
   input: RefObject<HTMLTextAreaElement | null>
   read(): string
@@ -105,11 +96,11 @@ export function useSlashMenu({
   const matches = useMemo(
     () => filterRows({
       rows,
-      query,
+      query: shownPrefix,
     }),
     [
       rows,
-      query,
+      shownPrefix,
     ],
   )
 

@@ -41,7 +41,6 @@ export interface Host {
   }: {
     harness: 'claude' | 'codex'
     account?: string
-    // Asks the harness again even when this server already read its list.
     refresh?: boolean
   }): Promise<ModelOption[]>
   hydra({

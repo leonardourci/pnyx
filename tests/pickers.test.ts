@@ -85,32 +85,33 @@ test(
   'title matches rank before fallback matches, then matches at the start, then words that start a word',
   () => {
     const rows = [
-      {
-        key: 'prompt',
-        title: 'Water the plants',
+      prepareRow({
+        item: {
+          key: 'prompt',
+          title: 'Water the plants',
+        },
         fallback: 'Ship it on Friday',
-      },
-      {
-        key: 'inside',
-        title: 'Reship the build',
-      },
-      {
-        key: 'word',
-        title: 'Then ship the build',
-      },
-      {
-        key: 'start',
-        title: 'Shipping notes',
-      },
-    ].map(row => prepareRow({
-      ...row,
-      item: row.key,
-    }))
+      }),
+      ...[
+        {
+          key: 'inside',
+          title: 'Reship the build',
+        },
+        {
+          key: 'word',
+          title: 'Then ship the build',
+        },
+        {
+          key: 'start',
+          title: 'Shipping notes',
+        },
+      ].map(item => prepareRow({ item })),
+    ]
 
     expect(filterRows({
       rows,
       query: 'ship',
-    }).map(match => match.row.key)).toEqual([
+    }).map(match => match.row.item.key)).toEqual([
       'start',
       'word',
       'inside',
@@ -120,13 +121,43 @@ test(
       rows,
       query: 'build reship',
     }).map(match => ({
-      key: match.row.key,
+      key: match.row.item.key,
       ranges: match.ranges.length,
     }))).toEqual([
       {
         key: 'inside',
         ranges: 11,
       },
+    ])
+  },
+)
+
+test(
+  'a match marks each matched character once, also one that splits into several letters',
+  () => {
+    const rows = [
+      prepareRow({
+        item: {
+          key: 'korean',
+          title: '한국어 노트',
+        },
+      }),
+    ]
+
+    expect(filterRows({
+      rows,
+      query: '한국',
+    }).map(match => match.ranges)).toEqual([
+      [
+        {
+          from: 0,
+          to: 1,
+        },
+        {
+          from: 1,
+          to: 2,
+        },
+      ],
     ])
   },
 )

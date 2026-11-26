@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
+import { save, stored } from '#web-app/connection-storage.ts'
+import { useStableActions } from './stable.ts'
 
-// A server list shown from cache at once and replaced only when a background read differs; never cleared once shown.
 export interface CachedList<T> {
   value?: T
   error?: string
@@ -18,10 +19,10 @@ const entries = new Map<string, Entry>()
 
 function entryFor({
   key,
-  valid,
+  savedCopyValid,
 }: {
   key: string
-  valid({ value }: { value: unknown }): boolean
+  savedCopyValid({ value }: { value: unknown }): boolean
 }): Entry {
   const known = entries.get(key)
 
@@ -29,22 +30,17 @@ function entryFor({
     return known
   }
 
+  const saved = stored<unknown>({
+    key,
+    fallback: undefined,
+  })
   const entry: Entry = {
-    list: EMPTY,
+    list: saved !== undefined && savedCopyValid({ value: saved }) ? {
+      value: saved,
+      reloading: false,
+    } : EMPTY,
     listeners: new Set(),
   }
-
-  try {
-    const saved: unknown = JSON.parse(sessionStorage.getItem(key) ?? 'null')
-
-    if (saved !== null && valid({ value: saved })) {
-      entry.list = {
-        value: saved,
-        reloading: false,
-      }
-    }
-  } catch { /* Blocked or outdated storage reads from the server instead. */ }
-
   entries.set(
     key,
     entry,
@@ -67,12 +63,10 @@ function publish({
   entry.list = list
 
   if (changed) {
-    try {
-      sessionStorage.setItem(
-        key,
-        JSON.stringify(list.value),
-      )
-    } catch { /* The list in memory stays usable when storage is full or blocked. */ }
+    save({
+      key,
+      value: list.value,
+    })
   }
 
   for (const listener of entry.listeners) {
@@ -80,7 +74,6 @@ function publish({
   }
 }
 
-// One read per key at a time; a reload waits for a background read in flight and then asks again.
 function read<T>({
   key,
   entry,
@@ -91,9 +84,9 @@ function read<T>({
   entry: Entry
   fetch({ refresh }: { refresh: boolean }): Promise<T>
   refresh: boolean
-}): Promise<void> {
+}): void {
   if (entry.reading && !refresh) {
-    return entry.reading
+    return
   }
 
   const previous = entry.reading ?? Promise.resolve()
@@ -137,29 +130,26 @@ function read<T>({
     }
   })
   entry.reading = reading
-
-  return reading
 }
 
-// `reload` asks the source itself to look again, beyond what its server already read.
 export function useCachedList<T>({
   key,
   connected,
   open,
   fetch,
-  valid,
+  savedCopyValid,
 }: {
   key: string
   connected: boolean
   open: boolean
   fetch({ refresh }: { refresh: boolean }): Promise<T>
-  // Checks a copy saved by an older page before it is shown.
-  valid({ value }: { value: unknown }): boolean
+  savedCopyValid({ value }: { value: unknown }): boolean
 }): CachedList<T> & { reload(): void } {
   const entry = entryFor({
     key,
-    valid,
+    savedCopyValid,
   })
+  const latest = useStableActions({ actions: { fetch } })
   const subscribe = useCallback(
     // eslint-disable-next-line othrys/object-params -- React owns the subscribe signature.
     (listener: () => void) => {
@@ -179,29 +169,29 @@ export function useCachedList<T>({
       const wanted = open || entry.list.value === undefined
 
       if (connected && wanted) {
-        void read({
+        read({
           key,
           entry,
-          fetch,
+          fetch: latest.fetch,
           refresh: false,
         })
       }
     },
-    // A new fetch callback for the same key reads the same list.
     [
       key,
       entry,
       connected,
       open,
+      latest,
     ],
   )
 
   return {
     ...list,
-    reload: () => void read({
+    reload: () => read({
       key,
       entry,
-      fetch,
+      fetch: latest.fetch,
       refresh: true,
     }),
   }

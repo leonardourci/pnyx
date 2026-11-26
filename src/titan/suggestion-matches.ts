@@ -1,4 +1,3 @@
-// One search rule for every list: no case or accents, each word anywhere in any order, "joaosilva" finds "João Silva".
 interface Letter {
   value: string
   from: number
@@ -11,20 +10,19 @@ interface Range {
   to: number
 }
 
-// A row of a picker list, split into letters once when the list is built so typing only compares letters.
 export interface PreparedRow<T> {
-  key: string
   item: T
   title: Letter[]
-  fallback?: Letter[]
-  fallbackText?: string
+  fallback?: {
+    text: string
+    letters: Letter[]
+  }
 }
 
 export interface RowMatch<T> {
   row: PreparedRow<T>
-  // Where the query matched: in the title, or in the fallback text when `context` is set.
   ranges: Range[]
-  context: boolean
+  inFallback: boolean
 }
 
 interface Match {
@@ -32,6 +30,8 @@ interface Match {
   prefix: boolean
   wordStarts: number
 }
+
+const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u
 
 function letters({ text }: { text: string }): Letter[] {
   const result: Letter[] = []
@@ -41,14 +41,12 @@ function letters({ text }: { text: string }): Letter[] {
   for (const character of text) {
     const from = offset
     offset += character.length
-    // NFD splits an accented letter into its base and a mark, and the filter drops the mark.
-    const values = [
-      ...character.toLowerCase().normalize('NFD')
-        .replace(
-          /ς/gu,
-          'σ',
-        ),
-    ].filter(value => /[\p{L}\p{N}]/u.test(value))
+    const accentsSplitOff = character.toLowerCase().normalize('NFD')
+      .replace(
+        /ς/gu,
+        'σ',
+      )
+    const values = [...accentsSplitOff].filter(value => LETTER_OR_DIGIT.test(value))
 
     for (const value of values) {
       result.push({
@@ -78,7 +76,7 @@ function startsAt({
   start: number
 }) {
   for (let index = 0; index < word.length; index++) {
-    if (source[start + index]!.value !== word[index]!.value) {
+    if (source[start + index].value !== word[index].value) {
       return false
     }
   }
@@ -86,8 +84,7 @@ function startsAt({
   return true
 }
 
-// The word's first occurrence that starts a word in the text, else its first occurrence.
-function findWord({
+function findPreferringWordStart({
   source,
   word,
 }: {
@@ -105,7 +102,7 @@ function findWord({
       continue
     }
 
-    if (source[start]!.wordStart) {
+    if (source[start].wordStart) {
       return start
     }
 
@@ -113,6 +110,25 @@ function findWord({
   }
 
   return first
+}
+
+function characterRanges({ matched }: { matched: Letter[] }): Range[] {
+  const ranges = new Map<number, Range>()
+
+  for (const letter of matched) {
+    ranges.set(
+      letter.from,
+      {
+        from: letter.from,
+        to: letter.to,
+      },
+    )
+  }
+
+  return [...ranges.values()].sort((
+    a,
+    b,
+  ) => a.from - b.from)
 }
 
 function matchLetters({
@@ -130,26 +146,22 @@ function matchLetters({
     start: 0,
   })) {
     return {
-      ranges: source.slice(
-        0,
-        query.length,
-      ).map(({
-        from,
-        to,
-      }) => ({
-        from,
-        to,
-      })),
+      ranges: characterRanges({
+        matched: source.slice(
+          0,
+          query.length,
+        ),
+      }),
       prefix: true,
       wordStarts: words.length,
     }
   }
 
-  const matched = new Map<number, Range>()
+  const matched: Letter[] = []
   let wordStarts = 0
 
   for (const word of words) {
-    const start = findWord({
+    const start = findPreferringWordStart({
       source,
       word,
     })
@@ -158,55 +170,42 @@ function matchLetters({
       return undefined
     }
 
-    wordStarts += Number(source[start]!.wordStart)
-
-    for (const letter of source.slice(
+    wordStarts += Number(source[start].wordStart)
+    matched.push(...source.slice(
       start,
       start + word.length,
-    )) {
-      matched.set(
-        letter.from,
-        {
-          from: letter.from,
-          to: letter.to,
-        },
-      )
-    }
+    ))
   }
 
   return {
-    ranges: [...matched.values()].sort((
-      a,
-      b,
-    ) => a.from - b.from),
+    ranges: characterRanges({ matched }),
     prefix: false,
     wordStarts,
   }
 }
 
-export function prepareRow<T>({
-  key,
+export function prepareRow<T extends { title: string }>({
   item,
-  title,
   fallback,
 }: {
-  key: string
   item: T
-  title: string
   fallback?: string
 }): PreparedRow<T> {
-  return {
-    key,
+  const row: PreparedRow<T> = {
     item,
-    title: letters({ text: title }),
-    ...(fallback ? {
-      fallback: letters({ text: fallback }),
-      fallbackText: fallback,
-    } : {}),
+    title: letters({ text: item.title }),
   }
+
+  if (fallback) {
+    row.fallback = {
+      text: fallback,
+      letters: letters({ text: fallback }),
+    }
+  }
+
+  return row
 }
 
-// Title matches rank before fallback matches, then a match at the start, then more words matched where a word starts.
 export function filterRows<T>({
   rows,
   query,
@@ -221,11 +220,14 @@ export function filterRows<T>({
     return rows.map(row => ({
       row,
       ranges: [],
-      context: false,
+      inFallback: false,
     }))
   }
 
-  const found: (RowMatch<T> & { match: Match })[] = []
+  const found: {
+    result: RowMatch<T>
+    match: Match
+  }[] = []
 
   for (const row of rows) {
     const title = matchLetters({
@@ -233,15 +235,17 @@ export function filterRows<T>({
       words,
     })
     const match = title ?? (row.fallback && matchLetters({
-      source: row.fallback,
+      source: row.fallback.letters,
       words,
     }))
 
     if (match) {
       found.push({
-        row,
-        ranges: match.ranges,
-        context: !title,
+        result: {
+          row,
+          ranges: match.ranges,
+          inFallback: !title,
+        },
         match,
       })
     }
@@ -250,16 +254,8 @@ export function filterRows<T>({
   return found.sort((
     a,
     b,
-  ) => Number(a.context) - Number(b.context)
+  ) => Number(a.result.inFallback) - Number(b.result.inFallback)
     || Number(b.match.prefix) - Number(a.match.prefix)
     || b.match.wordStarts - a.match.wordStarts)
-    .map(({
-      row,
-      ranges,
-      context,
-    }) => ({
-      row,
-      ranges,
-      context,
-    }))
+    .map(({ result }) => result)
 }

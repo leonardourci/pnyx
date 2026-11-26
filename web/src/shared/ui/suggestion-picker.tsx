@@ -7,10 +7,8 @@ import { Button } from './controls.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import type { ReactNode } from 'react'
 
-// Rows rendered at first and added per scroll step; the panel shows about eight at its full height.
-const ROW_WINDOW = 40
-// Arrowing keeps this many rows rendered past the active one, so the next ones are there to scroll to.
-const ROWS_AHEAD = 10
+const ROWS_PER_SCROLL_STEP = 40
+const ROWS_PAST_ACTIVE = 10
 const EXCERPT_BEFORE = 48
 const EXCERPT_LENGTH = 180
 
@@ -65,7 +63,6 @@ function MatchedText({
   return parts
 }
 
-// A long excerpt shows the part around its first match, with the ranges moved into the cut text.
 function excerptAround({
   text,
   ranges,
@@ -102,7 +99,7 @@ const sameRanges = ({
 }) => a.length === b.length && a.every((
   range,
   index,
-) => range.from === b[index]!.from && range.to === b[index]!.to)
+) => range.from === b[index].from && range.to === b[index].to)
 
 interface RowProps {
   id: string
@@ -119,13 +116,12 @@ const sameRow = ({
   before: RowProps
   after: RowProps
 }) => before.id === after.id && before.active === after.active && before.heading === after.heading
-  && before.match.row === after.match.row && before.match.context === after.match.context
+  && before.match.row === after.match.row && before.match.inFallback === after.match.inFallback
   && sameRanges({
     a: before.match.ranges,
     b: after.match.ranges,
   })
 
-// A row renders again only when its source row, its match, its heading or whether it is active changed.
 const PickerRow = memo(
   ({
     id,
@@ -135,12 +131,12 @@ const PickerRow = memo(
     choose,
   }: RowProps) => {
     const item = match.row.item
-    const titleRanges = match.context ? [] : match.ranges
-    const contextText = match.context ? match.row.fallbackText : undefined
-    const excerpt = contextText ?? item.excerpt
+    const titleRanges = match.inFallback ? [] : match.ranges
+    const fallbackText = match.inFallback ? match.row.fallback?.text : undefined
+    const excerpt = fallbackText ?? item.excerpt
     const shown = excerpt === undefined ? undefined : excerptAround({
       text: excerpt,
-      ranges: contextText === undefined ? [] : match.ranges,
+      ranges: fallbackText === undefined ? [] : match.ranges,
     })
 
     return (
@@ -204,13 +200,12 @@ export function SuggestionPicker<T extends PickerItem>({
   const [
     rendered,
     setRendered,
-  ] = useState(ROW_WINDOW)
+  ] = useState(ROWS_PER_SCROLL_STEP)
   const shown = Math.max(
     rendered,
-    active + ROWS_AHEAD,
+    active + ROWS_PAST_ACTIVE,
   )
   const sentinel = useRef<HTMLDivElement>(null)
-  // Rows keep one choose callback, which always calls the latest one the field passed.
   const { chooseRow } = useStableActions({
     actions: { chooseRow: ({ item }: { item: PickerItem }) => choose({ item: item as T }) },
   })
@@ -321,7 +316,7 @@ export function SuggestionPicker<T extends PickerItem>({
       const observer = new IntersectionObserver(
         entries => {
           if (entries.some(entry => entry.isIntersecting)) {
-            setRendered(rows => rows + ROW_WINDOW)
+            setRendered(rows => rows + ROWS_PER_SCROLL_STEP)
           }
         },
         { root: root.current },
@@ -358,7 +353,7 @@ export function SuggestionPicker<T extends PickerItem>({
 
           return (
             <PickerRow
-              key={match.row.key}
+              key={match.row.item.key}
               id={`${id}-${index}`}
               match={match}
               active={index === active}
@@ -367,7 +362,7 @@ export function SuggestionPicker<T extends PickerItem>({
             />
           )
         })}
-        {matches.length > shown && <div ref={sentinel} className="picker-more h-px" />}
+        {more && <div ref={sentinel} className="picker-more h-px" />}
       </div>
       {!matches.length && <p role="status">{loading ? 'Loading…' : empty}</p>}
       {footer}

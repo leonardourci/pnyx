@@ -55,7 +55,6 @@ export function PickerField({
 const validModels = ({ value }: { value: unknown }) => Array.isArray(value)
   && value.every(model => typeof model?.value === 'string' && typeof model.label === 'string')
 
-// The models a harness and login offer; every picker of the same key shares one list.
 export function useModels({
   harness,
   account,
@@ -85,7 +84,7 @@ export function useModels({
         ...refresh ? ['--refresh'] : [],
       ],
     })).models as ModelOption[],
-    valid: validModels,
+    savedCopyValid: validModels,
   })
 
   return {

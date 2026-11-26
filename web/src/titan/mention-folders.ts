@@ -5,7 +5,7 @@ import type { MentionItem } from './mention-picker.tsx'
 
 export const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
 
-// What the @ picker offers beyond this Titan's own projects; the picker filters them with its other rows.
+// What the @ picker offers beyond this Titan's own projects.
 export function folderSuggestions({
   typed,
   attached,
