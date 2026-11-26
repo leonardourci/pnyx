@@ -215,6 +215,13 @@ export function createTitanTurns({
     contextPresented.add(note.id)
   }
 
+  const lastSavedSeq = ({ through }: { through: number }) => readEvents({
+    titanId,
+    before: through + 1,
+    descending: true,
+    limit: 1,
+  })[0]?.seq ?? 0
+
   const helperBatchesPresented = new Set<string>()
   const titanInstructions = () =>
     `You are Titan for Othrys Titan "${titanId}". Your contract is AGENTS.md in your current folder; follow it. Use othrys with --titan ${titanId}; OTHRYS_ACTOR=titan is already set. Projects attach later; your current folder belongs to Titan.`
@@ -1021,13 +1028,6 @@ export function createTitanTurns({
       const delivered = contextPresented.size > 0 && outcome?.status === 'completed'
 
       if (delivered || handledWake) {
-        // Only saved changes have a place after a restart, so the wake is anchored on the last one it covers.
-        const through = handledWake ? readEvents({
-          titanId,
-          before: readThrough() + 1,
-          descending: true,
-          limit: 1,
-        })[0]?.seq ?? 0 : 0
         applyDecision({
           writer,
           decision: titanEvent({
@@ -1040,7 +1040,7 @@ export function createTitanTurns({
             change: {
               type: 'titan.context-delivered',
               data: {
-                through,
+                through: handledWake ? lastSavedSeq({ through: readThrough() }) : 0,
                 ids: delivered ? [...contextPresented] : [],
               },
             },

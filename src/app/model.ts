@@ -71,7 +71,6 @@ export type TitanChange = EventBase & (
   | {
     type: 'titan.context-delivered'
     data: {
-      // The last saved change Titan has finished reading.
       through: number
       ids: string[]
     }

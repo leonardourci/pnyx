@@ -2033,20 +2033,18 @@ test(
       check: read,
     })
     const transcript = loadTitan({ titanId: titan.id }).state.cards[task.id]!.agent!.transcriptPath!
-
-    // A later Othrys words the instruction header differently, so the transcript no longer proves the read.
-    await othrys.restart({
-      whileStopped: () => writeFileSync(
+    const rewordInstructionHeaders = () => writeFileSync(
+      transcript,
+      readFileSync(
         transcript,
-        readFileSync(
-          transcript,
-          'utf8',
-        ).replaceAll(
-          'inbox IDs',
-          'earlier inbox IDs',
-        ),
+        'utf8',
+      ).replaceAll(
+        'inbox IDs',
+        'earlier inbox IDs',
       ),
-    })
+    )
+
+    await othrys.restart({ whileStopped: rewordInstructionHeaders })
 
     expect(await read()).toBe(true)
     expect(times({
