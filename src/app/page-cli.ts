@@ -78,7 +78,7 @@ function pageOutput({
 }) {
   const {
     values,
-    hydraId,
+    titanId,
   } = parsePage({ args })
   const {
     interest,
@@ -129,15 +129,15 @@ function pageOutput({
     ownerMessage: page.hydraOwnerMessage?.id ?? 'none: the owner has not messaged Titan',
     unavailable: unavailable.length ? unavailable : 'none: every card found',
     help: [
-      `Use the UI to inspect the full Titan ${hydraId}`,
-      `Read titan.log and tasks/<task>/task.log in Titan ${hydraId}`,
+      `Use the UI to inspect the full Titan ${titanId}`,
+      `Read titan.log and tasks/<task>/task.log in Titan ${titanId}`,
     ],
   }
 }
 
 export const page = guard({
   handler: ({ args }) => pageOutput({
-    state: loadTitan({ hydraId: parsePage({ args }).hydraId }).state,
+    state: loadTitan({ titanId: parsePage({ args }).titanId }).state,
     args,
   }),
 })

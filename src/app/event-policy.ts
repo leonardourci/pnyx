@@ -6,20 +6,20 @@ export function durableEvent({ event }: { event: TitanEvent }): boolean {
       return !event.data.source
     case 'card.observed':
     case 'session.observed':
-    case 'hydra.received':
-    case 'hydra.delivered':
-    case 'hydra.agent-used':
-    case 'hydra.context-delivered':
-    case 'hydra.helper-started':
-    case 'hydra.helper-finished':
-    case 'hydra.helper-acknowledged':
-    case 'hydra.status':
-    case 'hydra.dispatch-progress':
+    case 'titan.received':
+    case 'titan.delivered':
+    case 'titan.agent-used':
+    case 'titan.context-delivered':
+    case 'titan.helper-started':
+    case 'titan.helper-finished':
+    case 'titan.helper-acknowledged':
+    case 'titan.status':
+    case 'titan.dispatch-progress':
     case 'task.steering.notified':
     case 'task.steering.recovery':
     case 'project.refreshed':
       return false
-    case 'hydra.operation':
+    case 'titan.operation':
       return event.data.kind === 'compaction'
     case 'task.steering.handled':
       return !event.derived

@@ -16,11 +16,11 @@ export async function hydraAgentCommand({
   id,
   args,
   send,
-  hydraId,
+  titanId,
   agents,
   kick,
 }: CommandRequest & {
-  hydraId: string
+  titanId: string
   agents: ReturnType<typeof createHost>
   kick(): void
 }) {
@@ -47,11 +47,11 @@ export async function hydraAgentCommand({
     running,
     stateSeq,
   } = await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       const config = hydraConfig({
         state: writer.state,
-        id: hydraId,
+        id: titanId,
       })
 
       if (Object.hasOwn(
@@ -74,7 +74,7 @@ export async function hydraAgentCommand({
           actor: 'web',
         },
         change: {
-          type: 'board.configured',
+          type: 'titan.configured',
           data: {
             ...config,
             hydra: {
@@ -107,7 +107,7 @@ export async function hydraAgentCommand({
     // A mode the running turn refuses stays for its next turn; the failure is logged, and the receipt still says saved.
     background({
       name: 'Titan mode change',
-      context: { hydraId },
+      context: { titanId },
       run: () => agents.set({
         card: TITAN_CARD,
         setting: 'mode',

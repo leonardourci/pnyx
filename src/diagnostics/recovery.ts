@@ -57,14 +57,14 @@ const incidentId = ({
   .digest('hex')
 
 export function createDiagnosticRecovery({
-  hydraId,
+  titanId,
   sessions,
   enabled,
   changed,
   pause = RECOVERY_PAUSE_MS,
   clock = systemClock,
 }: {
-  hydraId: string
+  titanId: string
   sessions(): NativeHealth[]
   enabled(): boolean
   changed(): void
@@ -79,7 +79,7 @@ export function createDiagnosticRecovery({
     messageId: string
     reason: string
   }>()
-  const state = (): TitanState => loadTitan({ hydraId }).state
+  const state = (): TitanState => loadTitan({ titanId }).state
   const remainingPause = ({
     attempt,
     at = clock.now(),
@@ -95,7 +95,7 @@ export function createDiagnosticRecovery({
     task: string
     message: string
   }) => scanEvents({
-    hydraId,
+    titanId,
     cardId: task,
     types: ['card.replied'],
   }).find(event => replyKeys({ event }).includes(recoveryKey({
@@ -146,7 +146,7 @@ export function createDiagnosticRecovery({
     task: string
     attempt: RecoveryAttempt
   }) => await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => writer.append({
       event: {
         v: 1,
@@ -188,7 +188,7 @@ export function createDiagnosticRecovery({
       level: 'error',
       operation: 'recovery persistence',
       error,
-      hydraId,
+      titanId,
       taskId: task,
       correlationId: message,
     })
@@ -209,7 +209,7 @@ export function createDiagnosticRecovery({
 
     try {
       written = await withWriter({
-        hydraId,
+        titanId,
         fn: ({ writer }) => {
           if (id in writer.state.eventIds) {
             return false
@@ -224,7 +224,7 @@ export function createDiagnosticRecovery({
               at: new Date(clock.now()).toISOString(),
               actor: 'othrys',
               cardId: task,
-              type: 'hydra.message',
+              type: 'titan.message',
               data: {
                 action: 'send',
                 hydra: writer.state.config?.hydra.id ?? 'hydra',
@@ -324,7 +324,7 @@ export function createDiagnosticRecovery({
 
     try {
       const receipt = await sendReply({
-        hydraId,
+        titanId,
         request: {
           card: task,
           expectedSession: candidate.sessionId,
@@ -346,7 +346,7 @@ export function createDiagnosticRecovery({
         level: 'error',
         operation: 'message recovery',
         error,
-        hydraId,
+        titanId,
         taskId: task,
         sessionId: candidate.sessionId,
         correlationId: message,
@@ -424,7 +424,7 @@ export function createDiagnosticRecovery({
     background({
       name: 'diagnostic recovery',
       context: {
-        hydraId,
+        titanId,
         taskId: task,
         correlationId: message,
       },

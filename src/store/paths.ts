@@ -41,8 +41,8 @@ export function canonical({ path }: { path: unknown }): string | undefined {
   }
 }
 
-export const homeScoped = ({ hydraId }: { hydraId: string }) => {
+export const homeScoped = ({ titanId }: { titanId: string }) => {
   const home = resolve(othrysHome())
 
-  return `${canonical({ path: home }) ?? home}\u0000${hydraId}`
+  return `${canonical({ path: home }) ?? home}\u0000${titanId}`
 }

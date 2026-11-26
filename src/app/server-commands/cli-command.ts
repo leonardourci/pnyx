@@ -11,13 +11,13 @@ export function cliCommand({
   args,
   fail,
   send,
-  hydraId,
+  titanId,
   kick,
   startWorker,
 }: Omit<CommandRequest, 'args'> & {
   name: unknown
   args: unknown
-  hydraId: string
+  titanId: string
   kick(): void
   startWorker: ReturnType<typeof createServerWorkers>['startWorker']
 }) {
@@ -38,7 +38,7 @@ export function cliCommand({
 
   if (args.some(a => /^--(?:titan|hydra)(?:=|$)/.test(a))) {
     return fail({
-      error: `--titan is not allowed; this server writes Titan ${hydraId}`,
+      error: `--titan is not allowed; this server writes Titan ${titanId}`,
       code: 'VALIDATION_ERROR',
     })
   }
@@ -54,7 +54,7 @@ export function cliCommand({
       ...args,
       ...actor,
       '--titan',
-      hydraId,
+      titanId,
     ],
     done: ({
       error,
@@ -83,7 +83,7 @@ export function cliCommand({
           ws,
           message: {
             ...result,
-            stateSeq: loadTitan({ hydraId }).state.seq,
+            stateSeq: loadTitan({ titanId }).state.seq,
             type: 'receipt',
             id,
           },

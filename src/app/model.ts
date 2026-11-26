@@ -69,7 +69,7 @@ export type TitanChange = EventBase & (
     }
   }
   | {
-    type: 'hydra.context-delivered'
+    type: 'titan.context-delivered'
     data: {
       through: number
       ids?: string[]
@@ -98,7 +98,7 @@ export type TitanChange = EventBase & (
     }
   }
   | {
-    type: 'hydra.review'
+    type: 'titan.review'
     data: {
       block: string
       reminders: string[]
@@ -107,7 +107,7 @@ export type TitanChange = EventBase & (
     }
   }
   | {
-    type: 'board.configured'
+    type: 'titan.configured'
     nativeInput?: {
       tasks?: string[]
       epoch: string
@@ -118,7 +118,7 @@ export type TitanChange = EventBase & (
     data: TitanConfig
   }
   | {
-    type: 'hydra.project'
+    type: 'titan.project'
     data: {
       before: TitanProject | null
       after: TitanProject
@@ -253,7 +253,7 @@ export type TitanChange = EventBase & (
     }
   }
   | {
-    type: 'hydra.memory'
+    type: 'titan.memory'
     data: {
       key: string
       before: string | null
@@ -303,16 +303,16 @@ export type TitanChange = EventBase & (
     data: AgentLaunch
   }
   | {
-    type: 'hydra.message'
+    type: 'titan.message'
     data: Omit<TitanMessage, 'id' | 'at' | 'actor'>
   }
   | {
-    type: 'hydra.status'
+    type: 'titan.status'
     data: TitanStatus
   }
   | {
     // Titan's harness confirmed it took this message.
-    type: 'hydra.received'
+    type: 'titan.received'
     data: {
       message: string
       // When Titan's harness took it, by its own record.
@@ -320,11 +320,11 @@ export type TitanChange = EventBase & (
     }
   }
   | {
-    type: 'hydra.input-stopped'
+    type: 'titan.input-stopped'
     data: { messages: string[] }
   }
   | {
-    type: 'hydra.input'
+    type: 'titan.input'
     data: {
       message: string
       state: 'failed' | 'retrying'
@@ -332,28 +332,28 @@ export type TitanChange = EventBase & (
     }
   }
   | {
-    type: 'hydra.agent-used'
+    type: 'titan.agent-used'
     data: import('#workers/model.ts').AgentConfig
   }
   | {
     // Othrys handed Titan a turn in a session already configured; its id, <turn>:hosted, marks the turn delivered.
-    type: 'hydra.delivered'
+    type: 'titan.delivered'
     data: { session: string }
   }
   | {
-    type: 'hydra.agent-change'
+    type: 'titan.agent-change'
     data: import('#titan/model.ts').TitanAgentChange
   }
   | {
-    type: 'hydra.operation'
+    type: 'titan.operation'
     data: TitanOperation
   }
   | {
-    type: 'hydra.dispatch-proposed'
+    type: 'titan.dispatch-proposed'
     data: DispatchProposal
   }
   | {
-    type: 'hydra.dispatch-progress'
+    type: 'titan.dispatch-progress'
     data: {
       token: string
       status: 'applying' | 'failed'
@@ -361,14 +361,14 @@ export type TitanChange = EventBase & (
     }
   }
   | {
-    type: 'hydra.dispatch-resolved'
+    type: 'titan.dispatch-resolved'
     data: {
       token: string
       action: 'confirmed' | 'dismissed'
     }
   }
   | {
-    type: 'board.agents'
+    type: 'titan.agents'
     data: {
       agents: Record<string, AgentConfig>
       before: Record<string, AgentConfig>
@@ -399,7 +399,7 @@ export type EventType = TitanEvent['type']
 
 export const EVENT_TYPES: readonly EventType[] = [
   'task.wait-resumed',
-  'hydra.context-delivered',
+  'titan.context-delivered',
   'diagnostic.retry',
   'apply.recorded',
   'session.compaction',
@@ -422,17 +422,17 @@ export const EVENT_TYPES: readonly EventType[] = [
   'card.outcome',
   'card.replied',
   'card.noted',
-  'board.view',
+  'titan.view',
   'task.session',
   'session.observed',
-  'board.configured',
+  'titan.configured',
   'task.created',
   'task.brief',
   'task.owner-ask',
   'task.intent',
   'task.visibility',
   'task.retention',
-  'hydra.memory',
+  'titan.memory',
   'task.worker-line',
   'task.branch',
   'task.tools',
@@ -442,27 +442,27 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.ask.closed',
   'task.ask.deferred',
   'task.ask.reopened',
-  'hydra.message',
-  'hydra.status',
-  'hydra.received',
-  'hydra.input-stopped',
-  'hydra.input',
-  'hydra.operation',
-  'hydra.agent-used',
-  'hydra.delivered',
-  'hydra.agent-change',
-  'hydra.review',
-  'hydra.helper-started',
-  'hydra.helper-finished',
-  'hydra.helper-acknowledged',
-  'hydra.dispatch-proposed',
-  'hydra.dispatch-resolved',
-  'hydra.dispatch-progress',
+  'titan.message',
+  'titan.status',
+  'titan.received',
+  'titan.input-stopped',
+  'titan.input',
+  'titan.operation',
+  'titan.agent-used',
+  'titan.delivered',
+  'titan.agent-change',
+  'titan.review',
+  'titan.helper-started',
+  'titan.helper-finished',
+  'titan.helper-acknowledged',
+  'titan.dispatch-proposed',
+  'titan.dispatch-resolved',
+  'titan.dispatch-progress',
   'chat.message',
-  'board.agents',
+  'titan.agents',
   'task.launched',
   'task.permission',
-  'hydra.project',
+  'titan.project',
   'task.project',
   'task.reminder',
   'task.reminder-due',

@@ -183,7 +183,7 @@ export function serveStatic({
         )
         const html = raw.replace(
           '</head>',
-          `<base href="${page.base}" />\n<meta name="othrys-token" content="${page.token}" />\n<meta name="othrys-build" content="${buildOf({ html: raw })}" />\n<meta name="othrys-hydra" content="${page.identity}" />\n<meta name="othrys-installation" content="${hydraIdentity({ hydraId: '' })}" />\n</head>`,
+          `<base href="${page.base}" />\n<meta name="othrys-token" content="${page.token}" />\n<meta name="othrys-build" content="${buildOf({ html: raw })}" />\n<meta name="othrys-hydra" content="${page.identity}" />\n<meta name="othrys-installation" content="${hydraIdentity({ titanId: '' })}" />\n</head>`,
         )
         res.writeHead(
           200,

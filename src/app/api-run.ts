@@ -111,7 +111,7 @@ export async function runForRequest({ body }: { body: unknown }): Promise<RunAns
         name: requestInvocation().name,
         // An unlabelled command line is the owner's terminal, as its events record it.
         actor: env.OTHRYS_ACTOR || 'cli',
-        hydraId: namedTitan({
+        titanId: namedTitan({
           argv,
           env,
         }),

@@ -18,7 +18,7 @@ interface Line {
   operation: string
   name?: string
   level?: string
-  hydraId?: string
+  titanId?: string
   taskId?: string
   sessionId?: string
   source?: string
@@ -68,7 +68,7 @@ function readLine({ text }: { text: string }): Line | undefined {
     operation,
     name: string({ value: record.name }),
     level: string({ value: record.level }),
-    hydraId: string({ value: record.hydraId }),
+    titanId: string({ value: record.titanId }),
     taskId: string({ value: record.taskId }),
     sessionId: string({ value: record.sessionId }),
     source: string({ value: record.source }),
@@ -137,13 +137,13 @@ function memoryPoints({ samples }: { samples: Line[] }) {
 
 // Reads the log lines in the window: each operation's count and its typical and worst duration, memory over time and the slowest actions.
 export async function performanceReport({
-  hydraId,
+  titanId,
   since,
   until,
   operation,
   limit,
 }: {
-  hydraId?: string
+  titanId?: string
   since: number
   until: number
   operation?: string
@@ -178,8 +178,8 @@ export async function performanceReport({
 
       const line = readLine({ text })
       // Lines without a Titan, such as the process line, belong to every Titan.
-      const lineTitan = line?.hydraId
-      const otherTitan = hydraId !== undefined && lineTitan !== undefined && lineTitan !== hydraId
+      const lineTitan = line?.titanId
+      const otherTitan = titanId !== undefined && lineTitan !== undefined && lineTitan !== titanId
 
       if (!line || line.at < from || line.at > to || otherTitan) {
         continue
@@ -311,7 +311,7 @@ export async function performanceReport({
       operation: label({ line }),
       ms: line.ms,
       source: line.source,
-      hydraId: line.hydraId,
+      titanId: line.titanId,
       taskId: line.taskId,
     })),
   }

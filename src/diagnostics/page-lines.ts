@@ -43,15 +43,15 @@ function pageTime({ value }: { value: unknown }): string | undefined {
 function pageLine({ value }: { value: unknown }): LogLine | undefined {
   const record = asRecord({ value })
   const operation = text({ value: record?.operation })
-  const hydraId = text({ value: record?.hydraId })
+  const titanId = text({ value: record?.titanId })
 
-  const knownTitan = hydraId === undefined || TITAN_ID.test(hydraId)
+  const knownTitan = titanId === undefined || TITAN_ID.test(titanId)
 
   if (!record || !operation || !PAGE_OPERATION.test(operation) || !knownTitan) {
     return undefined
   }
 
-  const fields: Omit<LogLine, 'operation' | 'level' | 'error' | 'detailed'> = { hydraId }
+  const fields: Omit<LogLine, 'operation' | 'level' | 'error' | 'detailed'> = { titanId }
 
   for (const key of PAGE_TEXT_FIELDS) {
     fields[key] = text({ value: record[key] })

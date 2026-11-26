@@ -61,9 +61,9 @@ function eventRow({ event }: { event: TitanEvent }): TimelineRow {
   const actualSession = event.type === 'diagnostic.retry' ? event.data.sessionId : event.sessionId
   let batchId: string | undefined
 
-  if (event.type === 'hydra.helper-started') {
+  if (event.type === 'titan.helper-started') {
     batchId = event.data.id
-  } else if (event.type === 'hydra.helper-finished') {
+  } else if (event.type === 'titan.helper-finished') {
     batchId = event.data.batch
   }
 
@@ -98,11 +98,11 @@ function eventRow({ event }: { event: TitanEvent }): TimelineRow {
 // One file's last `bytes`: its structured warnings and errors for the Titan, and whether older lines were left out.
 function tailRows({
   path,
-  hydraId,
+  titanId,
   bytes,
 }: {
   path: string
-  hydraId: string
+  titanId: string
   bytes: number
 }): {
   rows: TimelineRow[]
@@ -169,7 +169,7 @@ function tailRows({
       const failure = record?.level === 'error' || record?.level === 'warn'
 
       // A warning or error about no Titan in particular, such as a full log folder, belongs to every Titan.
-      const otherTitan = record?.hydraId !== undefined && record.hydraId !== hydraId
+      const otherTitan = record?.titanId !== undefined && record.titanId !== titanId
 
       if (record?.v !== 1 || !failure || otherTitan || typeof record.operationId !== 'string'
         || typeof record.at !== 'string' || !Number.isFinite(Date.parse(record.at))
@@ -201,7 +201,7 @@ function tailRows({
 }
 
 // Warnings and errors from the newest log files back, then from service.log, where they were written before the log folder.
-export function serviceRows({ hydraId }: { hydraId: string }): {
+export function serviceRows({ titanId }: { titanId: string }): {
   rows: TimelineRow[]
   truncated: boolean
 } {
@@ -222,7 +222,7 @@ export function serviceRows({ hydraId }: { hydraId: string }): {
   ] of paths.entries()) {
     const tail = tailRows({
       path,
-      hydraId,
+      titanId,
       bytes: left,
     })
     rows.push(...tail.rows)
@@ -314,7 +314,7 @@ export function timeline({
   const batchTasks = new Map<string, string[]>()
 
   for (const event of events) {
-    if (event.type === 'hydra.helper-started') {
+    if (event.type === 'titan.helper-started') {
       batchTasks.set(
         event.data.id,
         event.data.tasks,
@@ -330,7 +330,7 @@ export function timeline({
     event?: TitanEvent
   }) => {
     const at = Date.parse(row.at)
-    const acknowledged = event?.type === 'hydra.helper-acknowledged' ? event.data.batches : []
+    const acknowledged = event?.type === 'titan.helper-acknowledged' ? event.data.batches : []
     const relatedBatches = acknowledged.slice()
 
     if (row.batchId) {

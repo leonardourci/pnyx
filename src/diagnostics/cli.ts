@@ -85,10 +85,10 @@ type Values = Record<string, string | boolean | undefined>
 
 async function performanceView({
   values,
-  hydraId,
+  titanId,
 }: {
   values: Values
-  hydraId?: string
+  titanId?: string
 }) {
   onlyFlags({
     values,
@@ -118,7 +118,7 @@ async function performanceView({
   }
 
   const report = await performanceReport({
-    hydraId,
+    titanId,
     since,
     until,
     operation: values.operation as string | undefined,
@@ -146,7 +146,7 @@ export const debug = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: {
@@ -187,7 +187,7 @@ export const debug = guard({
       })
 
       return askHost({
-        hydraId,
+        titanId,
         body: {
           action: 'cpu-profile',
           seconds,
@@ -205,7 +205,7 @@ export const debug = guard({
       return performanceView({
         values,
         // The routine helper reads only its own Titan, as for every command; anyone else reads every Titan unless they name one.
-        hydraId: isHelper({ actor: env.OTHRYS_ACTOR ?? 'cli' }) ? env.OTHRYS_TITAN : values.hydra as string | undefined,
+        titanId: isHelper({ actor: env.OTHRYS_ACTOR ?? 'cli' }) ? env.OTHRYS_TITAN : values.hydra as string | undefined,
       })
     }
 
@@ -226,7 +226,7 @@ export const debug = guard({
       })
 
       return askHost({
-        hydraId,
+        titanId,
         body: {
           action: 'debug-health',
           limit,
@@ -273,15 +273,15 @@ export const debug = guard({
       })
     }
 
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const ref = values.task
     const task = typeof ref === 'string' ? findCard({
       state,
       ref,
     }).id : undefined
-    const service = serviceRows({ hydraId })
+    const service = serviceRows({ titanId })
     const page = timeline({
-      events: { [Symbol.iterator]: () => scanEvents({ hydraId }) },
+      events: { [Symbol.iterator]: () => scanEvents({ titanId }) },
       service: service.rows,
       filter: {
         task,
@@ -304,7 +304,7 @@ export const debug = guard({
     })
 
     return {
-      hydra: hydraId,
+      hydra: titanId,
       ...page,
       entries: entries.length ? entries : 'none: no matching timeline records',
       serviceTailTruncated: service.truncated,

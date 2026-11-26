@@ -11,7 +11,7 @@ export type LogMode = (typeof LOG_MODES)[number]
 
 // One agent's whole process tree, as the agent.memory line lists it.
 interface AgentMemory {
-  hydraId: string
+  titanId: string
   taskId?: string
   sessionId?: string
   rss: number
@@ -28,7 +28,7 @@ interface LogFields {
   inputDelayMs?: number
   processingMs?: number
   presentationMs?: number
-  hydraId?: string
+  titanId?: string
   taskId?: string
   sessionId?: string
   requestId?: string
@@ -103,7 +103,7 @@ const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | '
   presentationMs: true,
   connectionWaitMs: true,
   commitMs: true,
-  hydraId: true,
+  titanId: true,
   taskId: true,
   sessionId: true,
   requestId: true,
@@ -201,7 +201,7 @@ export const PAGE_NUMBER_FIELDS = [
   'heapUsed',
 ] as const
 
-export type PageLine = Pick<LogFields, 'operation' | 'hydraId' | (typeof PAGE_TEXT_FIELDS)[number]
+export type PageLine = Pick<LogFields, 'operation' | 'titanId' | (typeof PAGE_TEXT_FIELDS)[number]
   | (typeof PAGE_NUMBER_FIELDS)[number]> & Severity
 
 // Warnings and errors are always written; a detailed line needs detailed logging.

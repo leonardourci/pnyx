@@ -50,7 +50,7 @@ export const UPGRADE_CHECK_MS = 24 * 60 * 60_000
 export const CREATION_POLL_MS = 1000
 
 export async function mountOwnedTitan({
-  hydraId,
+  titanId,
   url,
   catalogLocations,
   query,
@@ -71,7 +71,7 @@ export async function mountOwnedTitan({
   upgradeRoot,
   restart,
 }: {
-  hydraId: string
+  titanId: string
   url: string
   catalogLocations?: CatalogLocations
   query?: QueryFn
@@ -100,17 +100,17 @@ export async function mountOwnedTitan({
     let recovered = false
     let notifyChange = (): void => {}
 
-    const dir = hydraDir({ hydraId })
+    const dir = hydraDir({ titanId })
     const releaseHold = await holdTitan({
-      hydraId,
+      titanId,
       changed: () => notifyChange(),
     })
     failedRelease = releaseHold
     privateDir({ dir: spoolDir({ dir }) })
     const token = Buffer.from(localToken())
-    const identity = hydraIdentity({ hydraId })
-    dropCopyLeases({ hydraId })
-    let { state } = loadTitan({ hydraId })
+    const identity = hydraIdentity({ titanId })
+    dropCopyLeases({ titanId })
+    let { state } = loadTitan({ titanId })
     let handledThrough = state.seq
     const catalogIndex = createCatalogIndex({ locations: catalogLocations })
     const fileIndex = createFileIndex()
@@ -126,8 +126,8 @@ export async function mountOwnedTitan({
       threadPage,
       bindThread,
     } = createThreadSubscriptions({
-      hydraId,
-      state: () => loadTitan({ hydraId }).state,
+      titanId,
+      state: () => loadTitan({ titanId }).state,
       closed: () => closed,
       send: ({
         ws,
@@ -140,7 +140,7 @@ export async function mountOwnedTitan({
     })
 
     const tabs = createServerClients({
-      hydraId,
+      titanId,
       state: () => state,
       agents: () => agents,
       threadSubscriptions,
@@ -158,7 +158,7 @@ export async function mountOwnedTitan({
     } = tabs
 
     const reload = () => {
-      ({ state } = loadTitan({ hydraId }))
+      ({ state } = loadTitan({ titanId }))
       handledThrough = state.seq
 
       if (recovered) {
@@ -223,11 +223,11 @@ export async function mountOwnedTitan({
 
     const pump = () => {
       const read = readChanges({
-        hydraId,
+        titanId,
         after: handledThrough,
       })
 
-      const live = heldTitan({ hydraId })
+      const live = heldTitan({ titanId })
 
       if (live) {
         state = live.state
@@ -264,10 +264,10 @@ export async function mountOwnedTitan({
           tick.refreshLinks({ task: changedTask })
         }
 
-        if (event.type === 'hydra.project') {
+        if (event.type === 'titan.project') {
           background({
             name: 'catalog warmup',
-            context: { hydraId },
+            context: { titanId },
             run: warmCatalog,
           })
         }
@@ -319,11 +319,11 @@ export async function mountOwnedTitan({
       triedResends,
       resendReply,
     } = createServerWorkers({
-      hydraId,
+      titanId,
       closed: () => closed,
     })
     const tick = createServerTick({
-      hydraId,
+      titanId,
       state: () => state,
       closed: () => closed || !recovered,
       pump,
@@ -339,7 +339,7 @@ export async function mountOwnedTitan({
       recover: async () => await recovery.reconcile(),
     })
     const workerLogs = followWorkerLogs({
-      hydraId,
+      titanId,
       changed: tick.kick,
     })
     const gitFollow = followGit({ changed: tick.refreshLinks })
@@ -353,7 +353,7 @@ export async function mountOwnedTitan({
     workerLogs.reconcile({ state })
 
     const agents = createHost({
-      hydraId,
+      titanId,
       query,
       spawnCodex,
       wakeDelay,
@@ -371,7 +371,7 @@ export async function mountOwnedTitan({
     })
 
     const recovery = createDiagnosticRecovery({
-      hydraId,
+      titanId,
       sessions: () => agents.diagnostics().sessions,
       enabled: () => agents.diagnostics().helper.enabled === true,
       changed: kick,
@@ -380,7 +380,7 @@ export async function mountOwnedTitan({
 
     const profileAbort = new AbortController()
     const withdrawHost = offerHost({
-      hydraId,
+      titanId,
       ask: async ({ body }) => {
         if (body.action === 'cpu-profile') {
           if (typeof body.seconds !== 'number' || typeof body.path !== 'string') {
@@ -469,13 +469,13 @@ export async function mountOwnedTitan({
     })
 
     const sources = createSourceRunner({
-      hydraId,
+      titanId,
       changed: kick,
       state: () => state,
     })
 
     const review = startReviewTimer({
-      hydraId,
+      titanId,
       now: reviewClock?.now,
       interval: reviewClock?.interval,
       wake: kick,
@@ -484,7 +484,7 @@ export async function mountOwnedTitan({
     })
 
     const request = createServerRoutes({
-      hydraId,
+      titanId,
       dir,
       url,
       token,
@@ -506,7 +506,7 @@ export async function mountOwnedTitan({
       if (!closed) {
         background({
           name: 'catalog warmup',
-          context: { hydraId },
+          context: { titanId },
           run: warmCatalog,
         })
       }
@@ -516,7 +516,7 @@ export async function mountOwnedTitan({
       runCommand,
       closeClient: closeCommands,
     } = createServerCommands({
-      hydraId,
+      titanId,
       url,
       open,
       state: () => state,
@@ -590,8 +590,8 @@ export async function mountOwnedTitan({
           type: 'hello',
           stateSeq: state.seq,
           build: buildId(),
-          hydraId: identity,
-          installation: hydraIdentity({ hydraId: '' }),
+          titanId: identity,
+          installation: hydraIdentity({ titanId: '' }),
         },
       })
       sendLatest({ ws })
@@ -607,7 +607,7 @@ export async function mountOwnedTitan({
           } else if (message?.type === 'command') {
             background({
               name: 'page command',
-              context: {hydraId},
+              context: {titanId},
               run: () => runCommand({
                 ws,
                 message,
@@ -724,7 +724,7 @@ export async function mountOwnedTitan({
       if (listener) {
         await new Promise(resolve => listener.close(resolve))
         rmSync(
-          socketPath({ hydraId }),
+          socketPath({ titanId }),
           { force: true },
         )
       }
@@ -732,7 +732,7 @@ export async function mountOwnedTitan({
 
     try {
       ingest = await listenIngest({
-        hydraId,
+        titanId,
         onLine: ({ line }) => {
           let entry: unknown
 
@@ -752,7 +752,7 @@ export async function mountOwnedTitan({
 
           try {
             spoolWrite({
-              hydraId,
+              titanId,
               entry: {
                 ...entry,
                 id: entry.id,
@@ -763,7 +763,7 @@ export async function mountOwnedTitan({
             log({
               level: 'error',
               operation: 'ingest.spool',
-              hydraId,
+              titanId,
               error,
             })
           }
@@ -789,7 +789,7 @@ export async function mountOwnedTitan({
       log({
         level: 'error',
         operation: 'recover',
-        hydraId,
+        titanId,
         error,
       })
     } finally {
@@ -801,7 +801,7 @@ export async function mountOwnedTitan({
 
     return {
       url,
-      socket: ingest && socketPath({ hydraId }),
+      socket: ingest && socketPath({ titanId }),
       view: () => ({
         state: pageState({
           state,

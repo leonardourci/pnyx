@@ -9,20 +9,20 @@ export type ApplyRecordedEvent = EventBase & {
 }
 
 export function transactionReceipt({
-  hydraId,
+  titanId,
   id,
   digest,
   eventIds,
 }: {
-  hydraId: string
+  titanId: string
   id: string
   digest: string
   eventIds?: Record<string, unknown>
 }): Output | undefined {
   const home = nativeHome()
-  const current = home.read({ hydra: hydraId })
+  const current = home.read({ hydra: titanId })
   const knownIds = eventIds ?? current.state.eventIds
-  const recorded = home.receipts.get(hydraId)?.get(id)
+  const recorded = home.receipts.get(titanId)?.get(id)
 
   if (!recorded) {
     if (Object.hasOwn(

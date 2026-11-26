@@ -70,28 +70,24 @@ export function changesTitanThread({
       event,
       state,
     })
-    || TITAN_THREAD_PREFIXES.some(prefix => event.type.startsWith(prefix))
+    || event.type.startsWith('titan.')
     || TITAN_THREAD_EVENTS.includes(event.type)
     || state.cards[event.cardId]?.title !== sub.titles?.[event.cardId]
 }
 
-const TITAN_THREAD_PREFIXES = [
-  'hydra.',
-  'board.',
-]
 const TITAN_THREAD_EVENTS: readonly EventType[] = [
   'session.compaction',
   'othrys.upgrade',
 ]
 
 export function createThreadSubscriptions({
-  hydraId,
+  titanId,
   state,
   closed,
   send,
   agents,
 }: {
-  hydraId: string
+  titanId: string
   state(): TitanState
   closed(): boolean
   send({
@@ -377,7 +373,7 @@ export function createThreadSubscriptions({
 
     if (!sub.base || sub.base.signature !== signature) {
       const page = readThread({
-        hydraId,
+        titanId,
         allTraces: true,
         state: state(),
         card,
@@ -387,7 +383,7 @@ export function createThreadSubscriptions({
         history: sub.history,
         latest: page,
         read: ({ before }) => readThread({
-          hydraId,
+          titanId,
           allTraces: true,
           state: state(),
           card,
@@ -531,7 +527,7 @@ export function createThreadSubscriptions({
           log({
             operation: live ? 'thread.live' : 'thread.page',
             detailed: live,
-            hydraId,
+            titanId,
             taskId: card.id,
             count: prepared.thread.entries.length,
             bytes: signature === undefined ? undefined : Buffer.byteLength(signature),
@@ -658,7 +654,7 @@ export function createThreadSubscriptions({
 
     const readPage = async ({ before }: { before?: string }): Promise<ThreadPage> => {
       const page = readThread({
-        hydraId,
+        titanId,
         allTraces: true,
         state: state(),
         card,

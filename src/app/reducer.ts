@@ -79,7 +79,7 @@ function apply({
     event,
   })
 
-  if (event.type === 'hydra.context-delivered' || applyRecovery({
+  if (event.type === 'titan.context-delivered' || applyRecovery({
     state,
     event,
   }) || applyCompaction({

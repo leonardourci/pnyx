@@ -51,7 +51,7 @@ function ingest({
     operation: 'hook.push',
     detailed: true,
     correlationId: entry.id,
-    hydraId: basename(writer.dir),
+    titanId: basename(writer.dir),
     bytes,
   })
 
@@ -274,9 +274,9 @@ function ingest({
               ...m,
               id: `${m.id}:hydra`,
             },
-            cardId: '$board',
+            cardId: '$all',
             change: {
-              type: 'board.configured',
+              type: 'titan.configured',
               data: {
                 ...config,
                 hydra: {
@@ -358,15 +358,15 @@ export function drainSpool({ writer }: {
   }
 }
 
-export async function ingestSpool({ hydraId }: {
-  hydraId: string
+export async function ingestSpool({ titanId }: {
+  titanId: string
 }): Promise<{
   ingested: number
   rejected: number
   notes?: number
 }> {
   return await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => drainSpool({ writer }),
   })
 }

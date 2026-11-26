@@ -7,14 +7,14 @@ import { MAX_BODY } from '#app/server-transport.ts'
 // (a path too long for a Unix socket, say); hooks then spool and the watcher drains it.
 export async function listenIngest(
   {
-    hydraId,
+    titanId,
     onLine,
   }: {
-    hydraId: string
+    titanId: string
     onLine: ({ line }: { line: string }) => void
   },
 ): Promise<SocketServer | null> {
-  const path = socketPath({ hydraId })
+  const path = socketPath({ titanId })
   // Left by a server that did not stop cleanly; startServer already checked none is running.
   rmSync(
     path,

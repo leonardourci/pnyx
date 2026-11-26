@@ -13,14 +13,14 @@ export function replyCommand({
   args,
   fail,
   send,
-  hydraId,
+  titanId,
   state,
   closed,
   kick,
   startWorker,
 }: CommandRequest & {
   name: unknown
-  hydraId: string
+  titanId: string
   state(): TitanState
   closed(): boolean
   kick(): void
@@ -111,7 +111,7 @@ export function replyCommand({
     args: [
       ...command,
       '--titan',
-      hydraId,
+      titanId,
       '--actor',
       'web',
       ...rest,

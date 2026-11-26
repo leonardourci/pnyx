@@ -260,7 +260,7 @@ export function harvestTranscripts({
       })
 
       for (const note of parsed.notes) {
-        if (note.kind === 'summary' && id !== '$hydra') {
+        if (note.kind === 'summary' && id !== '$titan') {
           continue
         }
 

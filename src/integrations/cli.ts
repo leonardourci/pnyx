@@ -12,18 +12,18 @@ import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { harvestTranscripts, appendNote } from '#integrations/hooks/harvest.ts'
 
 async function integrations({
-  hydraId,
+  titanId,
 }: {
-  hydraId: string
+  titanId: string
 }): Promise<Output> {
   const config = hydraConfig({
-    state: loadTitan({ hydraId }).state,
-    id: hydraId,
+    state: loadTitan({ titanId }).state,
+    id: titanId,
   })
   const hooks = hookStatus()
 
   return {
-    hydraId,
+    titanId,
     integrations: [
       {
         name: 'skills',
@@ -57,7 +57,7 @@ async function integrations({
 export const integrationsCommand = guard({
   handler: ({ args }) => {
     const {
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: {
@@ -67,7 +67,7 @@ export const integrationsCommand = guard({
     })
 
     return integrations({
-      hydraId,
+      titanId,
     })
   },
 })
@@ -79,7 +79,7 @@ export const harvest = guard({
   handler: async ({ args }) => {
     const {
       values,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: {
@@ -88,7 +88,7 @@ export const harvest = guard({
       },
       positionals: 0,
     })
-    const { state } = loadTitan({ hydraId })
+    const { state } = loadTitan({ titanId })
     const cards = values.card ? [
       findCard({
         state,
@@ -103,7 +103,7 @@ export const harvest = guard({
     }))))
 
     return await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const spool = drainSpool({ writer })
         const at = new Date().toISOString()

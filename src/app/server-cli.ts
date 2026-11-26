@@ -25,7 +25,7 @@ export async function serve({
     options: SERVE_OPTIONS,
     positionals: 0,
   })
-  const hydraId = (values.hydra as string | undefined) ?? 'default'
+  const titanId = (values.hydra as string | undefined) ?? 'default'
   const portFlag = values.port as string | undefined
   const rawPort = portFlag ?? process.env.PORT
   const source = portFlag === undefined ? 'PORT' : '--port'
@@ -43,7 +43,7 @@ export async function serve({
   try {
     await stopOldHost()
     server = await startServer({
-      hydraId,
+      titanId,
       port,
       upgradeRoot: OTHRYS_ROOT,
     })
@@ -66,11 +66,11 @@ export async function serve({
     .join('')
   stdout.write(json ? `${JSON.stringify({
     server: 'running',
-    hydra: hydraId,
+    hydra: titanId,
     url: server.url,
     skipped: server.skipped,
   })}\n`
-    : `server: running\nhydra: ${hydraId}\nurl: ${JSON.stringify(server.url)}\n${skipped}`)
+    : `server: running\nhydra: ${titanId}\nurl: ${JSON.stringify(server.url)}\n${skipped}`)
   const signal = await new Promise<NodeJS.Signals>(resolve => {
     for (const name of [
       'SIGINT',

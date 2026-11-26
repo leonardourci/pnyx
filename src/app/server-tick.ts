@@ -31,7 +31,7 @@ type ServerWorkers = ReturnType<typeof createServerWorkers>
 
 // The one coalesced scheduler tick of a mounted Titan: read the log, run what is due, and set the next wake.
 export function createServerTick({
-  hydraId,
+  titanId,
   state,
   closed,
   pump,
@@ -46,7 +46,7 @@ export function createServerTick({
   review,
   recover,
 }: {
-  hydraId: string
+  titanId: string
   state(): TitanState
   closed(): boolean
   pump(): void
@@ -103,7 +103,7 @@ export function createServerTick({
       try {
         if (spoolDirty && Date.now() >= spoolRetryAt) {
           try {
-            await ingestSpool({ hydraId })
+            await ingestSpool({ titanId })
             spoolDirty = false
           } catch (error) {
             spoolRetryAt = Date.now() + SPOOL_RETRY_MS
@@ -113,7 +113,7 @@ export function createServerTick({
 
         pump()
         await resumeWaits({
-          hydraId,
+          titanId,
           state: state(),
         })
         pump()
@@ -123,7 +123,7 @@ export function createServerTick({
           queueRun = (async () => {
             try {
               queueNeedsRetry = await advanceQueues({
-                hydraId,
+                titanId,
                 active: () => !closed(),
                 state: state(),
               })
@@ -133,7 +133,7 @@ export function createServerTick({
                 level: 'error',
                 operation: 'queue',
                 error,
-                hydraId,
+                titanId,
                 eventSeq: state().seq,
               })
             } finally {
@@ -150,7 +150,7 @@ export function createServerTick({
           discoveryRun = (async () => {
             try {
               await discoverPullRequests({
-                hydraId,
+                titanId,
                 interval: DISCOVERY_POLL_MS,
                 checked: discoveredAt,
                 active: () => !closed(),
@@ -160,7 +160,7 @@ export function createServerTick({
                 level: 'error',
                 operation: 'discover pull requests',
                 error,
-                hydraId,
+                titanId,
                 eventSeq: state().seq,
               })
             } finally {
@@ -178,7 +178,7 @@ export function createServerTick({
           followRun = (async () => {
             try {
               await followPullRequests({
-                hydraId,
+                titanId,
                 active: () => !closed(),
                 schedule: followChecks,
               })
@@ -187,7 +187,7 @@ export function createServerTick({
                 level: 'error',
                 operation: 'follow',
                 error,
-                hydraId,
+                titanId,
                 eventSeq: state().seq,
               })
             } finally {
@@ -210,7 +210,7 @@ export function createServerTick({
           replyRun = (async () => {
             try {
               await notifyWaitResumes({
-                hydraId,
+                titanId,
                 retryAfter: waitResumeRetryAfter,
                 retryDelay: REPLY_POLL_MS,
               })
@@ -219,7 +219,7 @@ export function createServerTick({
                 await runWorker({
                   args: [
                     'inbox-follow',
-                    hydraId,
+                    titanId,
                   ],
                 })
               }
@@ -229,7 +229,7 @@ export function createServerTick({
               }
 
               await followUpReplies({
-                hydraId,
+                titanId,
                 tried: triedResends,
                 resend: resendReply,
                 unconfirmed: agents().unconfirmed,
@@ -240,7 +240,7 @@ export function createServerTick({
                   level: 'error',
                   operation: 'replies',
                   error,
-                  hydraId,
+                  titanId,
                   eventSeq: state().seq,
                 })
               }
@@ -256,7 +256,7 @@ export function createServerTick({
           name: 'diagnostic reconcile',
           run: recover,
           context: {
-            hydraId,
+            titanId,
             eventSeq: state().seq,
           },
         })
@@ -264,12 +264,12 @@ export function createServerTick({
           name: 'review',
           run: review().check,
           context: {
-            hydraId,
+            titanId,
             eventSeq: state().seq,
           },
         })
         await fireReminders({
-          hydraId,
+          titanId,
           at: new Date(reminderScheduler.now()).toISOString(),
           state: state(),
         })
@@ -280,7 +280,7 @@ export function createServerTick({
         })
 
         if (deadline !== undefined && deadline <= Date.now()) {
-          await hideDone({ hydraId })
+          await hideDone({ titanId })
           pump()
         }
 
@@ -290,13 +290,13 @@ export function createServerTick({
             const startingSeq = state().seq
 
             try {
-              await settleDone({ hydraId })
+              await settleDone({ titanId })
             } catch (error) {
               log({
                 level: 'error',
                 operation: 'settling copies',
                 error,
-                hydraId,
+                titanId,
                 eventSeq: state().seq,
               })
 
@@ -326,7 +326,7 @@ export function createServerTick({
           level: 'error',
           operation: 'scheduler tick',
           error,
-          hydraId,
+          titanId,
         })
       } finally {
         clearTimeout(expiryTimer)

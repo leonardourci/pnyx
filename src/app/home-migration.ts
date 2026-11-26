@@ -27,7 +27,7 @@ export function hydraIds({
 
   return ids.filter(id => {
     try {
-      const state = home ? home.read({ hydra: id }).state : readNativeTitan({ hydraId: id }).state
+      const state = home ? home.read({ hydra: id }).state : readNativeTitan({ titanId: id }).state
 
       return !state.config?.removed
     } catch (error) {
@@ -41,14 +41,14 @@ export function hydraIds({
 }
 
 export function hydraDir({
-  hydraId,
+  titanId,
 }: {
-  hydraId: string
+  titanId: string
   migrate?: boolean
 }): string {
-  if (!TITAN_ID.test(hydraId)) {
+  if (!TITAN_ID.test(titanId)) {
     throw new TitanError({
-      message: `invalid Titan name: ${hydraId}`,
+      message: `invalid Titan name: ${titanId}`,
       code: 'VALIDATION_ERROR',
       help: ['Use letters, digits, dot, dash or underscore'],
     })
@@ -56,11 +56,11 @@ export function hydraDir({
 
   return join(
     hydrasDir(),
-    hydraId,
+    titanId,
   )
 }
 
-export const hydraAgentFolder = ({ hydraId }: { hydraId: string }): string => join(
-  hydraDir({ hydraId }),
+export const hydraAgentFolder = ({ titanId }: { titanId: string }): string => join(
+  hydraDir({ titanId }),
   'agent',
 )

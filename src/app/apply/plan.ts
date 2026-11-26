@@ -32,7 +32,7 @@ export function planDocument({
   document,
   state,
   dir,
-  hydraId,
+  titanId,
   meta,
   id,
   full = false,
@@ -40,7 +40,7 @@ export function planDocument({
   document: ApplyDocument
   state: TitanState
   dir: string
-  hydraId: string
+  titanId: string
   meta: Meta
   id: string
   full?: boolean
@@ -93,7 +93,7 @@ export function planDocument({
     const writer = eventWriter({
       state: current,
       dir,
-      hydraId,
+      titanId,
       transaction: id,
       onAppend: ({ event }) => prepared.push(event),
     })
@@ -197,7 +197,7 @@ export function planDocument({
         })
       }
 
-      const cardId = `task-${createHash('sha256').update(`${hydraId}:${id}:${index}`)
+      const cardId = `task-${createHash('sha256').update(`${titanId}:${id}:${index}`)
         .digest('hex')
         .slice(
           0,
@@ -213,7 +213,7 @@ export function planDocument({
           state: current,
           operation,
           meta: operationMeta,
-          hydraId,
+          titanId,
           cardId,
         })
 
@@ -292,10 +292,10 @@ export function planDocument({
     0,
     RECEIPT_HINT_LIMIT,
   )
-    .map(task => `Read tasks/${task}/task.log in Titan ${hydraId} for changed events`)
+    .map(task => `Read tasks/${task}/task.log in Titan ${titanId} for changed events`)
 
   if (!help.length) {
-    help.push(`Use othrys board --titan ${hydraId} for current tasks`)
+    help.push(`Use othrys board --titan ${titanId} for current tasks`)
   }
 
   return {

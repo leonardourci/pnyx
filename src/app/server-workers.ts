@@ -4,10 +4,10 @@ import { runPageCommand } from './page-command.ts'
 
 // The commands one mounted Titan runs for its pages and its scheduler.
 export function createServerWorkers({
-  hydraId,
+  titanId,
   closed,
 }: {
-  hydraId: string
+  titanId: string
   closed(): boolean
 }) {
   const inProcess = new Set<Promise<void>>()
@@ -99,7 +99,7 @@ export function createServerWorkers({
           '--idempotency-key',
           retry,
           '--titan',
-          hydraId,
+          titanId,
           '--actor',
           'othrys',
         ],
@@ -116,7 +116,7 @@ export function createServerWorkers({
       log({
         level: 'error',
         operation: 'reply.resend',
-        hydraId,
+        titanId,
         taskId: card,
         correlationId: retry,
         error,

@@ -57,7 +57,7 @@ function context({
 
   const card = ref ? state.cards[ref] ?? state.cards[state.keys[ref] ?? ''] : undefined
   const removalId = canonicalCommandName({ name }) === 'hydra' && args[0] === 'remove' ? args[1] : undefined
-  const removal = removalId ? removalSeq ?? loadTitan({ hydraId: removalId }).state.seq : undefined
+  const removal = removalId ? removalSeq ?? loadTitan({ titanId: removalId }).state.seq : undefined
 
   return createHash('sha256').update(JSON.stringify({
     config: canonicalCommandName({ name }) === 'hydra' || name === 'setup' ? state.config : undefined,
@@ -79,7 +79,7 @@ export const approval = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: WRITE,
@@ -110,12 +110,12 @@ export const approval = guard({
       })
     }
 
-    const asked = loadTitan({ hydraId }).state.dispatchProposals?.find(p => p.token === token)
+    const asked = loadTitan({ titanId }).state.dispatchProposals?.find(p => p.token === token)
     const confirming = action === 'confirm' && asked?.kind === 'command'
       ? JSON.parse(asked.value) as Target : undefined
     const dispatch = confirming ? dispatchFor({ target: confirming }) : undefined
     const selected = await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const proposal = writer.state.dispatchProposals?.find(p => p.token === token)
 
@@ -153,14 +153,14 @@ export const approval = guard({
           meta: actor,
           cardId: TITAN_CARD,
           change: action === 'confirm' ? {
-            type: 'hydra.dispatch-progress',
+            type: 'titan.dispatch-progress',
             data: {
               token,
               status: 'applying',
             },
           }
             : {
-              type: 'hydra.dispatch-resolved',
+              type: 'titan.dispatch-resolved',
               data: {
                 token,
                 action: 'dismissed',
@@ -254,7 +254,7 @@ export const approval = guard({
           separator === -1 ? commandArgs.length : separator,
           0,
           '--titan',
-          hydraId,
+          titanId,
         )
       }
 
@@ -272,14 +272,14 @@ export const approval = guard({
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
       await withWriter({
-        hydraId,
+        titanId,
         fn: ({ writer }) => {
           const decision = hydraEvent({
             state: writer.state,
             meta: actor,
             cardId: TITAN_CARD,
             change: {
-              type: 'hydra.dispatch-progress',
+              type: 'titan.dispatch-progress',
               data: {
                 token,
                 status: 'failed',
@@ -298,14 +298,14 @@ export const approval = guard({
     }
 
     await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const decision = hydraEvent({
           state: writer.state,
           meta: actor,
           cardId: TITAN_CARD,
           change: {
-            type: 'hydra.dispatch-resolved',
+            type: 'titan.dispatch-resolved',
             data: {
               token,
               action: 'confirmed',
@@ -327,15 +327,15 @@ export const approval = guard({
   },
 })
 
-export async function recoverOwnerCommands({ hydraId }: { hydraId: string }): Promise<void> {
-  const { state } = loadTitan({ hydraId })
+export async function recoverOwnerCommands({ titanId }: { titanId: string }): Promise<void> {
+  const { state } = loadTitan({ titanId })
 
   if (state.config?.removed || state.config?.removing || !state.dispatchProposals?.some(proposal => proposal.kind === 'command' && proposal.status === 'applying')) {
     return
   }
 
   await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       const interrupted = writer.state.dispatchProposals?.filter(proposal =>
         proposal.kind === 'command' && proposal.status === 'applying') ?? []
@@ -349,7 +349,7 @@ export async function recoverOwnerCommands({ hydraId }: { hydraId: string }): Pr
           },
           cardId: TITAN_CARD,
           change: {
-            type: 'hydra.dispatch-progress',
+            type: 'titan.dispatch-progress',
             data: {
               token: proposal.token,
               status: 'failed',

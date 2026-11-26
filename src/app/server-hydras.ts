@@ -46,12 +46,12 @@ export function listTitans(): TitanSummary[] {
       let state: TitanState
 
       try {
-        state = loadTitan({ hydraId: id }).state
+        state = loadTitan({ titanId: id }).state
       } catch {
         return unreadableSummary({ id })
       }
 
-      const key = homeScoped({ hydraId: id })
+      const key = homeScoped({ titanId: id })
       const seq = String(state.seq)
       const known = summaries.get(key)
 
@@ -95,11 +95,11 @@ export async function createTitan({
       if (eventId) {
         for (const id of ids) {
           const event = readEvents({
-            hydraId: id,
+            titanId: id,
             limit: 1,
           })[0]
 
-          if (event?.type === 'board.configured' && event.id === eventId) {
+          if (event?.type === 'titan.configured' && event.id === eventId) {
             return id
           }
         }
@@ -219,7 +219,7 @@ export async function nameUnnamedTitans(): Promise<void> {
 function readableConfig({ id }: { id: string }) {
   try {
     return hydraConfig({
-      state: loadTitan({ hydraId: id }).state,
+      state: loadTitan({ titanId: id }).state,
       id,
     })
   } catch {

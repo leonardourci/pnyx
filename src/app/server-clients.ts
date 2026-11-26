@@ -42,7 +42,7 @@ const shownTraces = ({
 }
 
 export function createServerClients({
-  hydraId,
+  titanId,
   state,
   agents,
   threadSubscriptions,
@@ -50,7 +50,7 @@ export function createServerClients({
   refreshThread,
   feed,
 }: {
-  hydraId: string
+  titanId: string
   state(): TitanState
   agents(): Pick<ReturnType<typeof createHost>, 'queue' | 'usageViews'>
   threadSubscriptions(): Map<TitanClient, Subscription>[]
@@ -178,7 +178,7 @@ export function createServerClients({
     liveCards = live
     knownCards = new Set(Object.keys(state().cards))
     // Titan taking a task message is filed under Titan's card but changes that task's thread.
-    const receivedTask = event.type === 'hydra.received'
+    const receivedTask = event.type === 'titan.received'
       ? state().hydraMessages?.find(message => message.id === event.data.message)?.task
       : undefined
 
@@ -215,7 +215,7 @@ export function createServerClients({
           state: state(),
         })) || sub.card === event.cardId || sub.card === receivedTask
         || (event.type === 'task.session' && sub.card === event.data.before)
-        || (event.type === 'board.view' &&
+        || (event.type === 'titan.view' &&
           shownTraces({
             view: event.data.before,
             card: sub.card,
@@ -247,9 +247,9 @@ export function createServerClients({
     inputs: () => spendInputs({
       state: state(),
       events: scanEvents({
-        hydraId,
+        titanId,
         types: [
-          'board.configured',
+          'titan.configured',
           'task.session',
         ],
       }),

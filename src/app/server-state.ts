@@ -26,8 +26,8 @@ export const infoPath = () => join(
   othrysHome(),
   'server.json',
 )
-export const socketPath = ({ hydraId }: { hydraId: string }) => join(
-  hydraDir({ hydraId }),
+export const socketPath = ({ titanId }: { titanId: string }) => join(
+  hydraDir({ titanId }),
   'server.sock',
 )
 
@@ -95,13 +95,13 @@ async function probeServer(): Promise<{
 }
 
 // The server, with the address of this Titan on it, or null when none answers or it does not serve this Titan.
-export async function readServer({ hydraId }: { hydraId: string }): Promise<ServerInfo | null> {
+export async function readServer({ titanId }: { titanId: string }): Promise<ServerInfo | null> {
   const server = await probeServer()
 
-  return typeof server !== 'string' && server.hydras.includes(hydraId) ? {
+  return typeof server !== 'string' && server.hydras.includes(titanId) ? {
     ...server.info,
-    url: `http://127.0.0.1:${server.info.port}/hydra/${hydraId}/`,
-    socket: socketPath({ hydraId }),
+    url: `http://127.0.0.1:${server.info.port}/hydra/${titanId}/`,
+    socket: socketPath({ titanId }),
   } : null
 }
 
@@ -151,8 +151,8 @@ export function localToken(): string {
 }
 
 export const hydraRemoval = {
-  close: undefined as undefined | (({ hydraId }: { hydraId: string }) => Promise<void>),
-  finished: undefined as undefined | (({ hydraId }: { hydraId: string }) => void),
+  close: undefined as undefined | (({ titanId }: { titanId: string }) => Promise<void>),
+  finished: undefined as undefined | (({ titanId }: { titanId: string }) => void),
 }
 
 type Ask = ({ body }: { body: Record<string, unknown> }) => Promise<Record<string, unknown>>
@@ -160,37 +160,37 @@ const hosts = new Map<string, Ask>()
 
 // The server offers each Titan it runs; a command it runs asks that Titan's agents through here.
 export function offerHost({
-  hydraId,
+  titanId,
   ask,
 }: {
-  hydraId: string
+  titanId: string
   ask: Ask
 }): () => void {
   hosts.set(
-    hydraId,
+    titanId,
     ask,
   )
 
   return () => {
-    if (hosts.get(hydraId) === ask) {
-      hosts.delete(hydraId)
+    if (hosts.get(titanId) === ask) {
+      hosts.delete(titanId)
     }
   }
 }
 
 // Acts on an agent the server runs. Throws NOT_RUNNING when this process serves no such Titan, so nothing was sent.
 export async function askHost({
-  hydraId,
+  titanId,
   body,
 }: {
-  hydraId: string
+  titanId: string
   body: Record<string, unknown>
 }): Promise<Record<string, unknown>> {
-  const ask = hosts.get(hydraId)
+  const ask = hosts.get(titanId)
 
   if (!ask) {
     throw new TitanError({
-      message: `the Othrys server for Titan ${hydraId} is not running`,
+      message: `the Othrys server for Titan ${titanId} is not running`,
       code: 'NOT_RUNNING',
       help: ['Run `othrys serve`; it runs the agents Othrys starts'],
     })
@@ -199,9 +199,9 @@ export async function askHost({
   return ask({ body })
 }
 
-export function hydraIdentity({ hydraId }: { hydraId: string }): string {
+export function hydraIdentity({ titanId }: { titanId: string }): string {
   return createHash('sha256').update(localToken())
-    .update(hydraId)
+    .update(titanId)
     .digest('hex')
     .slice(
       0,

@@ -15,8 +15,8 @@ export const CREATION_PREFIX = 'hydra-create:'
 // A Titan's first event never changes, so each is read once it exists.
 const firstEvents = new Map<string, TitanEvent>()
 
-function firstEvent({ hydraId }: { hydraId: string }): TitanEvent | null {
-  const key = homeScoped({ hydraId })
+function firstEvent({ titanId }: { titanId: string }): TitanEvent | null {
+  const key = homeScoped({ titanId })
   const known = firstEvents.get(key)
 
   if (known) {
@@ -24,7 +24,7 @@ function firstEvent({ hydraId }: { hydraId: string }): TitanEvent | null {
   }
 
   const event = readEvents({
-    hydraId,
+    titanId,
     limit: 1,
   })[0] ?? null
 
@@ -81,13 +81,13 @@ export function summarize({
         }
       })
 
-    const initial = firstEvent({ hydraId: id })
+    const initial = firstEvent({ titanId: id })
 
     return {
       asks: groups.length,
       id,
       polis: ownerPolis({ state }),
-      identity: hydraIdentity({ hydraId: id }),
+      identity: hydraIdentity({ titanId: id }),
       creationAttempt: creationAttempt({ event: initial }),
       name: config.name,
       icon: config.icon,

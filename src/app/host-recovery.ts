@@ -34,7 +34,7 @@ import { sweepTaskProcesses } from './task-runtime.ts'
 
 // Startup recovery after the server stopped: what each owner left running is ended, resumed or woken, in this order.
 export function createHostRecovery({
-  hydraId,
+  titanId,
   live,
   children,
   upgrades,
@@ -51,7 +51,7 @@ export function createHostRecovery({
   startFrom,
   host,
 }: {
-  hydraId: string
+  titanId: string
   live: Map<string, Live>
   children: ReturnType<typeof trackChildren>
   upgrades: ReturnType<typeof upgradeQueue>
@@ -81,7 +81,7 @@ export function createHostRecovery({
   let fenced = true
 
   const withdrawLegacyAgentChange = async ({ recapAfter }: { recapAfter?: number }) => {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const change = state.hydraAgentChange
 
     if (!change) {
@@ -106,7 +106,7 @@ export function createHostRecovery({
             actor: 'othrys',
           },
           change: {
-            type: 'hydra.agent-change',
+            type: 'titan.agent-change',
             data: {
               ...change,
               state: 'cancelled',
@@ -129,18 +129,18 @@ export function createHostRecovery({
   }
 
   const recover: Host['recover'] = async () => {
-    await restoreSessionActivity({ hydraId })
+    await restoreSessionActivity({ titanId })
     // A session whose earlier processes could not be stopped is left interrupted rather than run twice.
     fenced = false
     fenced = await children.sweep()
     fenced = await sweepTaskProcesses({
-      hydraId,
-      state: loadTitan({ hydraId }).state,
+      titanId,
+      state: loadTitan({ titanId }).state,
     }) && fenced
     await upgrades.recover()
 
     if (fenced) {
-      await recoverHandoffs({ hydraId })
+      await recoverHandoffs({ titanId })
     }
 
     // No stop outlives the server: an upgrade or restart the step above did not end, or a compaction of Titan
@@ -174,7 +174,7 @@ export function createHostRecovery({
       },
     })
 
-    const cut = loadTitan({ hydraId }).state.hydraOperation
+    const cut = loadTitan({ titanId }).state.hydraOperation
 
     if (cut) {
       endOperation({
@@ -241,7 +241,7 @@ export function createHostRecovery({
 
           if (resumable && isTitan && hostedTitan({ state: writer.state })) {
             cutTitanTurn = findTitanTurnToResume({
-              hydraId,
+              titanId,
               state: writer.state,
               agent: session.agent,
             })
@@ -251,7 +251,7 @@ export function createHostRecovery({
             }
           } else if (resumable && task && liveTask({ card: task })
             && !handoffPending({
-              hydraId,
+              titanId,
               task: task.id,
             })
             && !closedTask({
@@ -261,7 +261,7 @@ export function createHostRecovery({
             && !steeringHeld({ card: task })
             && session.id !== writer.state.config?.hydra.session) {
             resumeAttemptId = findWorkerTurnToResume({
-              hydraId,
+              titanId,
               state: writer.state,
               agent: session.agent,
             })
@@ -290,7 +290,7 @@ export function createHostRecovery({
       background({
         name: 'Titan resume',
         context: {
-          hydraId,
+          titanId,
           taskId: TITAN_CARD,
           correlationId: resume.resumeAttemptId,
         },
@@ -318,7 +318,7 @@ export function createHostRecovery({
           level: 'error',
           operation: 'worker resume',
           error,
-          hydraId,
+          titanId,
           taskId: cut.task,
           correlationId: cut.resumeAttemptId,
         })
@@ -338,10 +338,10 @@ export function createHostRecovery({
       }
     }
 
-    for (const card of Object.values(loadTitan({ hydraId }).state.cards)) {
+    for (const card of Object.values(loadTitan({ titanId }).state.cards)) {
       if (card.id === TITAN_CARD || !liveTask({ card }) || card.agent?.host !== 'othrys' || steeringHeld({ card })
         || handoffPending({
-          hydraId,
+          titanId,
           task: card.id,
         })) {
         continue
@@ -365,7 +365,7 @@ export function createHostRecovery({
           level: 'error',
           operation: 'inbox resume',
           error,
-          hydraId,
+          titanId,
           taskId: card.id,
           correlationId: next.id,
         })
@@ -417,13 +417,13 @@ export function createHostRecovery({
 
     await helper.recover()
 
-    for (const card of Object.values(loadTitan({ hydraId }).state.cards)) {
+    for (const card of Object.values(loadTitan({ titanId }).state.cards)) {
       if (card.compaction?.inputs.length) {
         releaseCompact({ card: card.id })
       }
     }
 
-    const pendingTools = loadTitan({ hydraId }).state
+    const pendingTools = loadTitan({ titanId }).state
 
     for (const card of Object.values(pendingTools.cards)) {
       if (fenced && toolApplicationReady({
@@ -435,7 +435,7 @@ export function createHostRecovery({
     }
 
     // Changes made while the server was stopped wake Titan once it is back.
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
 
     if (othrysRunsTitan({ state })) {
       if (state.hydraStatus?.state === 'down') {
@@ -476,7 +476,7 @@ export function createHostRecovery({
 
       // Changes from while the server was stopped can only be read against the state now.
       const missed = scanEvents({
-        hydraId,
+        titanId,
         after,
       })
 

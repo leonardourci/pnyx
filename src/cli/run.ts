@@ -102,7 +102,7 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
   if (command === 'task' && subcommand?.kind === 'positional' && subcommand.value === 'create') {
     const {
       values,
-      hydraId,
+      titanId,
     } = parse({
       args: args.filter((
         _,
@@ -119,7 +119,7 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
       name: 'task',
       args,
       run: () => createCommand({
-        hydraId,
+        titanId,
         values,
         positionals: ['create'],
         meta: meta({ values }),
@@ -158,7 +158,7 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
   if (command === 'send') {
     const {
       values,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: {
@@ -190,13 +190,13 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
         reply: await runAction({
           name: 'reply',
           args: [
-            `--titan=${hydraId}`,
+            `--titan=${titanId}`,
             ...(values.actor ? [`--actor=${values.actor}`] : []),
             '--',
             task,
           ],
           run: () => sendReply({
-            hydraId,
+            titanId,
             request: {
               card: required({
                 value: task,
@@ -219,7 +219,7 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
         ...args,
       ],
       run: () => hydraSend({
-        hydraId,
+        titanId,
         values: {
           ...values,
           text,
@@ -276,13 +276,13 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
   }
 
   if (command === 'board') {
-    const { hydraId } = parse({
+    const { titanId } = parse({
       args,
       options: COMMON,
       positionals: 0,
     })
 
-    return home({ hydraId })
+    return home({ titanId })
   }
 
   if (command === 'setup') {

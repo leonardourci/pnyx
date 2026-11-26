@@ -26,7 +26,7 @@ export function repeatedLine({
     line.operation,
     line.name,
     line.level,
-    line.hydraId,
+    line.titanId,
     line.taskId,
     line.sessionId,
     line.code,

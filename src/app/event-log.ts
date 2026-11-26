@@ -9,7 +9,7 @@ import { readLog, type LogEntry, type LogPosition } from '#store/log.ts'
 import { hydraFiles, taskFiles } from '#store/file-home.ts'
 
 export interface EventSelection {
-  hydraId: string
+  titanId: string
   cardId?: string
   cardIds?: string[]
   types?: string[]
@@ -29,7 +29,7 @@ interface CachedLog {
 const homes = new WeakMap<ReturnType<typeof nativeHome>, Map<string, CachedLog>>()
 
 function savedEvents({
-  hydraId,
+  titanId,
   cardId,
 }: EventSelection): TitanEvent[] {
   const home = nativeHome()
@@ -38,7 +38,7 @@ function savedEvents({
     home,
     logs,
   )
-  const view = home.files.positions({ hydra: hydraId })
+  const view = home.files.positions({ hydra: titanId })
 
   if (!view) {
     return []
@@ -51,11 +51,11 @@ function savedEvents({
   const scopes = [
     {
       foreign: false,
-      scope: hydraId,
+      scope: titanId,
       path: join(
         hydraFiles({
           home: home.path,
-          hydra: hydraId,
+          hydra: titanId,
         }),
         'titan.log',
       ),
@@ -81,7 +81,7 @@ function savedEvents({
       path: join(
         taskFiles({
           home: home.path,
-          hydra: hydraId,
+          hydra: titanId,
           task,
         }),
         'task.log',
@@ -91,10 +91,10 @@ function savedEvents({
     })
   }
 
-  const { state } = home.read({ hydra: hydraId })
+  const { state } = home.read({ hydra: titanId })
   const moved = state.movedOut ?? {}
   const eventIds = state.eventIds
-  const references = home.references({ hydra: hydraId })
+  const references = home.references({ hydra: titanId })
 
   for (const task of Object.keys(moved)) {
     if (view.tasks.has(task)) {
@@ -152,15 +152,15 @@ function savedEvents({
     }
 
     return cached.entries.flatMap(entry => {
-      const departure = scope.foreign && entry.t === 'moved' && entry.from === hydraId
+      const departure = scope.foreign && entry.t === 'moved' && entry.from === titanId
       const decision = (entry as NativeFact).event
 
-      if (!decision || (scope.foreign && !departure && decision.boardId !== hydraId)) {
+      if (!decision || (scope.foreign && !departure && decision.titanId !== titanId)) {
         return []
       }
 
       home.position({
-        hydra: hydraId,
+        hydra: titanId,
         id: entry.id,
         scope: scope.scope,
         seq: Object.hasOwn(
@@ -182,7 +182,7 @@ function savedEvents({
         return [
           {
             ...event,
-            boardId: hydraId,
+            titanId: titanId,
             type: 'task.moved-out',
             data: { to: entry.to },
           } as TitanEvent,
@@ -229,7 +229,7 @@ function matches({
     return cards.includes(event.data.before ?? '') || cards.includes(event.data.after ?? '')
   }
 
-  return event.type === 'hydra.message' && (cards.includes(event.data.task ?? '') || cards.some(card =>
+  return event.type === 'titan.message' && (cards.includes(event.data.task ?? '') || cards.some(card =>
     event.data.text.includes(card) || event.data.text.includes(encodeURIComponent(card))))
 }
 
@@ -272,7 +272,7 @@ export function readEvents({ ...selection }: EventSelection): TitanEvent[] {
   const ms = performance.now() - started
   log({
     operation: 'events.read',
-    hydraId: selection.hydraId,
+    titanId: selection.titanId,
     taskId: selection.cardId,
     count: events.length,
     ms,
@@ -285,7 +285,7 @@ export function readEvents({ ...selection }: EventSelection): TitanEvent[] {
 export function readChanges({
   ...selection
 }: EventSelection & { measured?: boolean }): TitanEvent[] {
-  const live = heldTitan({ hydraId: selection.hydraId })
+  const live = heldTitan({ titanId: selection.titanId })
   const receipts = live?.state.historyMilestones
     ?.flatMap(milestone => milestone.receipts ?? []) ?? []
   const events = new Map(savedEvents(selection).map(event => [
@@ -318,7 +318,7 @@ export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Ge
   log({
     operation: 'events.read',
     name: 'scan',
-    hydraId: selection.hydraId,
+    titanId: selection.titanId,
     count: events.length,
     pages: 1,
     ms,
@@ -331,14 +331,14 @@ export function* scanChanges({ ...selection }: Omit<EventSelection, 'limit'>): G
 }
 
 export const eventsOrLegacy = ({
-  hydraId,
+  titanId,
   types,
 }: {
-  hydraId: string
+  titanId: string
   types?: string[]
 }): TitanEvent[] =>
   readEvents({
-    hydraId,
+    titanId,
     types,
   })
 
@@ -349,9 +349,9 @@ interface EventClock {
   complete?: boolean
 }
 
-function clocks({ hydraId }: { hydraId: string }): EventClock[] {
-  const live = heldTitan({ hydraId })
-  const events = readChanges({ hydraId }).map(event => ({
+function clocks({ titanId }: { titanId: string }): EventClock[] {
+  const live = heldTitan({ titanId })
+  const events = readChanges({ titanId }).map(event => ({
     seq: event.seq,
     at: event.at,
     time: Date.parse(event.at),
@@ -409,16 +409,16 @@ function clocks({ hydraId }: { hydraId: string }): EventClock[] {
 }
 
 export function eventPositions({
-  hydraId,
+  titanId,
   entries,
 }: {
-  hydraId: string
+  titanId: string
   entries: {
     id: string
     at?: string
   }[]
 }): Map<string, number> {
-  const events = clocks({ hydraId }).sort((
+  const events = clocks({ titanId }).sort((
     a,
     b,
   ) => a.time - b.time
@@ -432,7 +432,7 @@ export function eventPositions({
       last,
       event.seq,
     ),
-    heldTitan({ hydraId })?.state.seq ?? 0,
+    heldTitan({ titanId })?.state.seq ?? 0,
   ) + 1
   const positions = new Map<string, number>()
 
@@ -465,17 +465,17 @@ export function eventPositions({
 }
 
 export function eventTime({
-  hydraId,
+  titanId,
   seq,
   exact = false,
 }: {
-  hydraId: string
+  titanId: string
   seq: number
   exact?: boolean
 }): string | undefined {
   if (exact) {
     const retained = readChanges({
-      hydraId,
+      titanId,
       seqs: [seq],
     })[0]
 
@@ -484,7 +484,7 @@ export function eventTime({
     }
   }
 
-  const found = clocks({ hydraId })
+  const found = clocks({ titanId })
     .filter(clock => exact ? clock.seq === seq : clock.seq <= seq)
     .sort((
       a,
@@ -507,16 +507,16 @@ export function eventTime({
 }
 
 export function seqsAround({
-  hydraId,
+  titanId,
   time,
 }: {
-  hydraId: string
+  titanId: string
   time: number
 }): {
   first: number
   last: number
 } {
-  const events = clocks({ hydraId })
+  const events = clocks({ titanId })
 
   return {
     first: events.reduce(
@@ -543,13 +543,13 @@ export function seqsAround({
 }
 
 export function eventSeq({
-  hydraId,
+  titanId,
   id,
 }: {
-  hydraId: string
+  titanId: string
   id: string
 }): number | undefined {
-  const { state } = nativeHome().read({ hydra: hydraId })
+  const { state } = nativeHome().read({ hydra: titanId })
 
   return Object.hasOwn(
     state.eventIds,
@@ -558,16 +558,16 @@ export function eventSeq({
 }
 
 export const replySeq = ({
-  hydraId,
+  titanId,
   card,
   reply,
 }: {
-  hydraId: string
+  titanId: string
   card: string
   reply: string
 }): number | undefined =>
   readEvents({
-    hydraId,
+    titanId,
     cardId: card,
     types: ['card.replied'],
   }).find(event =>

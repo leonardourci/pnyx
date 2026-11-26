@@ -81,7 +81,7 @@ const othrysCommand = ({ text }: { text: string }) => compactCommand({ text })
   || restartCommand({ text }) || upgradeCommand({ text })
 
 export function createHost({
-  hydraId,
+  titanId,
   query,
   spawnCodex,
   changed,
@@ -102,7 +102,7 @@ export function createHost({
     verifyProcess: true,
   }),
 }: {
-  hydraId: string
+  titanId: string
   query?: QueryFn
   spawnCodex?: SpawnCodex
   presence?({ session }: { session: AgentSession }): Presence
@@ -133,12 +133,12 @@ export function createHost({
     [PROVIDERS.claude.provider]: claudeProvider({ query }),
     [PROVIDERS.codex.provider]: codexProvider({ spawnCodex }),
   }
-  const children = trackChildren({ hydraId })
+  const children = trackChildren({ titanId })
   const controller = new AbortController()
   const live = new Map<string, Live>()
   const toolRetries = new Map<string, NodeJS.Timeout>()
   const toolApplications = new Map<string, ToolApplication>()
-  const stopTaskTools = taskToolCleanup({ hydraId })
+  const stopTaskTools = taskToolCleanup({ titanId })
 
   const retryTools = ({
     task,
@@ -204,16 +204,16 @@ export function createHost({
   midTurnChecks.add(midTurn)
   // Closed tasks whose agents were already stopped; their failed stops wait for a permanent release.
   const reaped = new Set<string>()
-  const observedAssignments = new Map(Object.values(loadTitan({ hydraId }).state.cards)
+  const observedAssignments = new Map(Object.values(loadTitan({ titanId }).state.cards)
     .map(card => [
       card.id,
       steeringAssignment({ card }),
     ]))
   const usageTracker = createUsageTracker({
-    hydraId,
+    titanId,
     streamed,
     usageChanged,
-    usages: taskUsages({ hydraId }),
+    usages: taskUsages({ titanId }),
   })
 
   let closing = false
@@ -221,7 +221,7 @@ export function createHost({
 
   const write = async <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T> => {
     const result = await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         drainSpool({ writer })
 
@@ -252,7 +252,7 @@ export function createHost({
   const at = () => new Date().toISOString()
   const upgrades = upgradeQueue({
     root: upgradeRoot,
-    state: () => loadTitan({ hydraId }).state,
+    state: () => loadTitan({ titanId }).state,
     record: async ({
       operation,
       eventId = randomUUID(),
@@ -302,7 +302,7 @@ export function createHost({
     endOperation,
     stoppedByOwner,
   } = createTitanOperations({
-    hydraId,
+    titanId,
     queuedTitan,
     at,
     // Defined below; each is read only once an operation runs.
@@ -312,7 +312,7 @@ export function createHost({
   })
 
   const compaction = createCompactionControl({
-    hydraId,
+    titanId,
     compactionDelay,
     queuedTitan,
     closing: () => closing,
@@ -339,7 +339,7 @@ export function createHost({
     },
     // Titan is back once its compactions settle, including one that followed straight after.
     released: ({ card }) => {
-      const state = loadTitan({ hydraId }).state
+      const state = loadTitan({ titanId }).state
       const running = state.hydraOperation
       const last = state.cards[TITAN_CARD]?.compaction?.operations.at(-1)
 
@@ -502,7 +502,7 @@ export function createHost({
       log({
         level: 'error',
         operation: 'host.note',
-        hydraId,
+        titanId,
         error,
       })
     }
@@ -520,14 +520,14 @@ export function createHost({
   } = {}) => ({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
     OTHRYS_HOME: othrysHome(),
-    OTHRYS_TITAN: hydraId,
+    OTHRYS_TITAN: titanId,
     ...(hydra ? {
       OTHRYS_ACTOR: TITAN_ACTOR,
       OTHRYS_HOSTED: 'hydra',
     } : task ? {
       OTHRYS_ACTOR: `worker:${task}`,
       OTHRYS_TASK_DIR: workerTaskDir({
-        hydraId,
+        titanId,
         task,
       }),
       OTHRYS_WORKER_HOME: othrysHome(),
@@ -563,7 +563,7 @@ export function createHost({
       open: async options => {
         const opening = performance.now()
         const ids: Parameters<typeof watchAgent>[0]['ids'] = {
-          hydraId,
+          titanId,
           taskId,
         }
         const spawned = options.spawned
@@ -574,7 +574,7 @@ export function createHost({
 
           if (child.pid !== undefined && taskId) {
             const trackedChildren = taskId === TITAN_CARD ? children : taskChildren({
-              hydraId,
+              titanId,
               task: taskId,
             })
             trackedChildren.associate({
@@ -589,7 +589,7 @@ export function createHost({
           })
         }
 
-        const toolOwner = taskId ? loadTitan({ hydraId }).state.cards[taskId] : undefined
+        const toolOwner = taskId ? loadTitan({ titanId }).state.cards[taskId] : undefined
         const inheritsTools = options.capabilities === undefined
         const toolsRevision = inheritsTools ? toolOwner?.toolsRevision : undefined
         const capabilities = options.capabilities ?? toolOwner?.tools ?? []
@@ -599,7 +599,7 @@ export function createHost({
           env: toolEnvironment({
             env: options.env,
             tools: capabilities,
-            hydraId,
+            titanId,
             task: taskId,
           }),
           instructions: [
@@ -639,7 +639,7 @@ export function createHost({
     reconcilePermissions,
     expireOrphans,
   } = createPermissionBridge({
-    hydraId,
+    titanId,
     live,
     closing: () => closing,
     at,
@@ -654,21 +654,21 @@ export function createHost({
     markRead,
     ringSteering,
   } = createSteeringDelivery({
-    hydraId,
+    titanId,
     at,
     write,
     note,
   })
 
   const sessionScope: LiveSessionScope = {
-    hydraId,
+    titanId,
     live,
     closing: () => closing,
     controller,
     children,
     streamed,
     beginTools: ({ task }) => {
-      const revision = loadTitan({ hydraId }).state.cards[task]?.toolsRevision
+      const revision = loadTitan({ titanId }).state.cards[task]?.toolsRevision
 
       if (!revision) {
         return false
@@ -757,7 +757,7 @@ export function createHost({
     settleDirect,
     send,
   } = createHostedDelivery({
-    hydraId,
+    titanId,
     fenced: () => fenced(),
     live,
     at,
@@ -780,7 +780,7 @@ export function createHost({
     planRetry,
     close: stopRetry,
   } = createTitanOutage({
-    hydraId,
+    titanId,
     retryDelays,
     closing: () => closing,
     at,
@@ -794,7 +794,7 @@ export function createHost({
     helperPending,
     helperOpen,
   } = createHostedHelper({
-    hydraId,
+    titanId,
     providers: helperProviders,
     children,
     helperBound,
@@ -824,7 +824,7 @@ export function createHost({
     queue,
     close: stopWake,
   } = createWakeQueue({
-    hydraId,
+    titanId,
     wakeDelay,
     live,
     queuedTitan,
@@ -837,7 +837,7 @@ export function createHost({
   })
 
   const turns = createTitanTurns({
-    hydraId,
+    titanId,
     live,
     queuedTitan,
     closing: () => closing,
@@ -885,7 +885,7 @@ export function createHost({
 
   // A stall or an ended wait makes no event, so it is polled.
   const stalls = createStallChecks({
-    hydraId,
+    titanId,
     stallDelay,
     busyDelay,
     stallRepeatMax,
@@ -899,7 +899,7 @@ export function createHost({
     wakeStart,
   })
   const catalogs = createCatalogs({
-    hydraId,
+    titanId,
     providers,
     liveSession: ({ key }) => live.get(key)?.session,
     closing: () => closing,
@@ -923,7 +923,7 @@ export function createHost({
     continueInOthrys,
     starting,
   } = createWorkerStarts({
-    hydraId,
+    titanId,
     live,
     closing: () => closing,
     at,
@@ -940,7 +940,7 @@ export function createHost({
     recover,
     fenced,
   } = createHostRecovery({
-    hydraId,
+    titanId,
     live,
     children,
     upgrades,
@@ -1022,7 +1022,7 @@ export function createHost({
   }
 
   const stopTitan = async () => {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const card = state.cards[TITAN_CARD]
 
     if (activeCompaction({ card })) {
@@ -1085,7 +1085,7 @@ export function createHost({
 
   const stopWorker = async ({ ref }: { ref: string }) => {
     const card = findCard({
-      state: loadTitan({ hydraId }).state,
+      state: loadTitan({ titanId }).state,
       ref,
     })
 
@@ -1182,7 +1182,7 @@ export function createHost({
   }
 
   const cardInputs = createCardInputs({
-    hydraId,
+    titanId,
     live,
     host: () => host,
   })
@@ -1191,7 +1191,7 @@ export function createHost({
     diagnostics: () => ({
       helper: {
         ...helper.inspect(),
-        enabled: helperOpen({ state: loadTitan({ hydraId }).state }),
+        enabled: helperOpen({ state: loadTitan({ titanId }).state }),
       },
       sessions: [...live].map(([
         sessionId,
@@ -1203,7 +1203,7 @@ export function createHost({
         stale: entry.stale,
         generation: entry.generation,
         leased: taskLeasePresent({
-          hydraId,
+          titanId,
           task: entry.task,
         }),
         work: entry.session?.snapshot().work,
@@ -1223,7 +1223,7 @@ export function createHost({
         return
       }
 
-      const state = loadTitan({ hydraId }).state
+      const state = loadTitan({ titanId }).state
       const card = state.cards[task]
 
       if (!card?.agent || !card.toolsRevision || !toolApplicationReady({
@@ -1285,7 +1285,7 @@ export function createHost({
         log({
           level: 'warn',
           operation: 'tools.apply',
-          hydraId,
+          titanId,
           taskId: task,
           error,
         })
@@ -1294,14 +1294,14 @@ export function createHost({
       }
     },
     models: catalogs.models,
-    hydraId,
+    titanId,
     hydra,
 
     compact: async ({
       card: ref,
     }) => {
       const card = findCard({
-        state: loadTitan({ hydraId }).state,
+        state: loadTitan({ titanId }).state,
         ref,
       })
       const operation = activeCompaction({ card })
@@ -1340,7 +1340,7 @@ export function createHost({
       cancel,
     } = {}) => {
       if (cancel) {
-        const listed = hydraChatQueue({ state: loadTitan({ hydraId }).state }).compactInputs
+        const listed = hydraChatQueue({ state: loadTitan({ titanId }).state }).compactInputs
           .some(input => input.id === cancel && !upgradeCommand({ text: input.text }))
 
         if (!listed) {
@@ -1450,7 +1450,7 @@ export function createHost({
 
         if (task !== TITAN_CARD) {
           await taskChildren({
-            hydraId,
+            titanId,
             task,
           }).stop({ task })
         }
@@ -1486,7 +1486,7 @@ export function createHost({
 
       const owned = new Set([
         ...children.tasks(),
-        ...trackedTaskTools({ hydraId }),
+        ...trackedTaskTools({ titanId }),
       ])
 
       for (const card of Object.values(state.cards)) {
@@ -1533,7 +1533,7 @@ export function createHost({
             run: async () => {
               await children.stop({ task: card.id })
               await taskChildren({
-                hydraId,
+                titanId,
                 task: card.id,
               }).stop({ task: card.id })
             },
@@ -1571,7 +1571,7 @@ export function createHost({
           log({
             level: 'error',
             operation: 'inbox resume',
-            hydraId,
+            titanId,
             taskId: card.id,
             correlationId: oldest.id,
             error,
@@ -1600,7 +1600,7 @@ export function createHost({
       }
 
       stalls.close()
-      abortTitanTasks({ hydraId })
+      abortTitanTasks({ titanId })
       controller.abort()
 
       compaction.close()
@@ -1617,7 +1617,7 @@ export function createHost({
     requireMovable({ task }) {
       const entry = [...live.values()].find(entry => entry.task === task)
       const opening = starting({ task }) || reservingTaskCopy({
-        hydraId,
+        titanId,
         task,
       })
         || entry && !entry.session

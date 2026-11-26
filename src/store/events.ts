@@ -16,7 +16,7 @@ export interface EventBase {
   reason?: string
   details?: string
   undoes?: string
-  boardId?: string
+  titanId?: string
   taskId?: string
   subtaskId?: string
   agentId?: string

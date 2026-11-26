@@ -48,7 +48,7 @@ type ServerPayload =
     type: 'hello'
     stateSeq?: number
     build: string
-    hydraId: string
+    titanId: string
     installation: string
   }
   | { type: 'pong' }

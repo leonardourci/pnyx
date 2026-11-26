@@ -38,18 +38,18 @@ export function nativeTitanIds(): string[] {
     .sort()
 }
 
-export function readNativeTitan({ hydraId }: { hydraId: string }): {
+export function readNativeTitan({ titanId }: { titanId: string }): {
   dir: string
   state: TitanState
 } {
   const home = othrysHome()
   const dir = hydraFiles({
     home,
-    hydra: hydraId,
+    hydra: titanId,
   })
   const scopes = [
     {
-      id: hydraId,
+      id: titanId,
       path: join(
         dir,
         'titan.log',
@@ -66,7 +66,7 @@ export function readNativeTitan({ hydraId }: { hydraId: string }): {
         path: join(
           taskFiles({
             home,
-            hydra: hydraId,
+            hydra: titanId,
             task,
           }),
           'task.log',
@@ -136,7 +136,7 @@ export function readNativeTitan({ hydraId }: { hydraId: string }): {
     dir,
     state: assembleNative({
       positions,
-      hydra: hydrated({ id: hydraId }),
+      hydra: hydrated({ id: titanId }),
       tasks: scopes.slice(1).filter(scope => projections.has(scope.id))
         .map(scope => [
           scope.id,

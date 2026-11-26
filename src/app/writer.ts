@@ -49,7 +49,7 @@ export interface Writer {
 }
 
 interface WriterOptions<T> {
-  hydraId: string
+  titanId: string
   create?: boolean
   removal?: boolean
   also?: string[]
@@ -94,7 +94,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
   return home.run({
     fn: async () => {
       const {
-        hydraId,
+        titanId,
         fn,
         create = false,
         removal = false,
@@ -104,15 +104,15 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
       } = options
 
       if (!create) {
-        requireTitan({ hydraId })
+        requireTitan({ titanId })
       }
 
-      await home.ensure({ hydra: hydraId })
-      const initial = writableTitan({ hydraId })
+      await home.ensure({ hydra: titanId })
+      const initial = writableTitan({ titanId })
 
       if (transaction) {
         const previous = transactionReceipt({
-          hydraId,
+          titanId,
           ...transaction,
           eventIds: initial.state.eventIds,
         })
@@ -124,12 +124,12 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
 
       const stages: Stage[] = [
         ...new Set([
-          hydraId,
+          titanId,
           ...also,
         ]),
       ].sort().map(id => {
-        requireTitan({ hydraId: id })
-        const held = writableTitan({ hydraId: id })
+        requireTitan({ titanId: id })
+        const held = writableTitan({ titanId: id })
 
         if (held.state.config?.removing && !removal) {
           throw new TitanError({
@@ -203,13 +203,13 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
         const writer = eventWriter({
           state: held.state,
           dir: held.dir,
-          hydraId: id,
-          transaction: id === hydraId ? transaction?.id : undefined,
+          titanId: id,
+          transaction: id === titanId ? transaction?.id : undefined,
           committed: stage.committed,
           onAppend: ({ event }) => {
             home.position({
               hydra: id,
-              scope: event.cardId.startsWith('$') || event.type.startsWith('hydra.') || event.type.startsWith('board.') ? id : event.cardId,
+              scope: event.cardId.startsWith('$') || event.type.startsWith('titan.') ? id : event.cardId,
               id: event.id,
               seq: event.seq,
             })
@@ -245,7 +245,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
               }
             }
 
-            if (event.type === 'hydra.operation' && event.data.kind === 'inscribe') {
+            if (event.type === 'titan.operation' && event.data.kind === 'inscribe') {
               add({
                 scope: TITAN_CARD,
                 fact: nativeInscribe({
@@ -271,7 +271,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
               basis: basis({ scope: TITAN_CARD }),
             })
             const scoped = before.cards[event.cardId] ?? after.cards[event.cardId]
-            const hydraEvent = event.type.startsWith('hydra.') || event.type.startsWith('board.')
+            const hydraEvent = event.type.startsWith('titan.')
             || event.cardId === TITAN_CARD || !scoped
 
             if (metadata.change?.length || hydraEvent) {
@@ -407,7 +407,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
         stage.id,
         stage.writer,
       ]))
-      const primary = writers.get(hydraId)!
+      const primary = writers.get(titanId)!
       let result: T
       let attemptedWrite = false
 
@@ -520,11 +520,11 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
           attemptedWrite = true
           const value = nativeReferences({
             value: nativeJson({ value: result as Output }),
-            ids: home.references({ hydra: hydraId }),
+            ids: home.references({ hydra: titanId }),
             kind: 'receipt',
           }) as Output
           await home.files.changeTitan({
-            hydra: hydraId,
+            hydra: titanId,
             decide: () => [
               {
                 t: 'config',
@@ -541,7 +541,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
         }
 
         if (transaction) {
-          const receipts = home.receipts.get(hydraId) ?? new Map()
+          const receipts = home.receipts.get(titanId) ?? new Map()
           receipts.set(
             transaction.id,
             {
@@ -550,14 +550,14 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
             },
           )
           home.receipts.set(
-            hydraId,
+            titanId,
             receipts,
           )
         }
 
         for (const stage of stages) {
           const state = stage.writer.state
-          const receiptChanged = transaction !== undefined && stage.id === hydraId
+          const receiptChanged = transaction !== undefined && stage.id === titanId
           home.remember({
             hydra: stage.id,
             state,
@@ -591,7 +591,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
       } catch (error) {
         for (const stage of stages) {
           for (const event of stage.pending) {
-            const root = event.cardId.startsWith('$') || event.type.startsWith('hydra.') || event.type.startsWith('board.')
+            const root = event.cardId.startsWith('$') || event.type.startsWith('titan.')
             const holder = root ? undefined : home.files.locateTask({ task: event.cardId })
             const scope = root ? stage.id : event.cardId
             const accepted = home.files.has({
@@ -614,7 +614,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
 
           const pending = stage.held.pending
           const changes = stage.held.changes
-          reloadTitan({ hydraId: stage.id })
+          reloadTitan({ titanId: stage.id })
           stage.held.state.eventIds = {
             ...stage.initial.eventIds,
             ...stage.held.state.eventIds,
@@ -642,7 +642,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
             log({
               level: 'error',
               operation: 'events.after-commit',
-              hydraId: stage.id,
+              titanId: stage.id,
               error,
             })
           }
@@ -663,7 +663,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
 export function eventWriter({
   state: initial,
   dir,
-  hydraId,
+  titanId,
   transaction,
   committed = [],
   onAppend,
@@ -671,7 +671,7 @@ export function eventWriter({
 }: {
   state: TitanState
   dir: string
-  hydraId: string
+  titanId: string
   transaction?: string
   committed?: (() => void)[]
   onAppend({
@@ -708,7 +708,7 @@ export function eventWriter({
       log({
         operation: 'card.observed',
         detailed: true,
-        hydraId,
+        titanId,
         taskId: observation.cardId,
         name: observation.source.adapter,
       })
@@ -741,8 +741,8 @@ export function eventWriter({
         && (MESSAGE_EVENTS.has(event.type) || deliveringMessage.getStore() === true)
 
       if (!agentActor({ actor: event.actor }) && !harvested && !message
-        && (event.type !== 'hydra.message' || isHelper({ actor: event.actor }))) {
-        const task = event.type === 'hydra.message' ? event.data.task : event.cardId
+        && (event.type !== 'titan.message' || isHelper({ actor: event.actor }))) {
+        const task = event.type === 'titan.message' ? event.data.task : event.cardId
 
         if (task && state.cards[task]) {
           guardTaskLease({
@@ -803,7 +803,7 @@ export function eventWriter({
         for (const task of affected) {
           if (task) {
             requireHandoffAvailable({
-              hydraId,
+              titanId,
               task,
             })
           }
@@ -863,11 +863,11 @@ export function eventWriter({
 
       let observedSession = session
       const envelope: Partial<TitanEvent> = {
-        boardId: hydraId,
+        titanId: titanId,
         commandId: event.id,
       }
 
-      if (event.cardId !== '$board' && event.cardId !== '$sessions') {
+      if (event.cardId !== '$all' && event.cardId !== '$sessions') {
         envelope.taskId = parent ?? event.cardId
       }
 
@@ -984,10 +984,10 @@ export function eventWriter({
 
       switch (event.type) {
         case 'task.edited':
-        case 'board.configured':
+        case 'titan.configured':
         case 'card.linked':
         case 'card.outcome':
-        case 'hydra.project':
+        case 'titan.project':
         case 'task.landing':
         case 'task.moved-in':
         case 'task.moved-out':

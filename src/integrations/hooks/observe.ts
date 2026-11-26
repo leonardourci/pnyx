@@ -22,7 +22,7 @@ export interface HookEnvelope {
   harness: Harness
   event: string
   terminal?: unknown
-  // OTHRYS_TASK of a session Othrys started: its task id, or $hydra for the Titan.
+  // OTHRYS_TASK of a session Othrys started: its task id, or $titan for the Titan.
   task?: unknown
   payload: unknown
 }

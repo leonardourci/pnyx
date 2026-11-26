@@ -154,7 +154,7 @@ async function hostRequestUnlocked({
         body,
         name: 'task',
       })!
-      const current = loadTitan({ hydraId: host.hydraId }).state
+      const current = loadTitan({ titanId: host.titanId }).state
       const project = findCard({
         state: current,
         ref: task,
@@ -474,7 +474,7 @@ async function runHostRequest({
     'set',
     'permission',
   ].includes(String(action))) {
-    const state = loadTitan({ hydraId: host.hydraId }).state
+    const state = loadTitan({ titanId: host.titanId }).state
     const card = findCard({
       state,
       ref,
@@ -493,12 +493,12 @@ async function runHostRequest({
     }
 
     requireCopyAvailable({
-      hydraId: host.hydraId,
+      titanId: host.titanId,
       task: card.id,
     })
 
     release = taskLease({
-      hydraId: host.hydraId,
+      titanId: host.titanId,
       task: card.id,
       actor: helper ? actor : 'main',
     })

@@ -9,18 +9,18 @@ import { projectRows } from '#projects/read.ts'
 import { spoolFiles } from '#store/storage.ts'
 import { cardRow } from '#tasks/cli.ts'
 
-export async function home({ hydraId = DEFAULT_TITAN }: { hydraId?: string }): Promise<Output> {
-  await hideDone({ hydraId })
+export async function home({ titanId = DEFAULT_TITAN }: { titanId?: string }): Promise<Output> {
+  await hideDone({ titanId })
   const {
     dir,
     state,
-  } = loadTitan({ hydraId })
+  } = loadTitan({ titanId })
   const cards = Object.values(state.cards).filter(card => liveTask({ card }))
   const config = hydraConfig({ state })
-  const server = await readServer({ hydraId })
+  const server = await readServer({ titanId })
   const out: Output = {
     projects: projectRows({ state }),
-    hydraId,
+    titanId,
     hydra: config.hydra.id,
     server: server ? `running at ${server.url}` : 'not running',
   }

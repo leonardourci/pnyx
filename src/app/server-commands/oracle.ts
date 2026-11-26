@@ -13,10 +13,10 @@ export function oracleCommand({
   args,
   fail,
   send,
-  hydraId,
+  titanId,
   searches,
 }: CommandRequest & {
-  hydraId: string
+  titanId: string
   searches: WeakMap<CommandRequest['ws'], AbortController>
 }) {
   if (!args.length) {
@@ -68,7 +68,7 @@ export function oracleCommand({
           type: 'receipt',
           id,
           ...await searchInBackground({
-            hydraId,
+            titanId,
             query,
             signal: controller.signal,
           }),

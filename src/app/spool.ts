@@ -6,15 +6,15 @@ import { writeFileSync, renameSync } from 'node:fs'
 // Writes one hook event to the spool without a write of its own. The next write ingests it; the spool is a buffer,
 // never a second writer of the Titan.
 export function spoolWrite({
-  hydraId,
+  titanId,
   entry,
 }: {
-  hydraId: string
+  titanId: string
   entry: {
     id: string
   } & Record<string, unknown>
 }): string {
-  const dir = spoolDir({ dir: hydraDir({ hydraId }) })
+  const dir = spoolDir({ dir: hydraDir({ titanId }) })
   privateDir({ dir })
   // Millisecond time orders files across processes; hrtime keeps same-millisecond writes apart.
   const name = `${String(Date.now()).padStart(

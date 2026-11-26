@@ -9,13 +9,13 @@ import { buildId, readBytes, reply, serveStatic } from './server-http.ts'
 import type { TitanRequest } from './server-transport.ts'
 
 export function createServerRoutes({
-  hydraId,
+  titanId,
   dir,
   url,
   token,
   identity,
 }: {
-  hydraId: string
+  titanId: string
   dir: string
   url: string
   token: Buffer
@@ -212,7 +212,7 @@ export function createServerRoutes({
         res,
         status: 200,
         body: {
-          hydraId,
+          titanId,
           pid: process.pid,
           build: buildId(),
         },

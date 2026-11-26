@@ -111,7 +111,7 @@ export function parse({
   return {
     values,
     positionals: parsed.positionals,
-    hydraId: commandTitan({ hydra: values.hydra as string | undefined }),
+    titanId: commandTitan({ hydra: values.hydra as string | undefined }),
   }
 }
 
@@ -206,7 +206,7 @@ function receipt({
   state: TitanState
   event: TitanEvent
 }): Output {
-  if (event.type === 'hydra.project') {
+  if (event.type === 'titan.project') {
     return {
       event: {
         seq: event.seq,
@@ -218,7 +218,7 @@ function receipt({
     }
   }
 
-  if (event.type === 'hydra.memory') {
+  if (event.type === 'titan.memory') {
     return {
       event: {
         seq: event.seq,
@@ -230,7 +230,7 @@ function receipt({
     }
   }
 
-  if (event.type === 'board.configured' || event.type === 'board.agents') {
+  if (event.type === 'titan.configured' || event.type === 'titan.agents') {
     return {
       event: {
         seq: event.seq,
@@ -242,7 +242,7 @@ function receipt({
     }
   }
 
-  if (event.type === 'hydra.message') {
+  if (event.type === 'titan.message') {
     return {
       event: {
         seq: event.seq,
@@ -256,7 +256,7 @@ function receipt({
     }
   }
 
-  if (event.type === 'board.view') {
+  if (event.type === 'titan.view') {
     return {
       event: {
         seq: event.seq,
@@ -359,14 +359,14 @@ function originalReceipt(
 // so a retry of a write that already landed never reports a conflict.
 export async function commit(
   {
-    hydraId,
+    titanId,
     meta,
     intent,
     decide,
     create,
     prepare,
   }: {
-    hydraId: string
+    titanId: string
     create?: boolean
     meta: Meta
     intent: Intent
@@ -383,7 +383,7 @@ export async function commit(
   },
 ): Promise<Output> {
   return await withWriter({
-    hydraId,
+    titanId,
     create,
     fn: ({ writer }) => {
       const spool = drainSpool({ writer })
@@ -396,7 +396,7 @@ export async function commit(
       if (seq !== undefined) {
         // Observations have receipts only while they remain in the daemon's recent changes.
         const original = readChanges({
-          hydraId,
+          titanId,
           ids: [meta.id!],
         })[0]
 
@@ -415,10 +415,10 @@ export async function commit(
           intent,
         })
 
-        if (original.type === 'hydra.memory' && original.data.key === 'workers') {
+        if (original.type === 'titan.memory' && original.data.key === 'workers') {
           workerNotesNotice({
             writer,
-            target: `Titan ${hydraId}`,
+            target: `Titan ${titanId}`,
             meta: original,
           })
         }
@@ -465,10 +465,10 @@ export async function commit(
           })
           const { event } = decision
 
-          if (event.type === 'hydra.memory' && event.data.key === 'workers') {
+          if (event.type === 'titan.memory' && event.data.key === 'workers') {
             workerNotesNotice({
               writer,
-              target: `Titan ${hydraId}`,
+              target: `Titan ${titanId}`,
               meta: event,
             })
           }
@@ -525,7 +525,7 @@ function summary({ event }: { event: TitanEvent }): string {
     case 'session.observed': return 'fields' in event.data ? `Session ${event.data.fields.agent.sessionId}: ${event.data.fields.activity ?? 'updated'}` : `Session ${event.data.session} activity updated`
     case 'task.worker-line': return `${event.data.code}: ${event.data.text}`
     case 'task.wait-resumed': return event.data.message.text
-    case 'hydra.context-delivered': return 'Context notes delivered to Titan'
+    case 'titan.context-delivered': return 'Context notes delivered to Titan'
     case 'diagnostic.retry': return `Message recovery attempt ${event.data.number}: ${event.data.status}`
     case 'apply.recorded': return `Applied local changes: ${event.id}`
     case 'session.compaction': return event.data.kind === 'status' ? `Compaction ${event.data.operation.state}${event.data.operation.error ? `: ${event.data.operation.error}` : ''}` : `Compaction ${event.data.kind}`
@@ -543,8 +543,8 @@ function summary({ event }: { event: TitanEvent }): string {
     case 'task.steering.stopped': return 'Steering not delivered: stopped'
     case 'task.steering.handled': return `Steering ${event.data.message} handled: ${event.data.ack.outcome}`
     case 'chat.message': return 'Conversation copy from an older Othrys'
-    case 'board.configured': return `Titan ${event.data.name}; Titan ${event.data.hydra.id}`
-    case 'hydra.project': return `${event.data.before && event.data.before.detached === event.data.after.detached ? 'Updated' : event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Titan ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
+    case 'titan.configured': return `Titan ${event.data.name}; Titan ${event.data.hydra.id}`
+    case 'titan.project': return `${event.data.before && event.data.before.detached === event.data.after.detached ? 'Updated' : event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Titan ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
     case 'task.project': return `Task project: ${event.data.after ?? 'none'}`
     case 'task.kind': return event.data.after === 'build' ? 'Investigation turned into the build' : `Task kind: ${event.data.after}`
     case 'task.report-reviewed': return `Report decisions reviewed (${event.data.calls.length} calls)`
@@ -566,11 +566,11 @@ function summary({ event }: { event: TitanEvent }): string {
     case 'task.brief': return briefChange({ data: event.data })
     case 'task.retention': return event.data.after === null ? 'Using the Titan hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
     case 'task.visibility': return event.data.after ? 'Task hidden from Titan' : 'Task returned to Titan'
-    case 'hydra.helper-started': return 'Routine helper started'
-    case 'hydra.helper-finished': return event.data.error ? `Helper handed back: ${event.data.error}` : 'Routine helper outcomes recorded'
-    case 'hydra.helper-acknowledged': return 'Helper outcomes handled by Titan'
-    case 'hydra.review': return 'Timed review'
-    case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Titan memory: ${event.data.key}`
+    case 'titan.helper-started': return 'Routine helper started'
+    case 'titan.helper-finished': return event.data.error ? `Helper handed back: ${event.data.error}` : 'Routine helper outcomes recorded'
+    case 'titan.helper-acknowledged': return 'Helper outcomes handled by Titan'
+    case 'titan.review': return 'Timed review'
+    case 'titan.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Titan memory: ${event.data.key}`
     case 'task.tools-applied': return 'Tool grants applied to the hosted session'
     case 'task.tools': return `Tools: ${event.data.after.join(', ') || 'none'}`
     case 'task.asked': return `Asked ${event.data.audience === 'owner' ? 'the owner' : 'Titan'} (${event.data.id}): ${event.data.question}`
@@ -580,28 +580,28 @@ function summary({ event }: { event: TitanEvent }): string {
     case 'task.ask.reopened': return `${event.data.reask ? 'Titan re-asked' : 'Reopened'} ${event.data.ask}`
     case 'task.ask.escalated': return `Escalated ${event.data.ask} to the owner${event.data.question ? `: ${event.data.question}` : ''}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
-    case 'hydra.dispatch-proposed': return `Proposed dispatch change: ${event.data.summary}`
-    case 'hydra.dispatch-progress': return `Owner question ${event.data.status}${event.data.error ? `: ${event.data.error}` : ''}`
-    case 'hydra.dispatch-resolved': return `Dispatch proposal ${event.data.action}`
-    case 'hydra.message':
+    case 'titan.dispatch-proposed': return `Proposed dispatch change: ${event.data.summary}`
+    case 'titan.dispatch-progress': return `Owner question ${event.data.status}${event.data.error ? `: ${event.data.error}` : ''}`
+    case 'titan.dispatch-resolved': return `Dispatch proposal ${event.data.action}`
+    case 'titan.message':
       if (event.data.liftsHold) {
         return `Titan lifted Hold on ${event.data.answers}: ${event.data.text}`
       }
 
       return `${event.actor === TITAN_ACTOR ? 'Titan' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Titan'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
-    case 'hydra.agent-used': return `Agent ${event.data.model ?? event.data.harness}`
-    case 'hydra.delivered': return `Titan turn in ${event.data.session}`
-    case 'hydra.agent-change': return `Agent change ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
-    case 'hydra.operation': return `${event.data.kind} ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
-    case 'hydra.input-stopped': return 'Messages not delivered: stopped'
-    case 'hydra.input': return `Titan input ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
-    case 'hydra.received': return `Titan received ${event.data.message}`
-    case 'hydra.status': return `Titan ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
-    case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
+    case 'titan.agent-used': return `Agent ${event.data.model ?? event.data.harness}`
+    case 'titan.delivered': return `Titan turn in ${event.data.session}`
+    case 'titan.agent-change': return `Agent change ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
+    case 'titan.operation': return `${event.data.kind} ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
+    case 'titan.input-stopped': return 'Messages not delivered: stopped'
+    case 'titan.input': return `Titan input ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
+    case 'titan.received': return `Titan received ${event.data.message}`
+    case 'titan.status': return `Titan ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
+    case 'titan.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.dependencies': return `Prerequisites: ${event.data.after.join(', ') || 'none'}`
     case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
-    case 'board.view': return 'View preferences changed'
+    case 'titan.view': return 'View preferences changed'
     case 'task.edited':
       return `${undo}${Object.keys(event.data).filter(k => k !== 'key' && k !== 'before')
         .join(' ') || 'no fields'}`

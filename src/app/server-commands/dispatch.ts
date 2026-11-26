@@ -42,7 +42,7 @@ export type CommandRequest = {
 
 // The page's WebSocket commands: the ones the server answers itself, then any CLI command the page may run.
 export function createServerCommands({
-  hydraId,
+  titanId,
   url,
   open,
   state,
@@ -59,7 +59,7 @@ export function createServerCommands({
   threadPage,
   startWorker,
 }: {
-  hydraId: string
+  titanId: string
   url: string
   open({ id }: { id: string }): Promise<string>
   state(): TitanState
@@ -124,7 +124,7 @@ export function createServerCommands({
         log({
           operation: 'command.page',
           name: argv ? invocationOf({ argv }).name : String(message.name),
-          hydraId,
+          titanId,
           status: answer.type === 'error' ? 'error' : 'ok',
           code: answer.type === 'error' ? answer.code : undefined,
           ms: performance.now() - started,
@@ -164,7 +164,7 @@ export function createServerCommands({
           try {
             const receipt = savedEvent({
               command,
-              state: loadTitan({ hydraId }).state,
+              state: loadTitan({ titanId }).state,
             })
 
             if (receipt) {
@@ -276,7 +276,7 @@ export function createServerCommands({
             args,
             fail,
             send,
-            hydraId,
+            titanId,
             searches: oracleSearches,
           })
         } else if (name === 'hydra-agent') {
@@ -286,7 +286,7 @@ export function createServerCommands({
             args,
             send,
             fail,
-            hydraId,
+            titanId,
             agents,
             kick,
           })
@@ -297,14 +297,14 @@ export function createServerCommands({
             args,
             fail,
             send,
-            hydraId,
+            titanId,
             url,
             open,
           })
         } else if (name === 'page') {
           if (args.some(arg => arg === '--titan' || arg.startsWith('--titan='))) {
             return fail({
-              error: `--titan is not allowed; this server writes Titan ${hydraId}`,
+              error: `--titan is not allowed; this server writes Titan ${titanId}`,
               code: 'VALIDATION_ERROR',
             })
           }
@@ -349,7 +349,7 @@ export function createServerCommands({
             args,
             fail,
             send,
-            hydraId,
+            titanId,
             state,
             closed,
             kick,
@@ -373,7 +373,7 @@ export function createServerCommands({
       args,
       fail,
       send,
-      hydraId,
+      titanId,
       kick,
       startWorker,
     })

@@ -69,7 +69,7 @@ interface HomeRuntime {
     entry: Live
   }>
   processes: Map<string, {
-    hydraId: string
+    titanId: string
     controller: AbortController
     children: ReturnType<typeof trackChildren>
   }>
@@ -109,22 +109,22 @@ export function registerTaskHost({ owner }: { owner: TaskSessionOwner }): () => 
   const home = runtimeHome()
   const current = runtime({ home })
 
-  if (current.hosts.has(owner.hydraId)) {
+  if (current.hosts.has(owner.titanId)) {
     throw new TitanError({
       code: 'CONFLICT',
-      message: `A task host already serves Titan ${owner.hydraId}`,
+      message: `A task host already serves Titan ${owner.titanId}`,
     })
   }
 
   current.hosts.set(
-    owner.hydraId,
+    owner.titanId,
     owner,
   )
 
   return () => {
-    if (current.hosts.get(owner.hydraId) === owner) {
-      current.hosts.delete(owner.hydraId)
-      current.usages.delete(owner.hydraId)
+    if (current.hosts.get(owner.titanId) === owner) {
+      current.hosts.delete(owner.titanId)
+      current.usages.delete(owner.titanId)
     }
 
     if (!current.hosts.size && homes.get(home) === current) {
@@ -177,9 +177,9 @@ export function untrackTaskSession({ entry }: { entry: Live }): void {
 
 export const permissionWaiters = (): Map<string, PermissionWaiter> => runtime().permissions
 
-export function taskUsages({ hydraId }: { hydraId: string }): Map<string, Omit<HostedUsage, 'type'>> {
+export function taskUsages({ titanId }: { titanId: string }): Map<string, Omit<HostedUsage, 'type'>> {
   const { usages } = runtime()
-  const readings = usages.get(hydraId)
+  const readings = usages.get(titanId)
 
   if (readings) {
     return readings
@@ -187,7 +187,7 @@ export function taskUsages({ hydraId }: { hydraId: string }): Map<string, Omit<H
 
   const empty = new Map<string, Omit<HostedUsage, 'type'>>()
   usages.set(
-    hydraId,
+    titanId,
     empty,
   )
 
@@ -197,14 +197,14 @@ export function taskUsages({ hydraId }: { hydraId: string }): Map<string, Omit<H
 export function taskTitan({ task }: { task: string }): string | undefined {
   const current = runtime()
 
-  return current.tasks.get(task)?.entry.owner?.hydraId ?? current.processes.get(task)?.hydraId
+  return current.tasks.get(task)?.entry.owner?.titanId ?? current.processes.get(task)?.titanId
 }
 
 function taskProcess({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task: string
 }) {
   const current = runtime()
@@ -212,10 +212,10 @@ function taskProcess({
 
   if (!owned) {
     owned = {
-      hydraId,
+      titanId,
       controller: new AbortController(),
       children: trackChildren({
-        hydraId,
+        titanId,
         task,
       }),
     }
@@ -229,14 +229,14 @@ function taskProcess({
 }
 
 export function taskController({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task: string
 }): AbortController {
   const owned = taskProcess({
-    hydraId,
+    titanId,
     task,
   })
 
@@ -244,55 +244,55 @@ export function taskController({
     owned.controller = new AbortController()
   }
 
-  owned.hydraId = hydraId
+  owned.titanId = titanId
 
   return owned.controller
 }
 
 export const taskChildren = ({
-  hydraId,
+  titanId,
   task,
 }: {
-  hydraId: string
+  titanId: string
   task: string
 }) => taskProcess({
-  hydraId,
+  titanId,
   task,
 }).children
 
-export function abortTitanTasks({ hydraId }: { hydraId: string }): void {
+export function abortTitanTasks({ titanId }: { titanId: string }): void {
   for (const owned of runtime().processes.values()) {
-    if (owned.hydraId === hydraId) {
+    if (owned.titanId === titanId) {
       owned.controller.abort()
     }
   }
 }
 
-export function taskToolCleanup({ hydraId }: { hydraId: string }): () => Promise<void> {
+export function taskToolCleanup({ titanId }: { titanId: string }): () => Promise<void> {
   const { processes } = runtime()
 
   return async () => {
     for (const owned of processes.values()) {
-      if (owned.hydraId === hydraId) {
+      if (owned.titanId === titanId) {
         await owned.children.stopAll()
       }
     }
   }
 }
 
-export function trackedTaskTools({ hydraId }: { hydraId: string }): Set<string> {
+export function trackedTaskTools({ titanId }: { titanId: string }): Set<string> {
   return new Set([...runtime().processes].flatMap(([
     task,
     owned,
   ]) =>
-    owned.hydraId === hydraId && owned.children.tasks().has(task) ? [task] : []))
+    owned.titanId === titanId && owned.children.tasks().has(task) ? [task] : []))
 }
 
 export async function sweepTaskProcesses({
-  hydraId,
+  titanId,
   state,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
 }): Promise<boolean> {
   let ready = true
@@ -305,10 +305,10 @@ export async function sweepTaskProcesses({
 
     if (!isManagedTask({ card }) && (card.agent?.host === 'othrys' || recorded)) {
       const owned = taskProcess({
-        hydraId,
+        titanId,
         task: card.id,
       })
-      owned.hydraId = hydraId
+      owned.titanId = titanId
       ready = await owned.children.sweep() && ready
     }
   }
@@ -338,7 +338,7 @@ export function prepareTaskRuntimeMove({
   const source = active?.entry.owner ?? current.hosts.get(from)
   const target = current.hosts.get(to)
 
-  if (!source || source.hydraId !== from || !target || source.closing() || target.closing()) {
+  if (!source || source.titanId !== from || !target || source.closing() || target.closing()) {
     throw new TitanError({
       code: 'CONFLICT',
       message: `Task ${task} needs both Titan runtimes ready before moving`,
@@ -385,7 +385,7 @@ export function prepareTaskRuntimeMove({
     const controlled = current.processes.get(task)
 
     if (controlled) {
-      controlled.hydraId = to
+      controlled.titanId = to
     }
 
     target.adoptTask({

@@ -146,7 +146,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   const {
     values,
     positionals,
-    hydraId,
+    titanId,
   } = parse({
     args,
     options: TASK_OPTIONS,
@@ -192,7 +192,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'create' && !values.start) {
     return createCommand({
-      hydraId,
+      titanId,
       positionals,
       values,
       meta: m,
@@ -203,7 +203,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     action,
     values,
     positionals,
-    hydraId,
+    titanId,
     meta: m,
   })
 
@@ -211,7 +211,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     if (creatingWorker) {
       const card = local.card as { id: string }
       const input = await queueCardInput({
-        hydraId,
+        titanId,
         task: card.id,
         text: createText,
         agent: creatingWorker,
@@ -232,7 +232,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'tools') {
     return toolsCommand({
-      hydraId,
+      titanId,
       ref: positionals[1],
       values,
       meta: m,
@@ -241,7 +241,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'refresh-links') {
     return askHost({
-      hydraId,
+      titanId,
       body: {
         action: 'refresh-links',
         task: required({
@@ -253,7 +253,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'questions') {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const groups = ownerQuestionGroups({ state }).map(group => ({
       task: group.card.id,
       title: group.card.title,
@@ -274,7 +274,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'landing') {
     return await taskLandingCommand({
-      hydraId,
+      titanId,
       ref: positionals[1],
       landing: values.landing as string | undefined,
       merge: values.merge as string | undefined,
@@ -285,7 +285,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'merge') {
     return mergeCommand({
-      hydraId,
+      titanId,
       ref: positionals[1],
       url: values.url as string | undefined,
       meta: m,
@@ -293,10 +293,10 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'reminders') {
-    const reminders = waitingReminders({ state: loadTitan({ hydraId }).state })
+    const reminders = waitingReminders({ state: loadTitan({ titanId }).state })
 
     return {
-      hydraId,
+      titanId,
       count: reminders.length,
       reminders: reminders.length ? reminders : 'none: no waiting reminders',
     }
@@ -313,7 +313,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'task.reminder',
@@ -392,7 +392,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     }
 
     return askHost({
-      hydraId,
+      titanId,
       body: {
         action: 'permission',
         task: required({
@@ -430,7 +430,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     }
 
     return await queueCardInput({
-      hydraId,
+      titanId,
       task: required({
         value: positionals[1],
         what: 'task id',
@@ -450,7 +450,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   if (action === 'stop') {
     requireStopAuthority({ meta: meta({ values }) })
     const card = findCard({
-      state: loadTitan({ hydraId }).state,
+      state: loadTitan({ titanId }).state,
       ref: required({
         value: positionals[1],
         what: 'task id',
@@ -458,7 +458,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
 
     return askHost({
-      hydraId,
+      titanId,
       body: {
         action: 'stop',
         card: card.id,
@@ -470,7 +470,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   if (action === 'continue') {
     requireUnheld({
       card: findCard({
-        state: loadTitan({ hydraId }).state,
+        state: loadTitan({ titanId }).state,
         ref: required({
           value: positionals[1],
           what: 'task id',
@@ -481,7 +481,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'continue' && values.check) {
     return askHost({
-      hydraId,
+      titanId,
       body: {
         action: 'continue',
         task: required({
@@ -502,7 +502,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       what: 'task id',
     })
     const started = action === 'continue' ? askHost({
-      hydraId,
+      titanId,
       body: {
         action: 'continue',
         task: ref,
@@ -511,7 +511,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         ...(m.reason ? { reason: m.reason } : {}),
       },
     }) : startTask({
-      hydraId,
+      titanId,
       task: ref,
       replacement: values['replace-session'] as string | undefined,
       folder: values.folder as string | undefined,
@@ -524,7 +524,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'copy') {
     return copyCommand({
-      hydraId,
+      titanId,
       ref: required({
         value: positionals[1],
         what: 'task id',
@@ -536,11 +536,11 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'sessions' && values.full) {
-    return { sessions: Object.values(loadTitan({ hydraId }).state.sessions ?? {}) }
+    return { sessions: Object.values(loadTitan({ titanId }).state.sessions ?? {}) }
   }
 
   if (action === 'sessions') {
-    const sessions = Object.values(loadTitan({ hydraId }).state.sessions ?? {}).map(s => ({
+    const sessions = Object.values(loadTitan({ titanId }).state.sessions ?? {}).map(s => ({
       id: s.id,
       provider: s.agent.provider,
       title: s.title ?? 'none',
@@ -561,7 +561,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       value: values.behind as string | undefined,
       what: '--behind <task|session>',
     })
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const card = findCard({
       state,
       ref: task,
@@ -587,7 +587,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     }
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'task.queue',
@@ -614,8 +614,8 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'list') {
-    await hideDone({ hydraId })
-    const state = loadTitan({ hydraId }).state
+    await hideDone({ titanId })
+    const state = loadTitan({ titanId }).state
 
     const fields = taskFields({ value: values.fields as string | undefined })
     const tasks = Object.values(state.cards).filter(c => liveTask({ card: c }))
@@ -650,14 +650,14 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
     if (!tasks.length) {
       return {
-        hydraId,
+        titanId,
         tasks: 'none: no tasks on this Titan',
-        help: [`Run \`othrys task create --title <title> --titan ${hydraId}\` to add one`],
+        help: [`Run \`othrys task create --title <title> --titan ${titanId}\` to add one`],
       }
     }
 
     return {
-      hydraId,
+      titanId,
       count: tasks.length,
       tasks,
     }
@@ -674,7 +674,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     explained({ meta: m })
 
     return moveTask({
-      hydraId,
+      titanId,
       ref: required({
         value: positionals[1],
         what: 'task id',
@@ -689,7 +689,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'history') {
     return taskHistory({
-      hydraId,
+      titanId,
       ref: required({
         value: positionals[1],
         what: 'task id',
@@ -705,7 +705,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'updates') {
     return taskUpdates({
-      hydraId,
+      titanId,
       ref: required({
         value: positionals[1],
         what: 'task id',
@@ -722,7 +722,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'show') {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const task = findCard({
       state,
       ref: required({
@@ -735,9 +735,9 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       state,
       events: [
         ...scanEvents({
-          hydraId,
+          titanId,
           types: [
-            'board.configured',
+            'titan.configured',
             'task.session',
           ],
         }),
@@ -809,7 +809,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         })) : [],
         ...(task.hold ? { hold: task.hold } : {}),
       },
-      help: [`Read tasks/${task.id}/task.log in Titan ${hydraId} for its record`],
+      help: [`Read tasks/${task.id}/task.log in Titan ${titanId} for its record`],
     }
 
     if (task.asks?.length) {
@@ -856,7 +856,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   if (action === 'messages') {
     return messageLookup({
       values,
-      hydraId,
+      titanId,
       task: required({
         value: positionals[1],
         what: 'task id',
@@ -865,7 +865,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'chat') {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const task = findCard({
       state,
       ref: required({
@@ -882,7 +882,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       && Boolean(state.hydraSessions?.includes(session.id))
 
     if (session && !hydraSession && !taskSessions({
-      hydraId,
+      titanId,
       ids: new Set([task.id]),
     }).has(session.id)) {
       throw new TitanError({
@@ -899,7 +899,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
     return {
       thread: readThread({
-        hydraId,
+        titanId,
         state,
         card,
         selectedSession: session !== undefined,
@@ -919,7 +919,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'task.project',
@@ -973,7 +973,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     }
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'task.retention',
@@ -1025,7 +1025,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'task.visibility',
@@ -1069,7 +1069,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'task.edited',
@@ -1096,7 +1096,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'task.edited',
@@ -1161,7 +1161,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'task.edited',
@@ -1193,7 +1193,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       action,
       positionals,
       values,
-      hydraId,
+      titanId,
       meta: m,
     })
   }
@@ -1211,7 +1211,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   })
 
   const result = await commit({
-    hydraId,
+    titanId,
     meta: m,
     intent: {
       type: 'task.session',
@@ -1265,13 +1265,13 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   if (action === 'attach' && typeof result.event === 'object' && result.event !== null && 'id' in result.event && typeof result.event.id === 'string') {
     const eventId = result.event.id
     const attachment = readEvents({
-      hydraId,
+      titanId,
       ids: [eventId],
     })[0]
 
     if (attachment?.type === 'task.session') {
       return afterAttach({
-        hydraId,
+        titanId,
         result,
         attachment,
         meta: m,

@@ -24,7 +24,7 @@ function currentValue({
   target,
 }: {
   card: Card
-  target: Exclude<TitanEvent, { type: 'board.view' }>
+  target: Exclude<TitanEvent, { type: 'titan.view' }>
 }): unknown {
   if (target.type === 'task.edited') {
     return Object.fromEntries(
@@ -87,11 +87,11 @@ export function decideUndo({
     throw notUndoable({ message: `${target.id} belongs to apply ${target.transaction}; append a correction with apply` })
   }
 
-  // Each side's boardId is the Titan that wrote it; the task may have moved on since, so follow it to its holder.
+  // Each side's titanId is the Titan that wrote it; the task may have moved on since, so follow it to its holder.
   if (target.type === 'task.moved-in' || target.type === 'task.moved-out') {
-    const back = target.type === 'task.moved-in' ? target.data.from : target.boardId
-    const holder = target.boardId && currentHolder({
-      hydraId: target.boardId,
+    const back = target.type === 'task.moved-in' ? target.data.from : target.titanId
+    const holder = target.titanId && currentHolder({
+      titanId: target.titanId,
       state,
       card: target.cardId,
     })
@@ -108,7 +108,7 @@ export function decideUndo({
   }
 
   if ([
-    'board.configured',
+    'titan.configured',
     'task.created',
     'task.held',
     'task.released',
@@ -121,14 +121,14 @@ export function decideUndo({
     'task.report-reviewed',
     'task.landing',
     'task.permission',
-    'hydra.message',
-    'hydra.status',
-    'hydra.received',
-    'hydra.input-stopped',
-    'hydra.input',
-    'hydra.review',
+    'titan.message',
+    'titan.status',
+    'titan.received',
+    'titan.input-stopped',
+    'titan.input',
+    'titan.review',
     'chat.message',
-    'board.agents',
+    'titan.agents',
   ].includes(target.type)) {
     throw notUndoable({ message: `${target.id} records durable work history; append a correction instead` })
   }
@@ -175,7 +175,7 @@ export function decideUndo({
     } : decision
   }
 
-  if (target.type === 'board.view') {
+  if (target.type === 'titan.view') {
     if (
       state.undone[target.id]
       || !isDeepStrictEqual(
@@ -215,9 +215,9 @@ export function decideUndo({
         ...base({
           state,
           meta,
-          cardId: '$board',
+          cardId: '$all',
         }),
-        type: 'board.view',
+        type: 'titan.view',
         undoes: target.id,
         data: {
           before: viewFor({ state }),

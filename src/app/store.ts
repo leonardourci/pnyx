@@ -12,27 +12,27 @@ export interface TitanSnapshot {
 
 export type Held = NativeHeld
 
-export const heldTitan = ({ hydraId }: { hydraId: string }): Held | undefined => {
+export const heldTitan = ({ titanId }: { titanId: string }): Held | undefined => {
   const home = openedNativeHome()
 
-  return home?.held.has(hydraId) ? home.read({ hydra: hydraId }) : undefined
+  return home?.held.has(titanId) ? home.read({ hydra: titanId }) : undefined
 }
 
 export async function holdTitan({
-  hydraId,
+  titanId,
   changed,
 }: {
-  hydraId: string
+  titanId: string
   changed(): void
 }): Promise<() => Promise<void>> {
   const home = nativeHome()
-  await home.run({ fn: () => home.ensure({ hydra: hydraId }) })
-  const record = home.read({ hydra: hydraId })
+  await home.run({ fn: () => home.ensure({ hydra: titanId }) })
+  const record = home.read({ hydra: titanId })
   record.changed = changed
-  home.held.add(hydraId)
+  home.held.add(titanId)
 
   return async () => {
-    home.held.delete(hydraId)
+    home.held.delete(titanId)
     record.changed = () => {}
 
     if (!home.held.size) {
@@ -41,13 +41,13 @@ export async function holdTitan({
   }
 }
 
-export function reloadTitan({ hydraId }: { hydraId: string }): void {
+export function reloadTitan({ titanId }: { titanId: string }): void {
   const home = nativeHome()
 
   try {
-    home.reload({ hydra: hydraId })
+    home.reload({ hydra: titanId })
   } catch (error) {
-    const record = home.records.get(hydraId)
+    const record = home.records.get(titanId)
 
     if (record) {
       record.stale = true
@@ -55,42 +55,42 @@ export function reloadTitan({ hydraId }: { hydraId: string }): void {
 
     log({
       level: 'error',
-      operation: 'hydra.reload',
-      hydraId,
+      operation: 'titan.reload',
+      titanId,
       error,
     })
 
     return
   }
 
-  home.records.get(hydraId)?.changed()
+  home.records.get(titanId)?.changed()
 }
 
 export function writableTitan({
-  hydraId,
+  titanId,
 }: {
-  hydraId: string
+  titanId: string
   migrate?: boolean
 }): Held {
-  return nativeHome().read({ hydra: hydraId })
+  return nativeHome().read({ hydra: titanId })
 }
 
 export function loadTitan({
-  hydraId,
+  titanId,
 }: {
-  hydraId: string
+  titanId: string
   migrate?: boolean
 }): TitanSnapshot {
   const home = openedNativeHome()
 
   if (!home) {
-    return readNativeTitan({ hydraId })
+    return readNativeTitan({ titanId })
   }
 
   const {
     dir,
     state,
-  } = home.read({ hydra: hydraId })
+  } = home.read({ hydra: titanId })
 
   return {
     dir,
@@ -98,17 +98,17 @@ export function loadTitan({
   }
 }
 
-export function hydraExists({ hydraId }: { hydraId: string }): boolean {
+export function hydraExists({ titanId }: { titanId: string }): boolean {
   const home = openedNativeHome()
 
-  return (home?.files.hydras() ?? nativeTitanIds()).includes(hydraId)
+  return (home?.files.hydras() ?? nativeTitanIds()).includes(titanId)
 }
 
-export function requireTitan({ hydraId }: { hydraId: string }): void {
-  if (hydraId !== DEFAULT_TITAN && !hydraExists({ hydraId })) {
+export function requireTitan({ titanId }: { titanId: string }): void {
+  if (titanId !== DEFAULT_TITAN && !hydraExists({ titanId })) {
     throw new TitanError({
       code: 'NOT_FOUND',
-      message: `unknown Titan: ${hydraId}`,
+      message: `unknown Titan: ${titanId}`,
       help: ['Create a Titan from the header in the UI'],
     })
   }

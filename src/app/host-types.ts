@@ -18,7 +18,7 @@ export type UsageInputs = {
 
 export interface Host {
   diagnostics(): Pick<RuntimeHealth, 'sessions' | 'helper'>
-  hydraId: string
+  titanId: string
   // The reopen failure, when the grant could not reach its agent now.
   toolsChanged({ task }: { task: string }): Error | undefined
   catalogCommands({

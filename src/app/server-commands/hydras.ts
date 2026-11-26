@@ -8,11 +8,11 @@ export async function hydrasCommand({
   args,
   fail,
   send,
-  hydraId,
+  titanId,
   url,
   open,
 }: CommandRequest & {
-  hydraId: string
+  titanId: string
   url: string
   open({ id }: { id: string }): Promise<string>
 }) {
@@ -30,7 +30,7 @@ export async function hydrasCommand({
     open?: string
     creation?: {
       attempt: string
-      hydraId: string
+      titanId: string
       status: 'saved'
       mount: 'pending'
     }
@@ -40,7 +40,7 @@ export async function hydrasCommand({
     message: {
       type: 'receipt',
       id,
-      hydraId,
+      titanId,
       hydras: listed || creation ? listTitans() : undefined,
       ...(open ? { url: open } : {}),
       ...(creation ? { creation } : {}),
@@ -73,7 +73,7 @@ export async function hydrasCommand({
         ).href,
         creation: {
           attempt: second,
-          hydraId: created,
+          titanId: created,
           status: 'saved',
           mount: 'pending',
         },

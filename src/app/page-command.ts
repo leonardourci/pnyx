@@ -18,7 +18,7 @@ const handlerOf = ({ name }: { name: string }) => {
   if (name === 'inbox-follow') {
     // eslint-disable-next-line othrys/object-params -- the same shape as the CLI commands beside it.
     return async (args: string[]) => {
-      await followUpSteering({ hydraId: args[0]! })
+      await followUpSteering({ titanId: args[0]! })
 
       return {}
     }

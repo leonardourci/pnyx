@@ -732,17 +732,17 @@ function factType({ event }: { event: TitanEvent }): string {
     case 'task.session':
     case 'task.launched': return 'agent'
     case 'card.replied':
-    case 'hydra.message': return 'say'
+    case 'titan.message': return 'say'
     case 'task.worker-line': return 'worker'
     case 'card.linked': return 'link'
     case 'card.outcome': return 'outcome'
     case 'task.held': return 'hold'
     case 'task.released': return 'release'
     case 'task.queue': return 'queue'
-    case 'board.configured': return 'config'
-    case 'hydra.project': return 'project'
-    case 'hydra.memory': return 'memory'
-    case 'board.view': return 'layout'
+    case 'titan.configured': return 'config'
+    case 'titan.project': return 'project'
+    case 'titan.memory': return 'memory'
+    case 'titan.view': return 'layout'
     default: return event.type.replace(
       /^(task|card|hydra)\./,
       '',
@@ -768,7 +768,7 @@ export function nativeInscribe({
   basis,
   beforeSeq,
 }: {
-  event: Extract<TitanEvent, { type: 'hydra.operation' }>
+  event: Extract<TitanEvent, { type: 'titan.operation' }>
   ids: ReadonlyMap<string, number>
   basis: NativeState
   beforeSeq: number
@@ -917,7 +917,7 @@ export function nativeFact({
     }),
   }
 
-  if ((event.type === 'card.replied' || event.type === 'hydra.message') && event.data.text !== undefined) {
+  if ((event.type === 'card.replied' || event.type === 'titan.message') && event.data.text !== undefined) {
     fact.text = event.data.text
   } else if (event.type === 'task.brief') {
     fact.text = event.data.after
@@ -985,14 +985,14 @@ export function assembleNative({
   state.undone = { ...hydra?.undone }
 
   for (const inscription of hydra?.inscriptions ?? []) {
-    const event: Extract<TitanEvent, { type: 'hydra.operation' }> = {
+    const event: Extract<TitanEvent, { type: 'titan.operation' }> = {
       v: 1,
       id: inscription.id,
       seq: inscription.seq,
       at: inscription.at,
       actor: inscription.actor,
       cardId: TITAN_CARD,
-      type: 'hydra.operation',
+      type: 'titan.operation',
       data: {
         id: inscription.key,
         kind: 'inscribe',

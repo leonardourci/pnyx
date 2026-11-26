@@ -88,7 +88,7 @@ export function savedEvent({
     event: {
       id,
       seq,
-      type: 'board.configured',
+      type: 'titan.configured',
     },
   }
 
@@ -98,7 +98,7 @@ export function savedEvent({
     receipt.event = {
       id,
       seq,
-      type: 'hydra.message',
+      type: 'titan.message',
     }
   }
 

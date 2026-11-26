@@ -40,7 +40,7 @@ export const apply = guard({
   handler: async ({ args }): Promise<Output> => {
     const {
       values,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: {
@@ -97,11 +97,11 @@ export const apply = guard({
       },
     })))
       .digest('hex')
-    requireTitan({ hydraId })
+    requireTitan({ titanId })
 
     if (values.check) {
       const duplicate = transactionReceipt({
-        hydraId,
+        titanId,
         id,
         digest,
       })
@@ -123,14 +123,14 @@ export const apply = guard({
       }
 
       const loaded = loadTitan({
-        hydraId,
+        titanId,
         migrate: false,
       })
       const planned = planDocument({
         document,
         ...loaded,
         full: Boolean(values.full),
-        hydraId,
+        titanId,
         meta: m,
         id,
       })
@@ -142,7 +142,7 @@ export const apply = guard({
     }
 
     const output = await withWriter({
-      hydraId,
+      titanId,
       transaction: {
         id,
         digest,
@@ -153,7 +153,7 @@ export const apply = guard({
           document,
           state: writer.state,
           dir: writer.dir,
-          hydraId,
+          titanId,
           meta: m,
           id,
         })
@@ -173,7 +173,7 @@ export const apply = guard({
                 ...m,
                 id,
               },
-              cardId: '$board',
+              cardId: '$all',
             }),
             type: 'apply.recorded',
             data: { digest },

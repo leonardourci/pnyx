@@ -72,11 +72,11 @@ const parseJson = ({ text }: { text: string | null }): unknown => {
 }
 
 export async function startServer({
-  hydraId = 'default',
+  titanId = 'default',
   port = 0,
   ...options
 }: {
-  hydraId?: string
+  titanId?: string
   port?: number
   catalogLocations?: CatalogLocations
   // The Agent SDK's query; tests pass a fake.
@@ -266,7 +266,7 @@ export async function startServer({
             home: `/hydra/${id}/`,
             page: {
               token: localToken(),
-              identity: hydraIdentity({ hydraId: id }),
+              identity: hydraIdentity({ titanId: id }),
               base: `/hydra/${id}/`,
             },
           })
@@ -346,7 +346,7 @@ export async function startServer({
       })
     }
 
-    const home = `/hydra/${hydraId}/${search}`
+    const home = `/hydra/${titanId}/${search}`
 
     if (path === '/') {
       return void res.writeHead(
@@ -441,7 +441,7 @@ export async function startServer({
 
       // ponytail: /ws, like /, is the named Titan's, for tabs from before one server and the Vite dev page.
       const requested = url.searchParams.get('scope')
-      const initialScope = requested && served.has(requested) ? requested : hydraId
+      const initialScope = requested && served.has(requested) ? requested : titanId
       const [
         , id,
         rest,
@@ -495,7 +495,7 @@ export async function startServer({
                 log({
                   operation: 'socket.send',
                   detailed: true,
-                  hydraId: message.scope ?? primary,
+                  titanId: message.scope ?? primary,
                   name: message.type,
                   bytes: Buffer.byteLength(text),
                   backlog: ws.bufferedAmount,
@@ -772,7 +772,7 @@ export async function startServer({
     const ready = () => background({
       name: 'Titan discovery',
       run: () => {
-        if (closed || !hydraExists({ hydraId: id })) {
+        if (closed || !hydraExists({ titanId: id })) {
           return
         }
 
@@ -794,7 +794,7 @@ export async function startServer({
   }
 
   const removalPending = ({ id }: { id: string }) =>
-    hydraExists({ hydraId: id }) && loadTitan({ hydraId: id }).state.config?.removing === true
+    hydraExists({ titanId: id }) && loadTitan({ titanId: id }).state.config?.removing === true
 
   const mount = async ({ id }: { id: string }): Promise<MountedTitan> => {
     if (removalPending({ id })) {
@@ -819,7 +819,7 @@ export async function startServer({
 
     const opening = performance.now()
     const started = mountTitan({
-      hydraId: id,
+      titanId: id,
       url: `http://127.0.0.1:${bound}/hydra/${id}/`,
       open,
       hydrasChanged,
@@ -833,8 +833,8 @@ export async function startServer({
       m => {
         // Loading the Titan from its rows and starting its host, the start-up cost that grows with a Titan.
         log({
-          operation: 'hydra.open',
-          hydraId: id,
+          operation: 'titan.open',
+          titanId: id,
           ms: performance.now() - opening,
         })
         pendingLogs.get(id)?.()
@@ -874,16 +874,16 @@ export async function startServer({
     return (await mount({ id })).url
   }
 
-  hydraRemoval.close = async ({ hydraId }) => {
-    served.delete(hydraId)
-    const mounted = mounts.get(hydraId)
+  hydraRemoval.close = async ({ titanId }) => {
+    served.delete(titanId)
+    const mounted = mounts.get(titanId)
 
     if (mounted) {
       const openTitan = await mounted
-      served.delete(hydraId)
+      served.delete(titanId)
       await openTitan.close({ permanent: true })
     } else {
-      const stopping = trackChildren({ hydraId }).stopAll()
+      const stopping = trackChildren({ titanId }).stopAll()
       unmountedStops.add(stopping)
 
       try {
@@ -894,7 +894,7 @@ export async function startServer({
     }
   }
 
-  hydraRemoval.finished = ({ hydraId: removedId }) => {
+  hydraRemoval.finished = ({ titanId: removedId }) => {
     served.delete(removedId)
     mounts.delete(removedId)
 
@@ -906,8 +906,8 @@ export async function startServer({
 
     const primaryUnavailable = !activeIds.includes(removedId) || removalPending({ id: removedId })
 
-    if (hydraId === removedId && primaryUnavailable) {
-      hydraId = activeIds.find(id => !removalPending({ id })) ?? hydraId
+    if (titanId === removedId && primaryUnavailable) {
+      titanId = activeIds.find(id => !removalPending({ id })) ?? titanId
     }
 
     mountAll()
@@ -931,8 +931,8 @@ export async function startServer({
     if (reason !== before) {
       log({
         level: 'warn',
-        operation: 'hydra.skipped',
-        hydraId: id,
+        operation: 'titan.skipped',
+        titanId: id,
         error,
       })
     }
@@ -1071,8 +1071,8 @@ export async function startServer({
         } catch (error) {
           log({
             level: 'error',
-            operation: 'hydra.close',
-            hydraId: id,
+            operation: 'titan.close',
+            titanId: id,
             error,
           })
         }
@@ -1108,8 +1108,8 @@ export async function startServer({
       } catch (error) {
         log({
           level: 'error',
-          operation: 'hydra.remove',
-          hydraId: id,
+          operation: 'titan.remove',
+          titanId: id,
           error,
         })
       }
@@ -1117,28 +1117,28 @@ export async function startServer({
 
     for (const id of hydraIds()) {
       try {
-        await recoverOwnerCommands({ hydraId: id })
+        await recoverOwnerCommands({ titanId: id })
       } catch (error) {
         log({
           level: 'warn',
           operation: 'approval.recover',
-          hydraId: id,
+          titanId: id,
           error,
         })
       }
     }
 
     const removedOrPending = ({ id }: { id: string }) => {
-      if (!hydraExists({ hydraId: id })) {
+      if (!hydraExists({ titanId: id })) {
         return false
       }
 
-      const config = loadTitan({ hydraId: id }).state.config
+      const config = loadTitan({ titanId: id }).state.config
 
       return config?.removed === true || config?.removing === true
     }
 
-    if (removedOrPending({ id: hydraId })) {
+    if (removedOrPending({ id: titanId })) {
       const activeId = hydraIds().find(id => {
         try {
           return !removedOrPending({ id })
@@ -1160,10 +1160,10 @@ export async function startServer({
         })
       }
 
-      hydraId = activeId
+      titanId = activeId
     }
 
-    named = await mount({ id: hydraId })
+    named = await mount({ id: titanId })
 
     if (!removedOrPending({ id: 'default' })) {
       await mount({ id: 'default' })
@@ -1222,7 +1222,7 @@ export async function startServer({
 }
 
 async function mountTitan({
-  hydraId,
+  titanId,
   url,
   catalogLocations,
   query,
@@ -1243,7 +1243,7 @@ async function mountTitan({
   upgradeRoot,
   restart,
 }: {
-  hydraId: string
+  titanId: string
   url: string
   catalogLocations?: CatalogLocations
   query?: QueryFn
@@ -1265,7 +1265,7 @@ async function mountTitan({
   restart?(): void | Promise<void>
 }): Promise<MountedTitan> {
   return mountOwnedTitan({
-    hydraId,
+    titanId,
     url,
     catalogLocations,
     query,

@@ -37,7 +37,7 @@ const history = guard({
     }
     const {
       values,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options,
@@ -71,7 +71,7 @@ const history = guard({
     const keys = values.updates ? updateTasks : historyTasks
     // A historical card ID remains readable after the task has moved away.
     const listed = !!ref && readEvents({
-      hydraId,
+      titanId,
       cardId: ref,
       types: [
         'task.edited',
@@ -82,7 +82,7 @@ const history = guard({
       limit: 1,
     }).length > 0
     const needsState = !!workspace || (!!ref && !listed)
-    const state = needsState ? loadTitan({ hydraId }).state : undefined
+    const state = needsState ? loadTitan({ titanId }).state : undefined
     const cardId = ref && state ? findCard({
       state,
       ref,
@@ -92,7 +92,7 @@ const history = guard({
       (e.type === 'card.outcome' ? e.data.card.workspace : state?.cards[e.cardId]?.workspace) === workspace
 
     const selection = {
-      hydraId,
+      titanId,
       cardId,
       types: type ? [type] : undefined,
       before,
@@ -104,7 +104,7 @@ const history = guard({
     if (exactSelection) {
       const read = values.updates ? readUpdateEvents({
         types: selection.types,
-        hydraId,
+        titanId,
         cardId,
         before,
         limit: limit + 1,
@@ -180,7 +180,7 @@ const undo = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: WRITE,
@@ -192,7 +192,7 @@ const undo = guard({
       what: 'event id',
     })
     const target = readEvents({
-      hydraId,
+      titanId,
       ids: [id],
     })[0]
 
@@ -206,7 +206,7 @@ const undo = guard({
 
     return await commit(
       {
-        hydraId,
+        titanId,
         meta: m,
         intent: {
           type: target.type,
