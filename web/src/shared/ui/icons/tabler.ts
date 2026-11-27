@@ -25,8 +25,6 @@ import {
 // Interface icons: every Othrys control and status that is not an identity icon draws from Tabler.
 export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   search: IconSearch,
-  fold_columns: IconFold,
-  unfold_columns: IconArrowsMoveHorizontal,
 
   restart: IconRotateClockwise,
   upgrade: IconCircleArrowUp,

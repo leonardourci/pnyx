@@ -1,5 +1,5 @@
 import { ICON_SIZE } from '#web-shared/icons.tsx'
-import type { RefObject } from 'react'
+import { useEffect, type RefObject } from 'react'
 import type { OpenDecision } from '#tasks/decisions.ts'
 import { ownerQuestionGroups } from '#tasks/question-groups.ts'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
@@ -11,6 +11,9 @@ import type { TitanState } from '#app/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import { markdownText } from '#web-titan/markdown-text.ts'
+
+// Asks a Titan's chat to open its list of what waits on the owner.
+export const OPEN_WAITING = 'othrys:open-waiting'
 
 export function WaitingDecisions({
   state,
@@ -36,6 +39,31 @@ export function WaitingDecisions({
     notify,
   })
   const retries = <GroupAnswerRetries answers={answers} />
+  useEffect(
+    () => {
+      const reveal = (event: Event) => {
+        const trigger = triggerRef.current
+
+        if ((event as CustomEvent<{ titan: string }>).detail.titan === titanId && trigger?.getAttribute('aria-expanded') === 'false') {
+          trigger.click()
+        }
+      }
+
+      window.addEventListener(
+        OPEN_WAITING,
+        reveal,
+      )
+
+      return () => window.removeEventListener(
+        OPEN_WAITING,
+        reveal,
+      )
+    },
+    [
+      titanId,
+      triggerRef,
+    ],
+  )
 
   if (!groups.length) {
     return retries
