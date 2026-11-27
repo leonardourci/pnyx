@@ -63,6 +63,7 @@ export async function continueInProject({
           ifRevision: undefined,
         },
       })
+
       if (!folder) {
         throw new TitanError({
           code: 'CONFLICT',
