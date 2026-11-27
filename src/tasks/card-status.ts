@@ -48,11 +48,17 @@ export function cardStatus({
   card,
   cards,
   sessions,
+  workingChildren,
+  countDoneAt = true,
 }: {
   card: Card
   cards?: Record<string, Card>
   sessions?: Record<string, AgentSession>
+  workingChildren?: Set<string>
+  // The done refresh records doneAt itself, so it counts a recorded one only while the worker reports done.
+  countDoneAt?: boolean
 }): CardStatus {
+  const doneAt = countDoneAt ? card.doneAt : undefined
   const waiting = waitingQuestions({
     card,
     cards,
@@ -84,6 +90,7 @@ export function cardStatus({
     card,
     cards,
     sessions,
+    workingChildren,
   })
 
   if (activity === 'working') {
@@ -136,19 +143,19 @@ export function cardStatus({
     }
   }
 
-  if (activity === 'finished' && !card.doneAt && !completedOutcome) {
+  if (activity === 'finished' && !doneAt && !completedOutcome) {
     return {
       kind: 'finished',
       text: 'idle',
     }
   }
 
-  if (complete || card.doneAt) {
+  if (complete || doneAt) {
     return {
       kind: 'done',
       state: 'done',
       text: 'done',
-      at: worker?.code === 'done' ? worker.at : card.doneAt,
+      at: worker?.code === 'done' ? worker.at : doneAt,
     }
   }
 
