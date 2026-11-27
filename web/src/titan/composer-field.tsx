@@ -969,8 +969,8 @@ export function ComposerField({
               active,
               suggestions.length - 1,
             )}` : undefined}
-          onPointerDown={() => {
-            pointerFocus.current = true
+          onPointerDown={event => {
+            pointerFocus.current = document.activeElement !== event.currentTarget
           }}
           onFocus={event => {
             if (!pointerFocus.current) {
