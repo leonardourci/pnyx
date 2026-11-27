@@ -725,8 +725,6 @@ test(
         )
       },
     })
-    // Sessions that belong to no task and no Titan are not read at a restart, so the offline turns stay unseen,
-    // and those never attached to a task are not kept at all.
     const recovered = await sessionFacts({ session: 'outside-1' })
     expect(recovered.turnStartedAt).not.toBe(nextTurnAt)
     expect(await sessionFacts({ session: 'settings-only' })).toBeUndefined()
@@ -1363,7 +1361,6 @@ test(
           terminal: { tty: '/dev/ttys99999' },
         }),
       })
-      // Only sessions that belong to a task are read at a restart.
       await titan.owner({
         args: [
           'task',

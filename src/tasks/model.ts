@@ -146,9 +146,7 @@ export type WorkerCode = 'needs-you' | 'blocked' | 'done' | 'link' | 'note' | 'i
 export interface WorkerLine {
   identity: string
   off: number
-  // Counts the different files read as this worker.log; a record id names it so the same line keeps one id.
   gen: number
-  // Hash of the bytes before off, which tells a moved copy of the same history from a new file.
   tail: string
   discarding?: true
   code: WorkerCode

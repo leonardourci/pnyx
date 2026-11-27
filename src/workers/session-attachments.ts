@@ -123,7 +123,6 @@ export function assignDefined<T extends object>({
   }
 }
 
-// Sessions of no task and no Titan, now or at their start, are never saved nor read at a restart.
 export function memoryOnlySession({
   state,
   session,

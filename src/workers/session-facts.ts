@@ -55,9 +55,8 @@ function recordTurn({
   }
 
   const wasWorking = session.sessionActivity === 'working'
-  // The transcript line of a resume Othrys already recorded belongs to the same resumed turn.
-  const resuming = transcript && wasWorking && session.turn?.id.startsWith('resume:') === true
-  const newResume = event.id.startsWith('resume:') && session.turn?.id !== event.id && !resuming
+  const continuesRecordedResume = transcript && wasWorking && session.turn?.id.startsWith('resume:') === true
+  const newResume = event.id.startsWith('resume:') && session.turn?.id !== event.id && !continuesRecordedResume
 
   if (activity === 'working' && (!wasWorking || !session.turn || newResume)) {
     session.turn = {
@@ -128,7 +127,6 @@ function transcriptSize({ agent }: { agent: AgentSession['agent'] }): number | u
   }
 }
 
-// A hosted worker launches as working, so its first observed turn also counts as one a restart may resume.
 export function turnChange({
   session,
   agent,
@@ -141,12 +139,11 @@ export function turnChange({
   eventId?: string
 }): boolean {
   const resumed = eventId?.startsWith('resume:') === true
-  const firstTurn = activity === 'working' && session?.turn === undefined && agent.host === 'othrys' && !agent.agentId
+  const firstHostedTurn = activity === 'working' && session?.turn === undefined && agent.host === 'othrys' && !agent.agentId
 
-  return activity !== session?.sessionActivity || resumed || firstTurn
+  return activity !== session?.sessionActivity || resumed || firstHostedTurn
 }
 
-// Saving where the transcript stood at each turn change lets a restart read only the lines after it.
 function sessionRun({
   session,
   fields,
@@ -175,7 +172,7 @@ function sessionRun({
     harness: agent.provider,
   }
   const model = (fields.settings ?? session?.settings)?.model
-  const pos = source?.adapter === 'transcript' ? source.generation : transcriptSize({ agent })
+  const transcriptPos = source?.adapter === 'transcript' ? source.generation : transcriptSize({ agent })
 
   if (model) {
     run.model = model
@@ -185,8 +182,8 @@ function sessionRun({
     run.account = agent.account
   }
 
-  if (pos !== undefined) {
-    run.pos = pos
+  if (transcriptPos !== undefined) {
+    run.transcriptPos = transcriptPos
   }
 
   return run
@@ -357,8 +354,8 @@ export function applySessionFacts({
     state.sessions[id] = session
   }
 
-  if (event.data.run?.pos !== undefined) {
-    session.transcriptPos = event.data.run.pos
+  if (event.data.run?.transcriptPos !== undefined) {
+    session.transcriptPos = event.data.run.transcriptPos
   }
 
   session.agent = {

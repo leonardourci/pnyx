@@ -122,7 +122,6 @@ export function spendInputs({
     }
   }
 
-  // A session that never belonged to a task or the Titan has no spend to attribute, so its transcript is not read.
   const assigned = new Set(assignments.map(assignment => assignment.session))
   const counted = Object.values(state.sessions ?? {}).filter(session => {
     const belongs = !memoryOnlySession({

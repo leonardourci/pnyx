@@ -19,7 +19,6 @@ import { fileIdentity } from '#store/file-identity.ts'
 const BATCH_BYTES = 64 * 1024
 const LINE_BYTES = 16 * 1024
 const BATCH_LINES = 128
-// Enough bytes before a saved position to tell a moved worker.log from a new one.
 const TAIL_BYTES = 256
 
 const CODES = new Set<WorkerCode>([
@@ -48,8 +47,7 @@ export function workerTaskDir({
   return dir
 }
 
-// A hash of the bytes just before a position: the same history in a new file hashes the same.
-export function contentTail({
+export function hashBefore({
   fd,
   end,
 }: {
@@ -76,7 +74,6 @@ export function contentTail({
     .digest('hex')
 }
 
-// Another inode or device with the same bytes before the saved position is the same history, moved or copied.
 function resumePoint({
   fd,
   size,
@@ -108,7 +105,7 @@ function resumePoint({
     }
   }
 
-  const sameHistory = size >= previous.off && contentTail({
+  const sameHistory = size >= previous.off && hashBefore({
     fd,
     end: previous.off,
   }) === previous.tail
@@ -248,7 +245,10 @@ export function foldWorkerLog({
             identity,
             off,
             gen,
-            tail: previous!.tail,
+            tail: hashBefore({
+              fd,
+              end: off,
+            }),
           },
         },
       })
@@ -259,7 +259,7 @@ export function foldWorkerLog({
         identity,
         off,
         gen,
-        tail: contentTail({
+        tail: hashBefore({
           fd,
           end: Math.min(
             off,
@@ -325,7 +325,7 @@ export function foldWorkerLog({
           identity,
           off: off + next,
           gen,
-          tail: contentTail({
+          tail: hashBefore({
             fd,
             end: off + next,
           }),
@@ -425,7 +425,7 @@ export function foldWorkerLog({
             identity,
             off: lineOff,
             gen,
-            tail: contentTail({
+            tail: hashBefore({
               fd,
               end: lineOff,
             }),

@@ -253,7 +253,6 @@ export interface AgentSession {
   turnFinishedSeq?: number
   wakeStarted?: string
   wakeHandled?: string
-  // Where the transcript stood at the last saved turn record; a restart reads it from here.
   transcriptPos?: number
   activityObservedAt?: string
   autoTitle?: import('#tasks/model.ts').AutoTitle

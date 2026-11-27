@@ -1,5 +1,4 @@
-// Run once by hand with the server stopped: saves what restarts rebuilt from transcripts, after a backup.
-import { closeSync, cpSync, existsSync, fstatSync, openSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { closeSync, cpSync, existsSync, fstatSync, openSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { claimServer } from '#app/server-state.ts'
 import { titanDir, titanIds } from '#app/home-migration.ts'
@@ -10,14 +9,13 @@ import { closeNativeHomes } from '#app/native-home.ts'
 import { othrysHome } from '#store/paths.ts'
 import { fileIdentity } from '#store/file-identity.ts'
 import { restoreSessionActivity } from '#workers/session-recovery.ts'
-import { contentTail, workerLogPath } from '#workers/worker-log.ts'
+import { hashBefore, workerLogPath } from '#workers/worker-log.ts'
 import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 
 const MIGRATION = 'save-session-turns'
 
-// Saved file identities were "<device>:<inode>" before they became the inode alone.
-const inode = ({ identity }: { identity: string }) => identity.split(':').at(-1)!
+const withoutDevice = ({ identity }: { identity: string }) => identity.slice(identity.lastIndexOf(':') + 1)
 
 function logFiles({ dir }: { dir: string }): string[] {
   const tasks = join(
@@ -54,47 +52,6 @@ function turnRecords({ dir }: { dir: string }): number {
   )
 }
 
-function rewriteHarvestCursors({ dir }: { dir: string }): number {
-  const path = join(
-    dir,
-    'harvest.json',
-  )
-
-  if (!existsSync(path)) {
-    return 0
-  }
-
-  const cursors = JSON.parse(readFileSync(
-    path,
-    'utf8',
-  )) as Record<string, {
-    identity: string
-    pos: number
-  }>
-  let rewritten = 0
-
-  for (const cursor of Object.values(cursors)) {
-    const identity = inode({ identity: cursor.identity })
-
-    if (identity !== cursor.identity) {
-      cursor.identity = identity
-      rewritten++
-    }
-  }
-
-  writeFileSync(
-    `${path}.${MIGRATION}`,
-    JSON.stringify(cursors),
-  )
-  renameSync(
-    `${path}.${MIGRATION}`,
-    path,
-  )
-
-  return rewritten
-}
-
-// Gives each worker.log position its generation and the hash that recognizes the same history in another file.
 async function saveWorkerLogPositions({ titanId }: { titanId: string }): Promise<number> {
   return await withWriter({
     titanId,
@@ -113,7 +70,7 @@ async function saveWorkerLogPositions({ titanId }: { titanId: string }): Promise
           task: card.id,
           recorded: card.workerLogDir,
         })
-        let identity = inode({ identity: latest.identity })
+        const identity = withoutDevice({ identity: latest.identity })
         let tail = ''
 
         if (existsSync(path)) {
@@ -124,16 +81,14 @@ async function saveWorkerLogPositions({ titanId }: { titanId: string }): Promise
 
           try {
             const stat = fstatSync(fd)
+            const savedFileHoldsPosition = fileIdentity({ stat }) === identity && stat.size >= latest.off
 
-            // A file that is no longer the one the position was saved for is read again from its start, as before.
-            if (fileIdentity({ stat }) === identity && stat.size >= latest.off) {
-              tail = contentTail({
+            if (savedFileHoldsPosition) {
+              tail = hashBefore({
                 fd,
                 end: latest.off,
               })
             }
-
-            identity = fileIdentity({ stat })
           } finally {
             closeSync(fd)
           }
@@ -164,7 +119,6 @@ async function saveWorkerLogPositions({ titanId }: { titanId: string }): Promise
   })
 }
 
-// A report the saved read cursor already covers counts as handled.
 async function handleCoveredReports({ titanId }: { titanId: string }): Promise<number> {
   return await withWriter({
     titanId,
@@ -234,7 +188,6 @@ try {
     const dir = titanDir({ titanId })
     const started = performance.now()
     const recordsBefore = turnRecords({ dir })
-    const harvestCursors = rewriteHarvestCursors({ dir })
     await restoreSessionActivity({ titanId })
     const turns = turnRecords({ dir }) - recordsBefore
     const workerLogs = await saveWorkerLogPositions({ titanId })
@@ -245,7 +198,6 @@ try {
       `${sessions} sessions,`,
       `${turns} turn records saved,`,
       `${workerLogs} worker.log positions saved,`,
-      `${harvestCursors} harvest cursors rewritten,`,
       `${reports} covered reports marked handled,`,
       `${Math.round(performance.now() - started)} ms`,
     ].join(' '))

@@ -27,13 +27,12 @@ export interface SourceRef {
   observedAt?: string
 }
 
-// The agent that ran a turn, saved on each turn start, resume and end, with the transcript position seen then.
 export interface SessionRun {
   session: string
   harness: string
   model?: string
   account?: string
-  pos?: number
+  transcriptPos?: number
 }
 
 export type TitanChange = EventBase & (
@@ -60,7 +59,6 @@ export type TitanChange = EventBase & (
     data: Omit<import('#tasks/model.ts').WorkerLine, 'at'>
   }
   | {
-    // The same worker.log history found under another inode or device.
     type: 'task.worker-log'
     data: Pick<import('#tasks/model.ts').WorkerLine, 'identity' | 'off' | 'gen' | 'tail'>
   }

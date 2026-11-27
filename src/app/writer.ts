@@ -231,7 +231,8 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
                 state: after,
                 session,
               })) {
-                const scope = session.taskId ?? session.originCardId
+                const owner = session.taskId ?? session.originCardId
+                const scope = after.cards[owner] ? owner : TITAN_CARD
                 const source = nativeSessionSource({
                   session,
                   previous: basis({ scope }).sessions?.[session.id],

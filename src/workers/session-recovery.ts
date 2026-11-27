@@ -17,7 +17,6 @@ import { compactCommand } from './compact-command.ts'
 
 const ACTIVITY_READ_BYTES = 1024 * 1024
 
-// What a restart lost is only what each session wrote after its last saved turn record.
 export async function restoreSessionActivity({ titanId }: { titanId: string }): Promise<void> {
   const state = loadTitan({ titanId }).state
 
@@ -31,7 +30,6 @@ export async function restoreSessionActivity({ titanId }: { titanId: string }): 
       continue
     }
 
-    // An empty identity never counts as a replaced file; a transcript shorter than the position restarts it.
     let cursor = {
       source: path,
       identity: '',
@@ -72,8 +70,7 @@ export async function restoreSessionActivity({ titanId }: { titanId: string }): 
               return false
             }
 
-            // A line that only repeats the activity matters only as the latest one, so it waits for the next.
-            let latest: (() => void) | undefined
+            let lastRepeat: (() => void) | undefined
 
             for (const line of tail.lines) {
               const current = writer.state.sessions?.[session.id] ?? bound
@@ -179,8 +176,8 @@ export async function restoreSessionActivity({ titanId }: { titanId: string }): 
                   },
                 }),
               })
-              // A Titan input on a working line names the turn it starts.
-              const changes = parsed.inputUuid !== undefined || turnChange({
+              const namesInput = parsed.inputUuid !== undefined
+              const changes = namesInput || turnChange({
                 session: current,
                 agent: current.agent,
                 activity,
@@ -188,14 +185,14 @@ export async function restoreSessionActivity({ titanId }: { titanId: string }): 
               })
 
               if (changes) {
-                latest = undefined
+                lastRepeat = undefined
                 observe()
               } else {
-                latest = observe
+                lastRepeat = observe
               }
             }
 
-            latest?.()
+            lastRepeat?.()
 
             return true
           },

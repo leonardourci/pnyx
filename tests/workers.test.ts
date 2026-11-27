@@ -2034,23 +2034,28 @@ test(
       session: card().sessionIds![0],
       harness: 'claude-code',
       account: 'claude:test',
-      pos: expect.any(Number),
+      transcriptPos: expect.any(Number),
     })
-    const savedPos: number = finished.event.data.run.pos
+    const savedPos: number = finished.event.data.run.transcriptPos
     const transcriptBefore = readFileSync(transcript)
     expect(savedPos).toBeGreaterThan(0)
+    const prompt = ({ text }: { text: string }) => JSON.stringify({
+      type: 'user',
+      timestamp: new Date().toISOString(),
+      message: {
+        role: 'user',
+        content: text,
+      },
+    })
+    const promptBeforeSavedPos = prompt({ text: 'x'.repeat(savedPos - 1 - prompt({ text: '' }).length) })
     await othrys.restart({
       whileStopped: () => {
-        // Everything before the saved position becomes unreadable; only a read of the whole transcript would notice.
-        const blanked = Buffer.from(transcriptBefore)
-        blanked.fill(
-          ' ',
-          0,
-          savedPos,
-        )
         writeFileSync(
           transcript,
-          blanked,
+          Buffer.concat([
+            Buffer.from(`${promptBeforeSavedPos}\n`),
+            transcriptBefore.subarray(savedPos),
+          ]),
         )
       },
     })
@@ -2120,7 +2125,6 @@ test(
     const inode = statSync(log).ino
     await othrys.restart({
       whileStopped: () => {
-        // A copy renamed over the original is the same history under a new inode, as a move to another disk gives.
         writeFileSync(
           `${log}.copy`,
           readFileSync(log),

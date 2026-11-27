@@ -349,6 +349,8 @@ interface EventClock {
   complete?: boolean
 }
 
+const isTurnRecord = ({ event }: { event: TitanEvent }) => event.type === 'session.observed'
+
 function clocks({ titanId }: { titanId: string }): EventClock[] {
   const live = heldTitan({ titanId })
   const events = readChanges({ titanId }).map(event => ({
@@ -357,8 +359,7 @@ function clocks({ titanId }: { titanId: string }): EventClock[] {
     time: Date.parse(event.at),
     complete: event.type === 'session.observed' && 'fields' in event.data
       && event.data.fields.activity === 'finished',
-    // A turn record keeps its transcript line's time, which can predate earlier saved changes, so it is no fixed clock.
-    decision: durableEvent({ event }) && event.type !== 'session.observed',
+    decision: durableEvent({ event }) && !isTurnRecord({ event }),
   }))
   const lastDecisionTime = events.reduce(
     (
