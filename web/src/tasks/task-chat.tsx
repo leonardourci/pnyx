@@ -426,7 +426,7 @@ export function TaskChat({
               setAssigning(true)
 
               try {
-                await command({
+                const receipt = await command({
                   name: 'task',
                   args: [
                     'project',
@@ -437,6 +437,11 @@ export function TaskChat({
                     crypto.randomUUID(),
                   ],
                 })
+
+                if (receipt && typeof receipt === 'object' && 'worker' in receipt
+                  && typeof receipt.worker === 'string' && receipt.worker.startsWith('not moved:')) {
+                  notify({ text: receipt.worker })
+                }
               } catch (error) {
                 chooseRepository('')
                 notify({ text: error instanceof Error ? error.message : String(error) })

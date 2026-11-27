@@ -2519,7 +2519,7 @@ test(
 )
 
 test(
-  'a task without a project starts its worker in a scratch folder of its own, and a project attached later moves that worker to the project’s copy while its scratch files stay',
+  'a projectless worker starts in scratch and gets directions to its project copy when a project is attached',
   async () => {
     const titan = await othrys.titan()
     const created = await titan.owner({
@@ -2585,10 +2585,10 @@ test(
       state: 'active',
     })
     expect(copy.path).not.toBe(realpathSync(project))
-    expect(attached.worker).toBe(`continues in ${copy.path}`)
+    expect(attached.worker).toBe(`asked to continue in ${copy.path}`)
     const told = await until({
       what: 'the worker to be told where to continue',
-      check: () => worker.received.find(text => text.includes(`Continue the work in ${copy.path}`)),
+      check: () => worker.received.find(text => text.includes(`Continue the work in ${JSON.stringify(copy.path)}`)),
     })
     expect(told).toContain(scratch)
     expect(readFileSync(

@@ -521,7 +521,6 @@ async function commandCopy({
   }
 }
 
-// A task without a project works in a folder of its own beside its runtime files, which Othrys keeps for the task.
 export const scratchPath = ({ task }: { task: string }) => join(
   taskRuntimeDir({ task }),
   'scratch',
@@ -537,14 +536,13 @@ function scratchFolder({ task }: { task: string }): string {
   return realpathSync(path)
 }
 
-// `worker` prepares the folder for the worker already attached, which is then told to continue there.
 export async function taskFolder({
   titanId,
   task,
   folder,
   inPlace,
   ownFolder,
-  worker = false,
+  continuingSession,
   meta,
 }: {
   titanId: string
@@ -552,7 +550,7 @@ export async function taskFolder({
   folder?: string
   inPlace?: boolean
   ownFolder?: boolean
-  worker?: boolean
+  continuingSession?: string
   meta: Meta
 }): Promise<string | undefined> {
   const state = loadTitan({ titanId }).state
@@ -601,7 +599,7 @@ export async function taskFolder({
   }
 
   // A busy task is the route's own refusal; it gets no copy first.
-  if (card.sessionIds?.length && !worker) {
+  if (card.sessionIds?.length && !continuingSession) {
     return folder
   }
 
@@ -647,7 +645,6 @@ export async function taskFolder({
       command: project.copy,
     }) : undefined)
 
-  // A project folder outside git has no copies or branches, so its workers share the folder itself.
   if (!ready && !await isGitFolder({ path: project.path })) {
     return project.path
   }
@@ -682,12 +679,13 @@ export async function taskFolder({
           })
         }
 
-        // Another start may have won while this copy was prepared: it leaves its session and copy as they are.
-        const startedMeanwhile = !worker && Boolean(now.sessionIds?.length)
+        const sessionChanged = continuingSession
+          ? now.sessionIds?.[0] !== continuingSession
+          : Boolean(now.sessionIds?.length)
         const copiedMeanwhile = now.copy?.state === 'active' && now.copy.path !== card.copy?.path
           && now.copy.path !== copy.path
 
-        if (startedMeanwhile || copiedMeanwhile) {
+        if (sessionChanged || copiedMeanwhile) {
           throw new TitanError({
             message: `task ${card.id} was started meanwhile; its session keeps ${now.copy?.path ?? now.folder ?? 'its folder'}`,
             code: 'SESSION_CONFLICT',

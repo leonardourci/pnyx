@@ -3,24 +3,26 @@ import type { Meta } from '#app/command-meta.ts'
 import { loadTitan } from '#app/store.ts'
 import { scratchPath, taskFolder } from '#projects/copy-create.ts'
 import { sameProjectPath } from '#projects/identity.ts'
-import { projectName } from '#projects/read.ts'
+import { findProject } from '#projects/read.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import { TitanError } from '#store/errors.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { sendReply } from './reply.ts'
 
-// A worker that started without a project moves to the project attached later; its scratch files stay where they are.
 export async function continueInProject({
   titanId,
   task,
+  project,
   meta,
 }: {
   titanId: string
   task: string
+  project: string
   meta: Meta
 }): Promise<Output> {
+  const state = loadTitan({ titanId }).state
   const card = findCard({
-    state: loadTitan({ titanId }).state,
+    state,
     ref: task,
   })
   const worker = card.sessionIds?.[0]
@@ -35,6 +37,16 @@ export async function continueInProject({
   }
 
   try {
+    const attachedProject = findProject({
+      state,
+      ref: project,
+      attached: true,
+    })
+
+    if (attachedProject.path !== card.project) {
+      return {}
+    }
+
     const release = taskLease({
       titanId,
       task: card.id,
@@ -45,24 +57,40 @@ export async function continueInProject({
       const folder = await taskFolder({
         titanId,
         task: card.id,
-        worker: true,
+        continuingSession: worker,
         meta: {
           ...meta,
           ifRevision: undefined,
         },
       })
+      if (!folder) {
+        throw new TitanError({
+          code: 'CONFLICT',
+          message: 'the task no longer has a project folder',
+        })
+      }
+
+      const current = loadTitan({ titanId }).state.cards[card.id]
+
+      if (current?.project !== attachedProject.path) {
+        throw new TitanError({
+          code: 'CONFLICT',
+          message: 'the project changed while its folder was being prepared',
+        })
+      }
+
       await sendReply({
         titanId,
         request: {
           card: card.id,
           expectedSession: worker,
-          text: `Project ${projectName({ path: card.project })} is now attached to this task. Continue the work in ${folder}. What you made so far stays in ${scratch}; bring over what the project needs.`,
+          text: `Project ${attachedProject.name} is now attached to this task. Continue the work in ${JSON.stringify(folder)}. Your earlier work is in ${JSON.stringify(scratch)}. Bring over the files the project needs.`,
           actor: 'othrys',
-          ...(meta.id ? { id: `${meta.id}:continue` } : {}),
+          id: meta.id ? `${meta.id}:continue` : undefined,
         },
       })
 
-      return { worker: `continues in ${folder}` }
+      return { worker: `asked to continue in ${folder}` }
     } finally {
       release()
     }

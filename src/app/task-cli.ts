@@ -958,6 +958,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       ...await continueInProject({
         titanId,
         task: ref,
+        project,
         meta: m,
       }),
     }
