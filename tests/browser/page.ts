@@ -31,11 +31,16 @@ export async function openTitan({
   port,
   titanId,
   reducedMotion = false,
+  viewport = VIEWPORT,
+  touch = false,
   beforeLoad,
 }: {
   port: number
   titanId: string
   reducedMotion?: boolean
+  viewport?: typeof VIEWPORT
+  // A phone's touch screen: taps, a coarse pointer and no hover.
+  touch?: boolean
   beforeLoad?({ page }: { page: Page }): Promise<void>
 }): Promise<Page> {
   if (!browser) {
@@ -47,7 +52,9 @@ export async function openTitan({
   }
 
   const context = await browser.newContext({
-    viewport: VIEWPORT,
+    viewport,
+    hasTouch: touch,
+    isMobile: touch,
     reducedMotion: reducedMotion ? 'reduce' : 'no-preference',
   })
   contexts.add(context)
