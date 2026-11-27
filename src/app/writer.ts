@@ -22,7 +22,7 @@ import { durableEvent } from './event-policy.ts'
 import { enqueueSteering } from '#workers/inbox.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { sessionFields } from '#workers/session-facts.ts'
-import { sessionId } from '#workers/session-attachments.ts'
+import { memoryOnlySession, sessionId } from '#workers/session-attachments.ts'
 import { requireHandoffAvailable } from '#workers/handoff-checkout.ts'
 
 const RECENT_CHANGES = 50_000
@@ -227,9 +227,11 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
               })?.agent
               const session = agent && after.sessions?.[sessionId({ agent })]
 
-              if (session && session.agent.host !== 'othrys') {
-                const owner = session.taskId ?? session.originCardId
-                const scope = after.cards[owner] ? owner : TITAN_CARD
+              if (session && session.agent.host !== 'othrys' && !memoryOnlySession({
+                state: after,
+                session,
+              })) {
+                const scope = session.taskId ?? session.originCardId
                 const source = nativeSessionSource({
                   session,
                   previous: basis({ scope }).sessions?.[session.id],
