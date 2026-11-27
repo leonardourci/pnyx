@@ -357,7 +357,8 @@ function clocks({ titanId }: { titanId: string }): EventClock[] {
     time: Date.parse(event.at),
     complete: event.type === 'session.observed' && 'fields' in event.data
       && event.data.fields.activity === 'finished',
-    decision: durableEvent({ event }),
+    // A turn record keeps its transcript line's time, which can predate earlier saved changes, so it is no fixed clock.
+    decision: durableEvent({ event }) && event.type !== 'session.observed',
   }))
   const lastDecisionTime = events.reduce(
     (
