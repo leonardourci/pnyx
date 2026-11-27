@@ -642,9 +642,18 @@ export function ComposerField({
 
     const edit = readField({ field: element })
     const ends = edit.inside ? edit : selectionEnds({ field: element })
-    const lastOffset = Math.max(edit.focus, edit.anchor)
-    const caret = Math.min(ends.focus, lastOffset)
-    const anchor = Math.min(ends.anchor, lastOffset)
+    const lastOffset = Math.max(
+      edit.focus,
+      edit.anchor,
+    )
+    const caret = Math.min(
+      ends.focus,
+      lastOffset,
+    )
+    const anchor = Math.min(
+      ends.anchor,
+      lastOffset,
+    )
     const announced = browserEdit.current
     browserEdit.current = null
     recordStep({
