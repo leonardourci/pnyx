@@ -2,7 +2,7 @@ import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useSessionView, sessionViewKey } from './session-view.ts'
 import { useWorkspaceViewport } from './workspace-viewport.tsx'
 import { afterTaskLayout, afterSteadyLayout } from '#web-tasks/scroll-task.ts'
-import { WORKSPACE_SIZING } from '#web-shared/card-sizing.ts'
+import { WORKSPACE_SIZING, phoneLayout } from '#web-shared/card-sizing.ts'
 import { ProjectTasks } from '#web-tasks/project-tasks.tsx'
 import { ProfileSurface } from './profile-surface.tsx'
 import { timeUIFlow } from './ui-metrics.ts'
@@ -548,7 +548,7 @@ export function TitanView({
     }).width
   }
 
-  const phone = viewport.width <= WORKSPACE_SIZING.phone
+  const phone = phoneLayout({ width: viewport.width })
   const chatWidth = view.workspace.chatCollapsed ? WORKSPACE_SIZING.foldedChat
     : phone ? viewport.width - WORKSPACE_SIZING.phoneChatInset : view.titanWidth
   let projectLeft = (phone ? WORKSPACE_SIZING.phoneInset : WORKSPACE_SIZING.inset) / 2

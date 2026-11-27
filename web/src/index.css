@@ -34,7 +34,6 @@
   --grid-template-columns-setting: var(--spacing-setting-icon) minmax(0, 1fr);
   --grid-template-columns-setting-preview: var(--spacing-setting-icon) minmax(0, 1fr) var(--spacing-setting-preview);
   --grid-template-columns-dispatch-issue: var(--spacing-dispatch-issue) minmax(0, 1fr);
-  --breakpoint-phone: 760px;
   --spacing-workspace-frame: calc(100vw - --spacing(6));
   --spacing-phone-workspace-frame: calc(100vw - --spacing(3));
   --spacing-workspace-title: calc(100vw - --spacing(64));
@@ -286,6 +285,8 @@
   --shadow-task-highlight: 0 0 0 --spacing(.75) var(--color-gold-line);
   --comment-highlight-strength: 24%;
   --comment-emphasis-strength: 45%;
+  /* The one switch point between the wide and the phone layout; card-sizing.ts reads it. */
+  --breakpoint-phone: 900px;
   --comment-fade-duration: var(--transition-duration-base);
   --comment-marker-duration: var(--transition-duration-fast);
   --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent);

@@ -27,7 +27,8 @@ const env = {
   CHROME_DEVTOOLS_AXI_SESSION: `status-${port}`,
   CHROME_DEVTOOLS_AXI_MCP_PATH: mcp,
   CHROME_DEVTOOLS_AXI_HEADED: '0',
-  CHROME_DEVTOOLS_AXI_CHROME_ARGS: '--use-mock-keychain --password-store=basic',
+  // A wide window, so the page opens in its wide layout rather than the phone one.
+  CHROME_DEVTOOLS_AXI_CHROME_ARGS: '--use-mock-keychain --password-store=basic --window-size=1440,900',
 }
 
 export function chrome({
