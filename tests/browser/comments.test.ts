@@ -190,18 +190,23 @@ for (const engine of [
 
         await selectPassage({ words: 'proof they were read' })
 
-        if (!layout.touch) {
-          await page.evaluate(() => getSelection()?.removeAllRanges())
-          await bar.waitFor({ state: 'detached' })
+        if (layout.touch) {
+          await dropTouchSelection()
+          await page.keyboard.press('Escape')
           await pill.waitFor({ state: 'detached' })
+
+          await selectPassage({ words: 'proof they were read' })
+          await dropTouchSelection()
+          await press({
+            target: workspace.getByText(
+              'Say something',
+              { exact: true },
+            ),
+          })
+        } else {
+          await page.evaluate(() => getSelection()?.removeAllRanges())
         }
 
-        await press({
-          target: workspace.getByText(
-            'Say something',
-            { exact: true },
-          ),
-        })
         await bar.waitFor({ state: 'detached' })
         await pill.waitFor({ state: 'detached' })
       },

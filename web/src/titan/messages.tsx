@@ -520,9 +520,18 @@ export function Messages({
       return
     }
 
-    const typeComment = (event: KeyboardEvent) => {
+    const selectionShortcut = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null
       const selected = window.getSelection()
+
+      if (event.key === 'Escape' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey
+        && !event.defaultPrevented && !event.isComposing
+        && target !== root.current && !target?.closest(SELECTION_ACTIONS_SELECTOR)) {
+        setSelection(null)
+        selected?.removeAllRanges()
+
+        return
+      }
 
       if (event.defaultPrevented || event.isComposing ||
         event.ctrlKey || event.metaKey || event.altKey ||
@@ -542,13 +551,13 @@ export function Messages({
 
     window.addEventListener(
       'keydown',
-      typeComment,
+      selectionShortcut,
       true,
     )
 
     return () => window.removeEventListener(
       'keydown',
-      typeComment,
+      selectionShortcut,
       true,
     )
   })
@@ -686,7 +695,6 @@ export function Messages({
     requestAnimationFrame(() => focusChatComposer({ from: root.current }))
   }
 
-  // The pill floats under the selection, inside the messages so it scrolls with them and moves no text.
   const pill = useRef<HTMLDivElement>(null)
   // Each conversation on screen paints its own highlight, so one doesn't clear the other's.
   const [highlight] = useState(() => `othrys-comments-${++highlights}`)

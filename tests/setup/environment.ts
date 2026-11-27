@@ -42,8 +42,7 @@ for (const command of GUARDED) {
   )
 }
 
-// Playwright keeps its downloaded browsers under the real home, which the scratch HOME below hides.
-const browserCache = process.platform === 'darwin'
+const realHomeBrowserCache = process.platform === 'darwin'
   ? join(
     homedir(),
     'Library/Caches',
@@ -53,7 +52,7 @@ const browserCache = process.platform === 'darwin'
     '.cache',
   )
 const playwrightBrowsers = process.env.PLAYWRIGHT_BROWSERS_PATH || join(
-  browserCache,
+  realHomeBrowserCache,
   'ms-playwright',
 )
 
