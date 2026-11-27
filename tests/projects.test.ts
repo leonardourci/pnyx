@@ -2567,7 +2567,10 @@ test(
         missing,
       ],
     })
-    rmSync(missing, { recursive: true })
+    rmSync(
+      missing,
+      { recursive: true },
+    )
     const unavailable = await titan.owner({
       args: [
         'task',
