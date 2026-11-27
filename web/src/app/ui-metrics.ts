@@ -330,7 +330,7 @@ function context({ target }: { target?: Node }): {
   const namedSurface = element?.closest('[data-ui-surface]')?.getAttribute('data-ui-surface') as UISurface | undefined
   let surface: UISurface = namedSurface && SURFACES.includes(namedSurface) ? namedSurface : 'workspace'
   const action = element?.closest('[data-ui-action]')?.getAttribute('data-ui-action')
-  const control = element?.closest('button,input,textarea,select,[role="button"],[role="combobox"]')
+  const control = element?.closest('button,input,textarea,select,[role="button"],[role="combobox"],[role="textbox"]')
 
   let fallback = control?.getAttribute('role') ?? control?.tagName.toLowerCase() ?? 'page'
 
