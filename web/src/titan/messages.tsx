@@ -18,6 +18,7 @@ import {
   type ComponentProps,type RefObject,type ReactNode,
   type KeyboardEvent as KeyEvent,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { ChatTokensContext } from './chat-token-text.tsx'
 import { clock,copiedText,orderedComments,type ChatComment } from './chat.ts'
 import { leadingTask, ownMessage, type TurnTiming } from '#titan/chat-messages.ts'
@@ -39,7 +40,8 @@ import type { AnswerLead } from './answer-leads.ts'
 import { roleLabel } from './trace-row.tsx'
 import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
 
-const PILL_GAP = 6
+// The offers to comment on or quote the selected text: the pill by the selection and the bar above the composer.
+const SELECTION_OFFERS = '.comment-pill, .comment-dock'
 let highlights = 0
 
 // A message the owner just sent shows at once, faded until the server records it.
@@ -354,6 +356,29 @@ const MessageRow = memo(function MessageRow({
   )
 })
 
+// A tap acts on pointerdown, before iOS can drop the selection and the offer with it.
+function OfferButton({
+  act,
+  ...props
+}: ComponentProps<typeof Button> & { act(): void }) {
+  return (
+    <Button
+      {...props}
+      onPointerDown={event => {
+        if (event.button === 0) {
+          act()
+        }
+      }}
+      // Enter or Space on the focused button; a pointer has already acted.
+      onClick={event => {
+        if (!event.detail) {
+          act()
+        }
+      }}
+    />
+  )
+}
+
 export function Messages({
   entries,
   lookup,
@@ -529,9 +554,12 @@ export function Messages({
     )
   })
 
-  // Mouse selections count on mouseup so the comment offer never moves text under the pointer.
+  // Mouse selections count on mouseup so the comment offer never moves text under the pointer. A touch selection
+  // that drops keeps its passage until a tap lands elsewhere, since iOS can clear it before a tap on an offer arrives.
   useEffect(
     () => {
+      let touched = false
+
       const track = ({ buttons }: { buttons: number }) => {
         if (buttons) {
           return
@@ -545,10 +573,29 @@ export function Messages({
           setActive(block.dataset.messageBlock!)
         }
 
-        setSelection(prior => samePassage({
-          before: prior,
-          after: next,
-        }) ? prior : next)
+        setSelection(prior => {
+          // A selection made somewhere else, such as the other chat, takes the offer away.
+          if (!next) {
+            return touched && (window.getSelection()?.isCollapsed ?? true) ? prior : null
+          }
+
+          return samePassage({
+            before: prior,
+            after: next,
+          }) ? prior : next
+        })
+      }
+
+      const point = (event: PointerEvent) => {
+        touched = event.pointerType !== 'mouse'
+      }
+
+      const tapElsewhere = (event: MouseEvent) => {
+        const target = event.target instanceof Element ? event.target : null
+
+        if (!target?.closest(SELECTION_OFFERS) && !selectedPassage({ messages: root.current })) {
+          setSelection(null)
+        }
       }
 
       let buttons = 0
@@ -572,6 +619,16 @@ export function Messages({
         change,
       )
       document.addEventListener(
+        'pointerdown',
+        point,
+        true,
+      )
+      document.addEventListener(
+        'click',
+        tapElsewhere,
+        true,
+      )
+      document.addEventListener(
         'mousedown',
         press,
       ); document.addEventListener(
@@ -587,6 +644,16 @@ export function Messages({
         document.removeEventListener(
           'selectionchange',
           change,
+        )
+        document.removeEventListener(
+          'pointerdown',
+          point,
+          true,
+        )
+        document.removeEventListener(
+          'click',
+          tapElsewhere,
+          true,
         )
         document.removeEventListener(
           'mousedown',
@@ -644,14 +711,16 @@ export function Messages({
       const place = () => {
         const element = pill.current, host = root.current, selected = window.getSelection()
 
-        if (!element || !host || !selected?.rangeCount) {
+        // A dropped selection, or one moved into a field, leaves the pill where it was.
+        if (!element || !host || !selected?.rangeCount || selected.isCollapsed
+          || !host.contains(selected.getRangeAt(0).commonAncestorContainer)) {
           return
         }
 
         const range = selected.getRangeAt(0).getBoundingClientRect()
         const box = host.getBoundingClientRect(), half = element.offsetWidth / 2
         const center = range.left + range.width / 2 - box.left
-        element.style.top = `${range.bottom - box.top + PILL_GAP}px`
+        element.style.top = `${range.bottom - box.top}px`
         element.style.left = `${Math.max(
           half,
           Math.min(
@@ -676,6 +745,28 @@ export function Messages({
     ],
   )
 
+  // The bar sits over the foot of the conversation, just above the composer.
+  const [
+    dock,
+    setDock,
+  ] = useState<Element | null>(null)
+  useLayoutEffect(
+    () => setDock(root.current?.closest('.chat-viewport') ?? null),
+    [],
+  )
+
+  const commentSelected = () => {
+    if (selection) {
+      addComment({ quote: selection })
+    }
+  }
+
+  const quoteSelected = () => {
+    if (selection) {
+      quoteSelection({ passage: selection })
+    }
+  }
+
   const selectionKey = ({ event }: { event: KeyEvent<HTMLDivElement> }) => {
     const {
       key,
@@ -692,7 +783,7 @@ export function Messages({
     }
 
     if (key === 'Escape' && !shiftKey) {
-      event.preventDefault()
+      event.preventDefault(); setSelection(null)
       window.getSelection()?.removeAllRanges()
       event.currentTarget.closest<HTMLElement>('.thread')?.focus({ preventScroll: true })
 
@@ -791,30 +882,50 @@ export function Messages({
         <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
         {selection && (
           <div
-            className="comment-pill absolute z-5 flex items-center gap-0.5 p-0.75 border border-gold-line rounded-lg bg-surface shadow-comment-pill whitespace-nowrap [&_.button]:min-h-6.5 [&_.button]:py-0.5 [&_.button]:px-2 [&_.button]:gap-1.25 [&_.button]:text-meta [&_.button:first-child]:text-gold [&_kbd]:py-0 [&_kbd]:px-1"
+            className="comment-pill absolute z-5 mt-1.5 flex items-center gap-0.5 p-0.75 border border-gold-line rounded-lg bg-surface shadow-comment-pill whitespace-nowrap touch:mt-7 [&_.button]:min-h-6.5 [&_.button]:py-0.5 [&_.button]:px-2 [&_.button]:gap-1.25 [&_.button]:text-meta [&_.button:first-child]:text-gold [&_kbd]:py-0 [&_kbd]:px-1 touch:[&_kbd]:hidden"
             ref={pill}
-            onMouseDown={e => e.preventDefault()}
+            // A press on an offer keeps the selection and the focus, which the action then moves.
+            onPointerDown={event => event.preventDefault()}
           >
-            <Button
+            <OfferButton
               aria-label="Comment on selection"
               title="Enter, or start typing"
-              onClick={() => addComment({ quote: selection })}
+              act={commentSelected}
             >
               <Icon name="comment" size={ICON_SIZE.inline} />
               Comment
               <kbd>↵</kbd>
-            </Button>
+            </OfferButton>
             <span className="comment-pill-divider w-px self-stretch my-1 mx-px bg-line" />
-            <Button
+            <OfferButton
               aria-label="Quote selection"
               title="Shift+Enter"
-              onClick={() => quoteSelection({ passage: selection })}
+              act={quoteSelected}
             >
               <Icon name="quote" size={ICON_SIZE.inline} />
               Quote
               <kbd>⇧↵</kbd>
-            </Button>
+            </OfferButton>
           </div>
+        )}
+        {selection && dock && createPortal(
+          <div
+            className="comment-dock absolute inset-x-(--chat-inset) bottom-2 z-4 flex items-center gap-1.5 p-1.5 border border-gold-line rounded-xl bg-gold-wash [&_.button]:min-h-9 [&_.button]:shrink-0 [&_.button]:border-gold-line [&_.button]:bg-surface [&_.button]:px-3 [&_.button]:font-semibold [&_.button]:text-gold"
+            role="group"
+            aria-label="Selected text"
+            onPointerDown={event => event.preventDefault()}
+          >
+            <span className="comment-dock-quote min-w-0 flex-1 truncate pl-1.5 text-meta text-muted">“{selection.quote}”</span>
+            <OfferButton act={commentSelected}>
+              <Icon name="comment" size={ICON_SIZE.inline} />
+              Comment
+            </OfferButton>
+            <OfferButton act={quoteSelected}>
+              <Icon name="quote" size={ICON_SIZE.inline} />
+              Quote
+            </OfferButton>
+          </div>,
+          dock,
         )}
       </div>
     </TaskReferencesProvider>
