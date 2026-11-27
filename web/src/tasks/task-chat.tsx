@@ -84,7 +84,6 @@ export function TaskChat({
     setAssigning,
   ] = useState(false)
   const showRepository = !outside && !project
-  const needsRepository = showRepository && !card.agent
   const repositories = (state.projects ?? []).filter(project => !project.detached)
     .map(project => ({
       value: project.path,
@@ -470,7 +469,7 @@ export function TaskChat({
         fieldLabel="Message worker"
         placeholder="Message worker…"
         sendLabel="Send to worker"
-        unavailable={!connected || assigning || needsRepository || card.createdSeq === 0}
+        unavailable={!connected || assigning || card.createdSeq === 0}
         loadComment={thread.loadComment}
         command={async ({
           name,

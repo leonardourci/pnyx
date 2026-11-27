@@ -1,4 +1,6 @@
 import { readEvents } from '#app/event-log.ts'
+import { realpathSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { chrome } from './chrome.ts'
 import { workerLine } from '../setup/worker-log.ts'
@@ -365,6 +367,44 @@ test(
     } finally {
       held.release()
     }
+  },
+)
+
+test(
+  'a saved idea without a project starts its worker from its chat in a scratch folder of its own',
+  async () => {
+    const titan = await othrys.titan()
+    const { card } = await titan.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'idea-chat',
+        '--title',
+        'Idea from chat',
+      ],
+    })
+    const selector = await openChat({
+      titanId: titan.id,
+      taskId: card.id,
+    })
+    await chrome({
+      script: `
+      await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, 'Start on the idea');
+      await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
+      await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
+    `,
+    })
+    await titan.agent({
+      cwd: realpathSync(join(
+        process.env.OTHRYS_HOME!,
+        'runtime',
+        'tasks',
+        card.id,
+        'scratch',
+      )),
+    })
   },
 )
 

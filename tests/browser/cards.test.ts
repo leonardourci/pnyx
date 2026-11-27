@@ -1,4 +1,6 @@
 import { loadTitan } from '#app/store.ts'
+import { realpathSync } from 'node:fs'
+import { join } from 'node:path'
 import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { openTitan } from './page.ts'
@@ -1251,6 +1253,37 @@ test(
       bounded: true,
       text: `${prose}\n`,
     })
+  },
+)
+
+test(
+  'an idea starts its worker from the Ideas column without a project, in a scratch folder of its own',
+  async () => {
+    const titan = await othrys.titan()
+    await chrome({
+      script: `
+    await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/titan/${titan.id}/`)});
+    await page.wait('[data-titan-workspace="${titan.id}"] [aria-label="New task in Ideas"]');
+    await page.click('[data-titan-workspace="${titan.id}"] [aria-label="New task in Ideas"]');
+    await page.fill('[data-titan-workspace="${titan.id}"] .task-create [aria-label="Task title"]', 'Sketch an idea');
+    await page.fill('[data-titan-workspace="${titan.id}"] .task-create [aria-label="Description"]', 'Sketch the idea');
+    await page.wait('[data-titan-workspace="${titan.id}"] .task-create [aria-label="Start worker"]:not(:disabled)', 5000);
+    await page.click('[data-titan-workspace="${titan.id}"] .task-create [aria-label="Start worker"]');
+  `,
+    })
+    const task = await until({
+      what: 'the idea to start a worker',
+      check: () => Object.values(loadTitan({ titanId: titan.id }).state.cards)
+        .find(card => card.title === 'Sketch an idea' && card.agent),
+    })
+    expect(task.project).toBeUndefined()
+    expect(task.agent!.cwd).toBe(realpathSync(join(
+      process.env.OTHRYS_HOME!,
+      'runtime',
+      'tasks',
+      task.id,
+      'scratch',
+    )))
   },
 )
 
