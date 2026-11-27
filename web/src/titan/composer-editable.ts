@@ -400,26 +400,45 @@ type Part = {
   path: boolean
 } | HTMLElement
 
+// The browser may split text across several nodes, as Chrome does for each new line; they read as one run.
+const shownRuns = ({ field }: { field: HTMLElement }) => {
+  const runs: (string | ChildNode)[] = []
+
+  for (const node of field.childNodes) {
+    const previous = runs.at(-1)
+
+    if (!(node instanceof Text)) {
+      runs.push(node)
+    } else if (typeof previous === 'string') {
+      runs[runs.length - 1] = previous + node.data
+    } else if (node.data) {
+      runs.push(node.data)
+    }
+  }
+
+  return runs
+}
+
 const paintedAs = ({
-  node,
+  run,
   part,
   last,
 }: {
-  node?: ChildNode
+  run?: string | ChildNode
   part: Part
   last: boolean
 }) => {
   if (part instanceof HTMLElement) {
-    return node === part
+    return run === part
   }
 
   if (part.path) {
-    return node instanceof HTMLElement && node.dataset.composer === 'path' && node.childNodes.length === 1
-      && node.textContent === part.text
+    return run instanceof HTMLElement && run.dataset.composer === 'path' && run.childNodes.length === 1
+      && run.textContent === part.text
   }
 
   // Typing after a trailing newline leaves the browser's own newline behind, which reads the same.
-  return node instanceof Text && (node.data === part.text || (last && node.data === `${part.text}\n`))
+  return run === part.text || (last && run === `${part.text}\n`)
 }
 
 const partNode = ({ part }: { part: Part }) => {
@@ -527,12 +546,12 @@ export function paintField({
     last.text += '\n'
   }
 
-  const nodes = [...field.childNodes]
-  const painted = nodes.length === parts.length && parts.every((
+  const runs = shownRuns({ field })
+  const painted = runs.length === parts.length && parts.every((
     part,
     index,
   ) => paintedAs({
-    node: nodes[index],
+    run: runs[index],
     part,
     last: index === parts.length - 1,
   }))
