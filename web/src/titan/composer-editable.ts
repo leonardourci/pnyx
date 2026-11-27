@@ -1,13 +1,10 @@
 import { displayAt, type draftView } from './draft.ts'
 
-// The composer is one editable element: its text and one host per chip that the browser cannot edit inside.
-// A host keeps its chip's Markdown, so a host the browser puts back, as on Undo, reads as its chip again.
-// A trailing newline draws no line of its own, so the browser ends such text with one more, as this does.
-
+// A chip host keeps its Markdown, so one the browser puts back, as on Undo, reads as its chip again.
 const chipSource = ({ node }: { node: Node }) =>
   node instanceof HTMLElement ? node.dataset.source : undefined
 
-// A break at the very end draws no line either, so it too is the browser's placeholder, not a newline.
+// A break at the very end draws no line, so it is the browser's placeholder, not a newline.
 const endsField = ({
   field,
   node,
@@ -36,7 +33,7 @@ interface Measured {
   display: number
 }
 
-// Walks the field in order and reports where each point falls; a point outside the field is undefined.
+// A point outside the field stays undefined.
 function measure({
   field,
   points,
@@ -152,6 +149,7 @@ function measure({
 
   visit({ node: field })
 
+  // A trailing newline draws no line, so the browser ends such text with one more newline.
   if (!endBreak && source.endsWith('\n')) {
     source = source.slice(
       0,
@@ -176,7 +174,6 @@ function measure({
   }
 }
 
-// What the field holds now as the draft's Markdown, with its selection as display offsets of that draft.
 export function readField({ field }: { field: HTMLElement }) {
   const selection = getSelection()
   const {
@@ -249,7 +246,6 @@ const liveEnds = ({ field }: { field: HTMLElement }) => {
   } : undefined
 }
 
-// The selection's fixed end and the end that moves, as display offsets.
 export function selectionEnds({ field }: { field: HTMLElement }) {
   const live = liveEnds({ field })
 
@@ -284,7 +280,7 @@ export function selectionRange({ field }: { field: HTMLElement }) {
   }
 }
 
-// The DOM point at a display offset, inside text where there is text there.
+// A point inside text where there is text, so typing there joins it rather than starting a node.
 function pointAt({
   field,
   offset,
