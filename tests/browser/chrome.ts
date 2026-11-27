@@ -74,3 +74,17 @@ export function chrome({
 afterAll(async () => {
   await chrome({ args: ['stop'] })
 })
+
+// page.fill writes only inputs, so a composer, an editable element, gets its text as a paste would put it there.
+export const fillField = ({
+  selector,
+  text,
+}: {
+  selector: string
+  text: string
+}) => `await page.eval(() => {
+  const field = document.querySelector(${JSON.stringify(selector)});
+  field.focus();
+  getSelection().selectAllChildren(field);
+  document.execCommand(${JSON.stringify(text ? 'insertText' : 'delete')}, false, ${JSON.stringify(text)});
+});`
