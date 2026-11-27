@@ -11,6 +11,7 @@ const uploadingImages = new Set<string>()
 export function useComposerUploads({
   current,
   input,
+  composing,
   latestChange,
   write,
   notify,
@@ -18,6 +19,7 @@ export function useComposerUploads({
 }: {
   current: RefObject<string>
   input: RefObject<HTMLDivElement | null>
+  composing: RefObject<boolean>
   latestChange: RefObject<({ text }: { text: string }) => void>
   write({
     text,
@@ -75,6 +77,20 @@ export function useComposerUploads({
     line?: string
   }) => {
     if (uploading.current.signal.aborted) {
+      return
+    }
+
+    // The field reads its composed text back when the composition ends, so the image settles after that read.
+    if (composing.current && input.current) {
+      input.current.addEventListener(
+        'compositionend',
+        () => setTimeout(() => settle({
+          path,
+          line,
+        })),
+        { once: true },
+      )
+
       return
     }
 

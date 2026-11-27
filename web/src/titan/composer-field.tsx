@@ -777,6 +777,7 @@ export function ComposerField({
   const attach = useComposerUploads({
     current,
     input,
+    composing: composingText,
     latestChange,
     write,
     notify,
