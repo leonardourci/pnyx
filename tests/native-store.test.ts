@@ -171,6 +171,70 @@ test.each([
 )
 
 test(
+  'event ids keep rising across a restart that drops unsaved changes',
+  async () => {
+    const titan = await othrys.titan()
+    const eventNumber = ({ id }: { id: string }) => Number(/^evt_(\d+)/.exec(id)![1])
+    const sendMessage = ({ text }: { text: string }) => withWriter({
+      titanId: titan.id,
+      fn: ({ writer }) => {
+        const event = {
+          ...base({
+            state: writer.state,
+            cardId: '$all',
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+          }),
+          type: 'titan.message',
+          data: {
+            action: 'send',
+            text,
+            titan: 'titan',
+          },
+        } as const
+        writer.append({ event })
+
+        return event.id
+      },
+    })
+
+    await withWriter({
+      titanId: titan.id,
+      fn: ({ writer }) => {
+        for (let count = 0; count < 20; count++) {
+          const at = new Date().toISOString()
+          writer.append({
+            event: {
+              ...base({
+                state: writer.state,
+                cardId: '$all',
+                meta: {
+                  actor: 'othrys',
+                  at,
+                },
+              }),
+              type: 'titan.status',
+              data: {
+                state: 'up',
+                since: at,
+              },
+            },
+          })
+        }
+      },
+    })
+    const before = await sendMessage({ text: 'Saved after unsaved status changes' })
+
+    await othrys.restart()
+    const after = await sendMessage({ text: 'First message after the restart' })
+
+    expect(eventNumber({ id: after })).toBeGreaterThan(eventNumber({ id: before }))
+  },
+)
+
+test(
   'dispatch reads leave mirrors untouched and daemon startup repairs them from the journal',
   () => {
     const home = join(

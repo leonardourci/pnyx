@@ -7,6 +7,7 @@ import { titanFiles, taskFiles } from '#store/file-home.ts'
 import { canonical, othrysHome, taskRuntimeDir } from '#store/paths.ts'
 import { privateDir, writeDurably } from '#store/storage.ts'
 import { TitanError } from '#store/errors.ts'
+import { generatedSeq } from '#store/ids.ts'
 import type { TitanEvent, TitanState } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { assembleNative, reduceNative, nativeReferences, nativeId, type NativeState } from './native-state.ts'
@@ -424,7 +425,11 @@ export class NativeHome {
     })
     const known = positions.get(key)
     const clock = this.clocks.get(titan) ?? 0
-    const position = seq ?? known ?? clock + 1
+    // Seq is rebuilt from saved files at start; never place a saved id below the seq it was made from.
+    const position = seq ?? known ?? Math.max(
+      clock + 1,
+      generatedSeq({ id }),
+    )
     this.clocks.set(
       titan,
       Math.max(
