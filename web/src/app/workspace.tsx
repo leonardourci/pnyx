@@ -51,7 +51,7 @@ import { argument } from '#web-tasks/optimistic.ts'
 import { observedStatus } from '#web-tasks/observed-status.ts'
 import { TaskCreate,type TaskDraft } from '#web-tasks/task-create.tsx'
 import { useTaskNavigation } from '#web-tasks/task-navigation.ts'
-import { useModalTask } from '#web-tasks/presentation.ts'
+import { showTaskModal, useModalTask } from '#web-tasks/presentation.ts'
 import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
@@ -652,6 +652,22 @@ export function TitanView({
           close({ id })
 
           return Promise.resolve(false)
+        }
+
+        // A task on the phone opens full screen rather than inside its column.
+        if (phone && !modal) {
+          return open({
+            id,
+            pointer,
+            focusPanel,
+            modal: true,
+          }).then(opened => {
+            if (opened && modalTask !== id) {
+              showTaskModal({ id })
+            }
+
+            return opened
+          })
         }
 
         return open({

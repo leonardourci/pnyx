@@ -24,6 +24,8 @@ import type { Command } from '#web-app/connection.ts'
 import { cardState } from './view.ts'
 import { currentState, waitingQuestions } from '#tasks/card-status.ts'
 import { Tabs, panelId, tabId } from '#web-shared/ui/tabs.tsx'
+import { phoneLayout } from '#web-shared/card-sizing.ts'
+import { useWorkspaceViewport } from '#web-app/workspace-viewport.tsx'
 import { TaskQuestion } from './task-question.tsx'
 import { harnessName } from '#web-workers/view.ts'
 
@@ -100,6 +102,42 @@ function ContextIndex({
 
 const CHAT_ONLY_LAYOUT = 'grid-cols-1 grid-rows-1 [&>.task-chat]:border-l-0'
 const DETAILS_AND_CHAT_LAYOUT = 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-2 @task-details/task:grid-rows-1'
+const DETAILS_ONLY_LAYOUT = 'grid-cols-1 grid-rows-1 [&>.task-chat]:hidden'
+const CARD_TABS = [
+  {
+    id: 'context',
+    label: 'Context',
+  },
+  {
+    id: 'activity',
+    label: 'Activity',
+  },
+]
+// A task on the phone fills the screen and shows one of its parts at a time.
+const PHONE_CARD_TABS = [
+  CARD_TABS[0]!,
+  {
+    id: 'chat',
+    label: 'Chat',
+  },
+  CARD_TABS[1]!,
+]
+
+const cardTab = ({ id }: { id: string }) => id === 'activity' || id === 'chat' ? id : 'context'
+
+const cardLayout = ({
+  chatOnly,
+  phoneTabs,
+}: {
+  chatOnly: boolean
+  phoneTabs: boolean
+}) => {
+  if (chatOnly) {
+    return CHAT_ONLY_LAYOUT
+  }
+
+  return phoneTabs ? DETAILS_ONLY_LAYOUT : DETAILS_AND_CHAT_LAYOUT
+}
 
 export const TitanCard = memo(function TitanCard({
   card,
@@ -256,7 +294,7 @@ export const TitanCard = memo(function TitanCard({
     chatOnly: prefersChatOnly,
     toggleChatOnly,
   } = useTaskChatOnly()
-  const chatOnly = prefersChatOnly && !editing
+  const phoneTabs = phoneLayout({ width: useWorkspaceViewport().width }) && modal
   const wasModal = useRef(modal)
   useLayoutEffect(
     () => {
@@ -272,7 +310,7 @@ export const TitanCard = memo(function TitanCard({
   const [
     tab,
     setTab,
-  ] = useSessionView<'context' | 'activity'>({
+  ] = useSessionView<'context' | 'activity' | 'chat'>({
     key: taskViewKey({
       titanId,
       id: card.id,
@@ -304,7 +342,12 @@ export const TitanCard = memo(function TitanCard({
     }),
     active: selected && tab === 'activity',
   })
-  const openLayout = chatOnly ? CHAT_ONLY_LAYOUT : DETAILS_AND_CHAT_LAYOUT
+  const chatTab = phoneTabs && tab === 'chat'
+  const chatOnly = phoneTabs ? chatTab : prefersChatOnly && !editing
+  const openLayout = cardLayout({
+    chatOnly,
+    phoneTabs,
+  })
   const [
     reminding,
     setReminding,
@@ -752,23 +795,14 @@ export const TitanCard = memo(function TitanCard({
           )}
           {selected && (
             <div className="flex min-w-0 items-center justify-between gap-2">
-              {!chatOnly && !editing && (
+              {(phoneTabs || !chatOnly) && !editing && (
                 <Tabs
                   divider={false}
                   prefix={tabsId}
                   label="Card sections"
                   selected={tab}
-                  select={({ id }) => setTab(id === 'activity' ? 'activity' : 'context')}
-                  tabs={[
-                    {
-                      id: 'context',
-                      label: 'Context',
-                    },
-                    {
-                      id: 'activity',
-                      label: 'Activity',
-                    },
-                  ]}
+                  select={({ id }) => setTab(cardTab({ id }))}
+                  tabs={phoneTabs ? PHONE_CARD_TABS : CARD_TABS}
                 />
               )}
               <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -781,13 +815,15 @@ export const TitanCard = memo(function TitanCard({
                     onClick={toggleChildren}
                   />
                 )}
-                <IconButton
-                  icon={chatOnly ? 'summary_show' : 'summary_hide'}
-                  label={chatOnly ? 'Show task summary' : 'Focus on chat'}
-                  aria-pressed={chatOnly}
-                  disabled={!!editing}
-                  onClick={toggleChatOnly}
-                />
+                {!phoneTabs && (
+                  <IconButton
+                    icon={chatOnly ? 'summary_show' : 'summary_hide'}
+                    label={chatOnly ? 'Show task summary' : 'Focus on chat'}
+                    aria-pressed={chatOnly}
+                    disabled={!!editing}
+                    onClick={toggleChatOnly}
+                  />
+                )}
               </div>
             </div>
           )}

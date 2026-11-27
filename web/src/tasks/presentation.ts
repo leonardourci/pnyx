@@ -224,6 +224,23 @@ export function useModalTask({ titanId }: { titanId: string }) {
   )
 }
 
+export function showTaskModal({ id }: { id: string }) {
+  const url = new URL(location.href)
+  url.searchParams.set(
+    'task',
+    id,
+  )
+  history.pushState(
+    {
+      ...history.state,
+      othrysTaskModal: id,
+    },
+    '',
+    url,
+  )
+  dispatchEvent(new Event(TASK_MODAL_CHANGED))
+}
+
 export function useTaskModal({
   id,
   titanId,
@@ -235,22 +252,7 @@ export function useTaskModal({
 
   return {
     modal,
-    showModal: () => {
-      const url = new URL(location.href)
-      url.searchParams.set(
-        'task',
-        id,
-      )
-      history.pushState(
-        {
-          ...history.state,
-          othrysTaskModal: id,
-        },
-        '',
-        url,
-      )
-      dispatchEvent(new Event(TASK_MODAL_CHANGED))
-    },
+    showModal: () => showTaskModal({ id }),
     closeModal: () => {
       if (history.state?.othrysTaskModal === id) {
         history.back()

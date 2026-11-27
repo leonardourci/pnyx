@@ -23,12 +23,13 @@ export function TaskCardModal({
     <Dialog
       title={title}
       layoutId={layoutId}
-      className="task-modal max-h-none! max-w-none! overflow-visible!"
+      className="task-modal max-h-none! max-w-none! overflow-visible! max-phone:m-0 max-phone:h-dvh! max-phone:w-screen! max-phone:rounded-none max-phone:border-0 max-phone:pt-safe-top max-phone:pb-safe-bottom"
       style={runtimeStyle(modal.size)}
       close={close}
     >
       {children}
       <Resize
+        className="max-phone:hidden"
         label="Resize task modal width"
         value={modal.size.width}
         min={modal.minimum.width}
@@ -43,6 +44,7 @@ export function TaskCardModal({
         })}
       />
       <Resize
+        className="max-phone:hidden"
         label="Resize task modal height"
         axis="y"
         value={modal.size.height}
