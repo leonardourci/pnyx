@@ -11,6 +11,7 @@ import { slashState,type SlashState } from './view.ts'
 import { useFolders } from '#web-projects/folders.ts'
 import type { FolderListing } from '#projects/folders.ts'
 import { SuggestionPicker } from '#web-shared/ui/suggestion-picker.tsx'
+import { useStableActions } from '#web-shared/stable.ts'
 import { columnLook } from '#web-tasks/view.ts'
 import { filterRows,prepareRow } from '#titan/suggestion-matches.ts'
 import { useDeferredValue,useEffect,useLayoutEffect,useImperativeHandle,useMemo,useRef,useState,type KeyboardEvent,type Ref } from 'react'
@@ -683,10 +684,12 @@ export function ComposerField({
     })
   }
 
-  const latestDeleteChipBeside = useRef(deleteChipBeside)
-  latestDeleteChipBeside.current = deleteChipBeside
-  const latestStepHistory = useRef(stepHistory)
-  latestStepHistory.current = stepHistory
+  const editActions = useStableActions({
+    actions: {
+      deleteChipBeside,
+      stepHistory,
+    },
+  })
   useEffect(
     () => {
       const field = input.current
@@ -699,7 +702,7 @@ export function ComposerField({
         const forward = event.inputType === 'deleteContentForward'
         const deletes = forward || event.inputType === 'deleteContentBackward'
 
-        if (deletes && latestDeleteChipBeside.current({ forward })) {
+        if (deletes && editActions.deleteChipBeside({ forward })) {
           event.preventDefault()
 
           return
@@ -707,7 +710,7 @@ export function ComposerField({
 
         if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
           event.preventDefault()
-          latestStepHistory.current({ back: event.inputType === 'historyUndo' })
+          editActions.stepHistory({ back: event.inputType === 'historyUndo' })
 
           return
         }
@@ -795,9 +798,13 @@ export function ComposerField({
     [projectRequest],
   )
 
-  const chipLook =({ chip }: { chip: PlacedChip }) => {
+  const chipLook = ({ chip }: { chip: PlacedChip }) => {
     if (chip.kind === 'task') {
       return taskLook({ reference: taskReferences[chip.value] })
+    }
+
+    if (chip.kind !== 'column') {
+      return undefined
     }
 
     const look = columnLook()
@@ -808,7 +815,15 @@ export function ComposerField({
     }
   }
 
-  const openChip = ({ chip }: { chip: PlacedChip }) => {
+  const currentChip = ({ key }: { key: string }) => hosts.find(placed => placed.key === key)?.chip
+
+  const openChip = ({ key }: { key: string }) => {
+    const chip = currentChip({ key })
+
+    if (!chip) {
+      return
+    }
+
     if (chip.kind === 'task') {
       openTask({ id: chip.value })
     } else if (chip.kind === 'image' && !isPendingImage({ path: chip.value })) {
@@ -874,7 +889,7 @@ export function ComposerField({
   } = useComposerUploads({
     current,
     input,
-    composing: composingText,
+    composingText,
     latestChange,
     history,
     write,
@@ -929,7 +944,13 @@ export function ComposerField({
     return true
   }
 
-  const removeCard = ({ chip }: { chip: PlacedChip }) => {
+  const removeCard = ({ key }: { key: string }) => {
+    const chip = currentChip({ key })
+
+    if (!chip) {
+      return
+    }
+
     write(removeChip({
       text: draft,
       chip,
@@ -1327,9 +1348,9 @@ export function ComposerField({
             chip={chip}
             progress={uploads[chip.value]}
             labelColors={labelColors}
-            look={chip.kind === 'task' || chip.kind === 'column' ? chipLook({ chip }) : undefined}
-            open={() => openChip({ chip })}
-            remove={() => removeCard({ chip })}
+            look={chipLook({ chip })}
+            open={() => openChip({ key })}
+            remove={() => removeCard({ key })}
           />,
           host,
           key,

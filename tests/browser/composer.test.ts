@@ -106,7 +106,7 @@ test(
 )
 
 test(
-  'arrows step over a chip in one press each way, Shift+arrow selects it whole, Backspace or Delete beside it removes it, and an @ right after a chip starts a mention that the next chip ends',
+  'arrows step over a chip in one press each way, Shift+arrow selects it whole, Backspace, Delete or its × removes it even after typing before it, an @ right after a chip starts a mention that the next chip ends, and a / there starts a command',
   async () => {
     const titan = await othrys.titan()
     const page = await openTitan({
@@ -207,6 +207,21 @@ test(
       await press({ key })
     }
 
+    await composer.fill('ab [image: /tmp/shot.png] cd')
+    await composer.press('Home')
+    await page.keyboard.type('x')
+    await composer.getByRole(
+      'button',
+      {
+        name: 'Remove Image 1',
+        exact: true,
+      },
+    ).click()
+    steps.push([
+      'Remove Image 1',
+      await textAroundCaret(),
+    ])
+
     await composer.fill('[@Review](othrys-column:review)[@Ideas](othrys-column:ideas) x [@Done](othrys-column:done)')
     await composer.press('Home')
 
@@ -274,6 +289,10 @@ test(
         'ab |cd',
       ],
       [
+        'Remove Image 1',
+        'xab |cd',
+      ],
+      [
         'ArrowRight',
         '#|# x #',
       ],
@@ -302,11 +321,19 @@ test(
     await mentions.waitFor()
     await composer.press('ArrowRight')
     await mentions.waitFor({ state: 'detached' })
+    await page.keyboard.type('/')
+    await page.getByRole(
+      'listbox',
+      {
+        name: 'Skills and commands',
+        exact: true,
+      },
+    ).waitFor()
   },
 )
 
 test(
-  'what the composer sends keeps every chip as its Markdown through copy, paste, cut, Undo and new lines; Undo reselects a cut, closes the @ picker and takes back a whole uploaded image',
+  'what the composer sends keeps every chip as its Markdown through copy, paste, cut, Undo, Redo and new lines; Undo reselects a cut, closes the @ picker and takes back a whole uploaded image',
   async () => {
     const titan = await othrys.titan()
     othrys.claude.plan({
@@ -338,6 +365,12 @@ test(
 
     await mentions.waitFor({ state: 'detached' })
     expect(await composer.textContent()).toBe('')
+    await page.keyboard.press('ControlOrMeta+Shift+z')
+    expect(await composer.textContent()).toBe('hello')
+    await page.keyboard.press('Shift+Enter')
+    await page.keyboard.press('Shift+Enter')
+    await page.keyboard.press('ControlOrMeta+z')
+    expect(await composer.textContent()).toBe('hello\n\n')
 
     await composer.evaluate(field => {
       const pasted = new DataTransfer()

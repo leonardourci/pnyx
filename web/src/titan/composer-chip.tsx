@@ -48,6 +48,14 @@ function DraftCard({
   )
 }
 
+const badgeTitle = ({ chip }: { chip: PlacedChip }) => {
+  if (chip.kind === 'project') {
+    return chip.value
+  }
+
+  return chip.kind === 'task' ? 'Open task' : undefined
+}
+
 export function ComposerChip({
   chip,
   progress,
@@ -83,12 +91,11 @@ export function ComposerChip({
   } else {
     token = (
       <ReferenceBadge
-        // eslint-disable-next-line othrys/object-params -- React owns the pointer event signature.
         onMouseDown={event => event.preventDefault()}
         icons={look?.icons ?? []}
         className={look?.tone ?? ''}
         data-kind={chip.kind}
-        title={chip.kind === 'project' ? chip.value : chip.kind === 'task' ? 'Open task' : undefined}
+        title={badgeTitle({ chip })}
         onClick={open}
       >
         {chipText({ chip })}

@@ -398,7 +398,7 @@ const paintedAs = ({
       && run.textContent === part.text
   }
 
-  const keepsBrowserEndNewline = last && run === `${part.text}\n`
+  const keepsBrowserEndNewline = last && !part.text.endsWith('\n') && run === `${part.text}\n`
 
   return run === part.text || keepsBrowserEndNewline
 }

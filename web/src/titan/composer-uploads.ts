@@ -22,7 +22,7 @@ type Write = ({
 export function useComposerUploads({
   current,
   input,
-  composing,
+  composingText,
   latestChange,
   history,
   write,
@@ -32,7 +32,7 @@ export function useComposerUploads({
 }: {
   current: RefObject<string>
   input: RefObject<HTMLDivElement | null>
-  composing: RefObject<boolean>
+  composingText: RefObject<boolean>
   latestChange: RefObject<({ text }: { text: string }) => void>
   history: RefObject<UndoHistory>
   write: Write
@@ -88,7 +88,7 @@ export function useComposerUploads({
       return
     }
 
-    if (composing.current) {
+    if (composingText.current) {
       waitingForComposition.current.push(() => settle({
         path,
         line,
