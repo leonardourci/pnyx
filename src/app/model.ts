@@ -51,6 +51,11 @@ export type TitanChange = EventBase & (
     data: Omit<import('#tasks/model.ts').WorkerLine, 'at'>
   }
   | {
+    // The same worker.log history found under another inode or device.
+    type: 'task.worker-log'
+    data: Pick<import('#tasks/model.ts').WorkerLine, 'identity' | 'off' | 'gen' | 'tail'>
+  }
+  | {
     type: 'task.tools-applied'
     data: { revision: string }
   }
@@ -434,6 +439,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.retention',
   'titan.memory',
   'task.worker-line',
+  'task.worker-log',
   'task.branch',
   'task.tools',
   'task.tools-applied',
