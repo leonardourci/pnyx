@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { base } from '#app/command-meta.ts'
 import type { TitanState } from '#app/model.ts'
-import { emptyTitan, replayOwned } from '#app/reducer.ts'
+import { emptyTitan, reduce, replayOwned } from '#app/reducer.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { applySessionMove } from '#workers/reduce.ts'
 import { applySessionFacts } from '#workers/session-facts.ts'
@@ -257,6 +257,68 @@ test(
       ],
     })
     expect(state.sessions?.['codex:titan']?.titanTurn?.finishedThrough).toBe(finished)
+  },
+)
+
+test(
+  'a session observation leaves the cards of other sessions untouched',
+  () => {
+    const at = '2026-01-01T00:00:00.000Z'
+    let state = emptyTitan()
+
+    for (const [
+      index,
+      key,
+    ] of [
+        'observed',
+        'other',
+      ].entries()) {
+      state = reduce({
+        state,
+        event: {
+          v: EVENT_VERSION,
+          seq: index + 1,
+          id: `create:${key}`,
+          at,
+          actor: 'cli',
+          cardId: key,
+          type: 'task.edited',
+          data: {
+            key,
+            title: key,
+          },
+        },
+      })
+    }
+
+    const observe = ({ seq }: { seq: number }) => reduce({
+      state,
+      event: {
+        v: EVENT_VERSION,
+        seq,
+        id: `observed:${seq}`,
+        at,
+        actor: 'othrys',
+        cardId: 'observed',
+        type: 'session.observed',
+        data: {
+          task: 'observed',
+          fields: {
+            agent: {
+              provider: 'claude',
+              sessionId: 'observed-session',
+            },
+            activity: 'working',
+          },
+        },
+      },
+    })
+    state = observe({ seq: 3 })
+    const next = observe({ seq: 4 })
+
+    expect(next.sessions?.['claude:observed-session']?.taskId).toBe('observed')
+    expect(next.cards.observed).not.toBe(state.cards.observed)
+    expect(next.cards.other).toBe(state.cards.other)
   },
 )
 

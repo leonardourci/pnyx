@@ -451,7 +451,13 @@ export function applySessionFacts({
     })
   }
 
-  refreshTasks({ state })
+  refreshTasks({
+    state,
+    ids: [
+      task?.id,
+      assigned?.id,
+    ],
+  })
 }
 
 export function sessionFields({
