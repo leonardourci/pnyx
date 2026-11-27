@@ -28,6 +28,7 @@ import { askHost } from './server-state.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
 import { createCommand } from '#workers/create.ts'
+import { continueInProject } from '#workers/project-attach.ts'
 import { workerGap } from '#tasks/card-status.ts'
 import { taskUpdates } from '#tasks/updates-page.ts'
 import { taskFields, attentionLabel, cardRow, taskHistory, type TaskField } from '#tasks/cli.ts'
@@ -918,7 +919,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       what: '--project <name|path>',
     })
 
-    return await commit({
+    const attached = await commit({
       titanId,
       meta: m,
       intent: {
@@ -951,6 +952,15 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           })
       },
     })
+
+    return {
+      ...attached,
+      ...await continueInProject({
+        titanId,
+        task: ref,
+        meta: m,
+      }),
+    }
   }
 
   if (action === 'hide-after') {
