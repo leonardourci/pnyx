@@ -14,3 +14,10 @@ export function freeId({
 
   return id
 }
+
+export function generatedSeq({ id }: { id: string }): number {
+  const generated = /^evt_(\d+)(?:_\d+)?$/.exec(id)
+  const seq = Number(generated?.[1])
+
+  return Number.isSafeInteger(seq) ? seq : 0
+}
