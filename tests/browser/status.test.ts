@@ -117,7 +117,7 @@ const turns = [
 ]
 
 test(
-  'hook activity updates the card and chat without adding event history',
+  'hook activity updates the card and chat and saves only its turn changes',
   async () => {
     const titan = await othrys.titan()
     await titan.owner({
@@ -174,14 +174,34 @@ test(
       label: 'Idle',
     })
     await observe({ activity: 'finished' })
-    const noise = readEvents({
+    const saved = readEvents({
       titanId: titan.id,
       types: [
         'session.observed',
         'card.observed',
       ],
-    }).map(event => ({ type: event.type }))
-    expect(noise).toEqual([])
+    }).map(event => {
+      const fields = event.type === 'session.observed' && 'fields' in event.data ? event.data.fields : undefined
+
+      return {
+        type: event.type,
+        activity: fields?.activity,
+      }
+    })
+    expect(saved).toEqual([
+      {
+        type: 'session.observed',
+        activity: 'finished',
+      },
+      {
+        type: 'session.observed',
+        activity: 'working',
+      },
+      {
+        type: 'session.observed',
+        activity: 'finished',
+      },
+    ])
     expect(readEvents({
       titanId: titan.id,
       types: ['task.created'],

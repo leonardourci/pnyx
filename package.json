@@ -32,6 +32,7 @@
     "verify": "pnpm run lint && pnpm test",
     "deslop": "deslop run",
     "refresh-agent-fixtures": "node scripts/fixtures/refresh-agent-fixtures.ts",
+    "migrate-session-turns": "node --conditions=source scripts/migrations/save-session-turns.ts",
     "lint:css": "biome lint . --error-on-warnings"
   },
   "dependencies": {

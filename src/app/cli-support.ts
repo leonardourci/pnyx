@@ -516,13 +516,35 @@ export function clip({
   )}… (truncated, ${text.length} chars total)` : text
 }
 
+function sessionSummary({ event }: { event: Extract<TitanEvent, { type: 'session.observed' }> }): string {
+  if (!('fields' in event.data)) {
+    return `Session ${event.data.session} activity updated`
+  }
+
+  const activity = event.data.fields.activity ?? 'updated'
+  const run = event.data.run
+
+  if (!run) {
+    return `Session ${event.data.fields.agent.sessionId}: ${activity}`
+  }
+
+  const agent = [
+    run.harness,
+    run.model,
+    run.account && `on ${run.account}`,
+  ].filter(Boolean).join(' ')
+
+  return `Turn ${activity} by ${agent}, session ${run.session}`
+}
+
 function summary({ event }: { event: TitanEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
     case 'task.branch': return `Branch ${event.data.repository}:${event.data.branch}`
-    case 'session.observed': return 'fields' in event.data ? `Session ${event.data.fields.agent.sessionId}: ${event.data.fields.activity ?? 'updated'}` : `Session ${event.data.session} activity updated`
+    case 'session.observed': return sessionSummary({ event })
     case 'task.worker-line': return `${event.data.code}: ${event.data.text}`
+    case 'task.worker-log': return `worker.log found under file ${event.data.identity}`
     case 'task.wait-resumed': return event.data.message.text
     case 'titan.context-delivered': return 'Context notes delivered to Titan'
     case 'diagnostic.retry': return `Message recovery attempt ${event.data.number}: ${event.data.status}`

@@ -27,12 +27,20 @@ export interface SourceRef {
   observedAt?: string
 }
 
+export interface SessionRun {
+  session: string
+  harness: string
+  model?: string
+  account?: string
+  transcriptPos?: number
+}
+
 export type TitanChange = EventBase & (
   | {
     type: 'session.observed'
     data: {
       key?: string
-      cursor?: NonNullable<AgentSession['activityCursor']>
+      run?: SessionRun
       fields: import('#tasks/model.ts').PushFields & { agent: import('#workers/model.ts').AgentRef }
       before?: import('#tasks/model.ts').PushFields
       source?: SourceRef
@@ -49,6 +57,10 @@ export type TitanChange = EventBase & (
   | {
     type: 'task.worker-line'
     data: Omit<import('#tasks/model.ts').WorkerLine, 'at'>
+  }
+  | {
+    type: 'task.worker-log'
+    data: Pick<import('#tasks/model.ts').WorkerLine, 'identity' | 'off' | 'gen' | 'tail'>
   }
   | {
     type: 'task.tools-applied'
@@ -434,6 +446,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.retention',
   'titan.memory',
   'task.worker-line',
+  'task.worker-log',
   'task.branch',
   'task.tools',
   'task.tools-applied',

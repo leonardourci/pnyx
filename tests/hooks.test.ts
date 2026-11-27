@@ -725,17 +725,10 @@ test(
         )
       },
     })
-    expect(await sessionFacts({ session: 'outside-1' })).toMatchObject({
-      activity: 'working',
-      attention: [],
-      turnStartedAt: nextTurnAt,
-      turnEndedSeq: expect.any(Number),
-      activityCursor: { pos: expect.any(Number) },
-    })
-    expect(await sessionFacts({ session: 'settings-only' })).toMatchObject({ activity: 'finished' })
-    expect(await sessionFacts({ session: 'legacy-clock' })).toMatchObject({ activity: 'finished' })
     const recovered = await sessionFacts({ session: 'outside-1' })
-    expect(recovered.activityCursor.pos).toBe(Buffer.byteLength(readFileSync(base.transcript_path)))
+    expect(recovered.turnStartedAt).not.toBe(nextTurnAt)
+    expect(await sessionFacts({ session: 'settings-only' })).toBeUndefined()
+    expect(await sessionFacts({ session: 'legacy-clock' })).toBeUndefined()
     await othrys.restart()
     expect(await sessionFacts({ session: 'outside-1' })).toMatchObject(recovered)
     await hook({
@@ -1276,8 +1269,14 @@ test(
         '--full',
       ],
     })
-    expect(history.events).not.toContainEqual(expect.objectContaining({
+    expect(history.events).toContainEqual(expect.objectContaining({
       type: 'session.observed',
+      data: expect.objectContaining({
+        run: expect.objectContaining({
+          session: 'claude-code:root-agent/child-agent',
+          harness: 'claude-code',
+        }),
+      }),
     }))
     await hook({
       event: 'SubagentStop',
@@ -1359,7 +1358,28 @@ test(
             sessionId,
             transcriptPath: path,
           },
+          terminal: { tty: '/dev/ttys99999' },
         }),
+      })
+      await titan.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--key',
+          sessionId!,
+          '--title',
+          sessionId!,
+        ],
+      })
+      await titan.owner({
+        args: [
+          'task',
+          'attach',
+          sessionId!,
+          '--session',
+          `claude:${sessionId}`,
+        ],
       })
     }
 
@@ -1455,12 +1475,10 @@ test(
     expect.soft(sessions).toContainEqual(expect.objectContaining({
       id: 'claude:rotated-recovery',
       activity: 'finished',
-      activityCursor: expect.objectContaining({ pos: Buffer.byteLength(readFileSync(rotated)) }),
     }))
     const bound = sessions.find((session: { id: string }) => session.id === 'claude:rebound-recovery')
     expect(bound.agent.transcriptPath).toBe(replacement)
     expect.soft(bound.activity).toBe('working')
-    expect.soft(bound.activityCursor?.source).not.toBe(rebound)
   },
 )
 

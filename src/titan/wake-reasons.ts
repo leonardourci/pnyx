@@ -485,7 +485,7 @@ export function eventReasons({
   event: TitanEvent
 }): WakeReason[] {
   if (event.type === 'session.observed') {
-    if (!('fields' in event.data) || event.data.cursor) {
+    if (!('fields' in event.data)) {
       return []
     }
 

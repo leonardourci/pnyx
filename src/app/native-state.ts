@@ -746,6 +746,7 @@ function factType({ event }: { event: TitanEvent }): string {
     case 'titan.project': return 'project'
     case 'titan.memory': return 'memory'
     case 'titan.view': return 'layout'
+    case 'session.observed': return 'activity'
     default: return event.type.replace(
       /^(task|card|titan)\./,
       '',

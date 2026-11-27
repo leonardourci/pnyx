@@ -411,6 +411,10 @@ test(
       partial: 'Resumed work is still running',
     })
     onTestFinished(unexpectedResume.release)
+    const saved = readEvents({
+      titanId: titan.id,
+      ids: [id],
+    }).length
     await othrys.restart()
     expect((await fullTask()).activity).toBe('finished')
     await titan.owner({
@@ -421,7 +425,7 @@ test(
     expect(readEvents({
       titanId: titan.id,
       ids: [id],
-    })).toEqual([])
+    })).toHaveLength(saved)
   },
 )
 
