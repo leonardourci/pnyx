@@ -596,11 +596,13 @@ export function ComposerField({
       end,
     } = selectionRange({ field: element })
     const at = forward ? start : start - 1
-    const chip = start === end ? view.chips.find(placed => placed.from === at) : undefined
+    const text = current.current
+    const chips = start === end ? draftView({ text }).chips : []
+    const chip = chips.find(placed => placed.from === at)
 
     if (chip) {
       write(removeChip({
-        text: draft,
+        text,
         chip,
       }))
     }
