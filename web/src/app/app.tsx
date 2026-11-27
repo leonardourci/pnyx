@@ -46,10 +46,6 @@ export function App() {
   const duration = useMotionDuration()
   const titan = useTitan()
 
-  const [
-    polisFilter,
-    filterPolis,
-  ] = useState<string | undefined>()
   const current = titan.navigation.titanId
   useComposerShortcut({ titanId: current })
   const axis = useRef<HTMLDivElement>(null)
@@ -105,22 +101,6 @@ export function App() {
   ) =>
     orderedTitans.findIndex(item => item.id === a.navigation.titanId)
     - orderedTitans.findIndex(item => item.id === b.navigation.titanId))
-
-  const currentPolis = orderedTitans.find(item => item.id === current)?.polis ?? 'shared'
-  const shownFilter = currentPolis === polisFilter ? polisFilter : undefined
-  useEffect(
-    () => {
-      if (polisFilter && currentPolis !== polisFilter) {
-        filterPolis(undefined)
-      }
-    },
-    [
-      currentPolis,
-      polisFilter,
-    ],
-  )
-  const visibleWorkspaces = workspaces.filter(workspace => !shownFilter
-    || (orderedTitans.find(item => item.id === workspace.navigation.titanId)?.polis ?? 'shared') === shownFilter)
 
   const drop = ({ preview }: { preview: SortMove }) => {
     const commit = async () => {
@@ -302,7 +282,7 @@ export function App() {
     commit().catch((error: Error) => setRootError(error.message))
   }
 
-  const visibleWorkspaceIds = visibleWorkspaces.map(workspace => workspace.navigation.titanId)
+  const visibleWorkspaceIds = workspaces.map(workspace => workspace.navigation.titanId)
   const workspaceOrder = visibleWorkspaceIds.join(':')
 
   useLayoutEffect(
@@ -613,22 +593,6 @@ export function App() {
     ],
   )
 
-  const choosePolis = async ({ polis }: { polis?: string }) => {
-    const destination = orderedTitans.find(item => (item.polis ?? 'shared') === polis)
-
-    if (polis && currentPolis !== polis && destination) {
-      try {
-        await navigate({ url: `/titan/${encodeURIComponent(destination.id)}/` })
-      } catch (error) {
-        rootNotify({ text: error instanceof Error ? error.message : String(error) })
-
-        return
-      }
-    }
-
-    filterPolis(polis)
-  }
-
   return (
     <MotionConfig
       reducedMotion={duration === 0 ? 'always' : 'user'}
@@ -648,7 +612,7 @@ export function App() {
             <motion.div
               onBeforeLayoutMeasure={() => anchor.current?.()}
               ref={axis}
-              className="workspace-axis group/axis flex h-dvh snap-x snap-proximity scroll-px-3 items-stretch gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-3 pt-workspace-axis-top pb-3 data-[dragging]:cursor-grabbing data-[page=settings]:overflow-hidden motion-reduce:scroll-auto max-phone:scroll-px-1.5 max-phone:gap-2 max-phone:px-1.5 max-phone:pt-workspace-axis-phone-top max-phone:pb-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! [@media(pointer:coarse)]:[&.lenis]:snap-x"
+              className="workspace-axis group/axis flex h-dvh snap-x snap-proximity scroll-px-3 items-stretch gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-3 pt-workspace-axis-top pb-3 data-[dragging]:cursor-grabbing data-[page=settings]:overflow-hidden motion-reduce:scroll-auto max-phone:scroll-px-1.5 max-phone:gap-2 max-phone:px-1.5 max-phone:pt-workspace-axis-phone-top max-phone:pb-workspace-axis-phone-bottom [&.lenis]:snap-none [&.lenis]:scroll-auto [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! [@media(pointer:coarse)]:[&.lenis]:snap-x"
               data-page={titan.navigation.page}
               aria-label="Titans"
             >
@@ -662,11 +626,9 @@ export function App() {
                   </StatusNotice>
                 )}
                 <SortGroup id="titan-axis" items={visibleWorkspaceIds}>
-                  {visibleWorkspaces.map(workspace => (
+                  {workspaces.map(workspace => (
                     <ProfileSurface key={workspace.viewKey} name="workspace" titanId={workspace.navigation.titanId}>
                       <WorkspaceInstance
-                        polisFilter={shownFilter}
-                        filterPolis={choosePolis}
                         active={workspace.navigation.titanId === current}
                         navigatePage={titan.navigate}
                         navigate={navigate}

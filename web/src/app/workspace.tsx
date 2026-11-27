@@ -108,16 +108,12 @@ export function TitanView({
   edits,
   preview,
   navigatePage,
-  polisFilter,
-  filterPolis,
 }: {
   titan: ReturnType<typeof useTitan>
   navigatePage: ReturnType<typeof useTitan>['navigate']
   active: boolean
   edits: ReturnType<typeof useTitanEdits>
   preview: SortMove | null
-  polisFilter?: string
-  filterPolis({ polis }: { polis?: string }): void
 }) {
   const {
     state,
@@ -1093,8 +1089,6 @@ export function TitanView({
           )}
         >
           <TitanChips
-            polisFilter={polisFilter}
-            filterPolis={filterPolis}
             titans={edits.titans}
             current={navigation.titanId}
             navigate={navigate}

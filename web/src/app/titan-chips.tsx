@@ -1,5 +1,4 @@
 import { Fragment } from 'react'
-import { Chip } from '#web-shared/ui/chip.tsx'
 import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import type { TitanSummary } from '#app/server-titans.ts'
@@ -13,14 +12,10 @@ export function TitanChips({
   current,
   navigate,
   createTitan,
-  polisFilter,
-  filterPolis,
 }: {
   titans: TitanSummary[]
   current: string
   navigate({ url }: { url: string }): Promise<void>
-  polisFilter?: string
-  filterPolis({ polis }: { polis?: string }): void
   createTitan(): unknown
 }) {
   return (
@@ -32,9 +27,8 @@ export function TitanChips({
         ) => {
           const polis = titan.polis ?? 'shared'
           const previousPolis = titans[index - 1]?.polis ?? 'shared'
-          const startsPolis = index === 0 || previousPolis !== polis
-          const selected = polisFilter === polis
-          const nextFilter = selected ? undefined : polis
+          // Titans keep their polis order; a wider gap marks where the next polis starts.
+          const startsPolis = index > 0 && previousPolis !== polis
           const waiting = titan.asks ?? titan.projects.reduce(
             (
               count,
@@ -45,15 +39,7 @@ export function TitanChips({
 
           return (
             <Fragment key={titan.id}>
-              {startsPolis && (
-                <Chip
-                  variant="settings"
-                  aria-label={`Filter polis ${polis}`}
-                  aria-pressed={selected}
-                  onClick={() => filterPolis({ polis: nextFilter })}
-                >{polis}
-                </Chip>
-              )}
+              {startsPolis && <span aria-hidden className="polis-gap w-2.5 flex-none" />}
               <SortableChip
                 item={{
                   id: titan.id,
@@ -66,13 +52,7 @@ export function TitanChips({
                 data-sort-kind="titan"
                 data-sort-scope="titans"
                 aria-current={titan.id === current ? 'page' : undefined}
-                onClick={() => {
-                  if (polisFilter !== polis) {
-                    filterPolis({})
-                  }
-
-                  return navigate({ url: `/titan/${encodeURIComponent(titan.id)}/` })
-                }}
+                onClick={() => navigate({ url: `/titan/${encodeURIComponent(titan.id)}/` })}
               >
                 <TitanLabel name={titan.name} icon={titan.icon} size={ICON_SIZE.control} />
                 <WaitingCount count={waiting} />
