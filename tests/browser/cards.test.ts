@@ -1285,7 +1285,10 @@ test(
     await page.wait('[data-titan-workspace="${titan.id}"] [aria-label="New task in Ideas"]');
     await page.click('[data-titan-workspace="${titan.id}"] [aria-label="New task in Ideas"]');
     await page.fill('[data-titan-workspace="${titan.id}"] .task-create [aria-label="Task title"]', 'Sketch an idea');
-    await page.fill('[data-titan-workspace="${titan.id}"] .task-create [aria-label="Description"]', 'Sketch the idea');
+    ${fillComposer({
+      selector: `[data-titan-workspace="${titan.id}"] .task-create [aria-label="Description"]`,
+      text: 'Sketch the idea',
+    })}
     await page.wait('[data-titan-workspace="${titan.id}"] .task-create [aria-label="Start worker"]:not(:disabled)', 5000);
     await page.click('[data-titan-workspace="${titan.id}"] .task-create [aria-label="Start worker"]');
   `,

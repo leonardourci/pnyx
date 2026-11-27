@@ -397,7 +397,10 @@ test(
     })
     await chrome({
       script: `
-      await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, 'Start on the idea');
+      ${fillComposer({
+        selector: `${selector} [aria-label="Message worker"]`,
+        text: 'Start on the idea',
+      })}
       await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
       await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
     `,
