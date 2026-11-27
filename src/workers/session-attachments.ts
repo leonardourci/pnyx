@@ -123,6 +123,21 @@ export function assignDefined<T extends object>({
   }
 }
 
+// Sessions of no task and no Titan, now or at their start, are never saved nor read at a restart.
+export function memoryOnlySession({
+  state,
+  session,
+}: {
+  state: TitanState
+  session: AgentSession
+}): boolean {
+  const owner = session.taskId ?? session.originCardId
+  const titanSession = state.titanSessions?.includes(session.id) === true
+    || state.config?.titan.session === rootSessionId({ agent: session.agent })
+
+  return state.cards[owner] === undefined && !titanSession
+}
+
 export function sessionTask({
   state,
   agent,

@@ -27,12 +27,21 @@ export interface SourceRef {
   observedAt?: string
 }
 
+// The agent that ran a turn, saved on each turn start, resume and end, with the transcript position seen then.
+export interface SessionRun {
+  session: string
+  harness: string
+  model?: string
+  account?: string
+  pos?: number
+}
+
 export type TitanChange = EventBase & (
   | {
     type: 'session.observed'
     data: {
       key?: string
-      cursor?: NonNullable<AgentSession['activityCursor']>
+      run?: SessionRun
       fields: import('#tasks/model.ts').PushFields & { agent: import('#workers/model.ts').AgentRef }
       before?: import('#tasks/model.ts').PushFields
       source?: SourceRef

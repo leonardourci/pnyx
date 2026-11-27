@@ -5,11 +5,11 @@ import { applyDecision } from '#app/decision.ts'
 import { readTranscript } from './transcript-read.ts'
 import { readTranscriptRecord } from './transcripts.ts'
 import { resumeMessage } from './host.ts'
-import { decideSessionFacts } from './session-facts.ts'
+import { decideSessionFacts, turnChange } from './session-facts.ts'
 import { acknowledgeSteering, recordSteeringAttempt } from './inbox.ts'
 import { readSteeringMessages } from './inbox-notice.ts'
 import { steeringClaim, steeringWorkerIdentity } from './steering.ts'
-import { cardSessionId } from './session-attachments.ts'
+import { cardSessionId, memoryOnlySession } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
 import type { TranscriptRecord } from './provider.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
@@ -17,20 +17,25 @@ import { compactCommand } from './compact-command.ts'
 
 const ACTIVITY_READ_BYTES = 1024 * 1024
 
+// What a restart lost is only what each session wrote after its last saved turn record.
 export async function restoreSessionActivity({ titanId }: { titanId: string }): Promise<void> {
   const state = loadTitan({ titanId }).state
 
   for (const session of Object.values(state.sessions ?? {})) {
     const path = session.agent.transcriptPath
 
-    if (!path) {
+    if (!path || memoryOnlySession({
+      state,
+      session,
+    })) {
       continue
     }
 
+    // An empty identity never counts as a replaced file; a transcript shorter than the position restarts it.
     let cursor = {
       source: path,
       identity: '',
-      pos: 0,
+      pos: session.transcriptPos ?? 0,
     }
     let through: number | undefined
     let pending = true
@@ -66,6 +71,9 @@ export async function restoreSessionActivity({ titanId }: { titanId: string }): 
             if (!bound || bound.agent.transcriptPath !== path) {
               return false
             }
+
+            // A line that only repeats the activity matters only as the latest one, so it waits for the next.
+            let latest: (() => void) | undefined
 
             for (const line of tail.lines) {
               const current = writer.state.sessions?.[session.id] ?? bound
@@ -121,7 +129,7 @@ export async function restoreSessionActivity({ titanId }: { titanId: string }): 
                   inputs,
                   receipt: {
                     type: 'notice',
-                    id: `native-notice:${current.id}:${tail.identity}:${line.pos}`,
+                    id: `native-notice:${current.id}:${line.pos}`,
                   },
                 })
               }
@@ -143,13 +151,14 @@ export async function restoreSessionActivity({ titanId }: { titanId: string }): 
               }
 
               const attention = activity === 'finished' ? [] : undefined
-              const native = `native-activity:${session.id}:${tail.identity}:${line.pos}`
+              const at = parsed.at
+              const native = `native-activity:${session.id}:${line.pos}`
               const id = resumed ? `resume:${native}` : native
-              applyDecision({
+              const observe = () => applyDecision({
                 writer,
                 decision: decideSessionFacts({
                   state: writer.state,
-                  session: current,
+                  session: writer.state.sessions?.[session.id] ?? bound,
                   fields: {
                     agent: current.agent,
                     activity,
@@ -161,38 +170,32 @@ export async function restoreSessionActivity({ titanId }: { titanId: string }): 
                     generation: line.pos,
                     cursor: parsed.inputUuid,
                     objectId: path,
-                    observedAt: parsed.at,
+                    observedAt: at,
                   },
                   meta: {
-                    at: parsed.at,
+                    at,
                     actor: 'othrys',
                     id,
                   },
                 }),
               })
-            }
-
-            const current = writer.state.sessions?.[session.id]
-
-            if (current) {
-              applyDecision({
-                writer,
-                decision: decideSessionFacts({
-                  state: writer.state,
-                  session: current,
-                  fields: { agent: current.agent },
-                  cursor: {
-                    source: path,
-                    identity: tail.identity,
-                    pos: tail.end,
-                  },
-                  meta: {
-                    at: new Date().toISOString(),
-                    actor: 'othrys',
-                  },
-                }),
+              // A Titan input on a working line names the turn it starts.
+              const changes = parsed.inputUuid !== undefined || turnChange({
+                session: current,
+                agent: current.agent,
+                activity,
+                eventId: id,
               })
+
+              if (changes) {
+                latest = undefined
+                observe()
+              } else {
+                latest = observe
+              }
             }
+
+            latest?.()
 
             return true
           },

@@ -4,8 +4,9 @@ export function durableEvent({ event }: { event: TitanEvent }): boolean {
   switch (event.type) {
     case 'task.edited':
       return !event.data.source
-    case 'card.observed':
     case 'session.observed':
+      return 'fields' in event.data && event.data.run !== undefined
+    case 'card.observed':
     case 'titan.received':
     case 'titan.delivered':
     case 'titan.agent-used':

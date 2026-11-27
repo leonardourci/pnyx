@@ -1,12 +1,13 @@
+import { statSync } from 'node:fs'
 import { decided } from '#app/decision.ts'
-import type { Decision, TitanEvent, TitanState, SourceRef } from '#app/model.ts'
+import type { Decision, TitanEvent, TitanState, SourceRef, SessionRun } from '#app/model.ts'
 import type { Card, PushFields } from '#tasks/model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { isStaleSource, sameSource, offerTitle } from '#tasks/events.ts'
 import { refreshTasks } from '#tasks/refresh.ts'
 import { touch } from '#tasks/touch.ts'
 import { checkRevision } from '#tasks/push-rules.ts'
-import { sessionId, projectSession, sessionTask } from './session-attachments.ts'
+import { sessionId, projectSession, sessionTask, memoryOnlySession } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
 import { WAKE_TURN, WAKE_HANDLED } from '#titan/wake-ids.ts'
 import { ownerInputUuid } from './input.ts'
@@ -42,17 +43,21 @@ function recordTurn({
   session,
   event,
   activity,
+  transcript,
 }: {
   session: AgentSession
   event: TitanEvent
   activity: string
+  transcript: boolean
 }): void {
   if (session.agent.host !== 'othrys' || session.agent.agentId) {
     return
   }
 
   const wasWorking = session.sessionActivity === 'working'
-  const newResume = event.id.startsWith('resume:') && session.turn?.id !== event.id
+  // The transcript line of a resume Othrys already recorded belongs to the same resumed turn.
+  const resuming = transcript && wasWorking && session.turn?.id.startsWith('resume:') === true
+  const newResume = event.id.startsWith('resume:') && session.turn?.id !== event.id && !resuming
 
   if (activity === 'working' && (!wasWorking || !session.turn || newResume)) {
     session.turn = {
@@ -107,6 +112,86 @@ function sessionActivity({
   target.sessionActivity = activity
 }
 
+function transcriptSize({ agent }: { agent: AgentSession['agent'] }): number | undefined {
+  if (!agent.transcriptPath) {
+    return undefined
+  }
+
+  try {
+    return statSync(agent.transcriptPath).size
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return undefined
+    }
+
+    throw error
+  }
+}
+
+// A hosted worker launches as working, so its first observed turn also counts as one a restart may resume.
+export function turnChange({
+  session,
+  agent,
+  activity,
+  eventId,
+}: {
+  session?: AgentSession
+  agent: AgentSession['agent']
+  activity: string
+  eventId?: string
+}): boolean {
+  const resumed = eventId?.startsWith('resume:') === true
+  const firstTurn = activity === 'working' && session?.turn === undefined && agent.host === 'othrys' && !agent.agentId
+
+  return activity !== session?.sessionActivity || resumed || firstTurn
+}
+
+// Saving where the transcript stood at each turn change lets a restart read only the lines after it.
+function sessionRun({
+  session,
+  fields,
+  source,
+  eventId,
+}: {
+  session?: AgentSession
+  fields: PushFields & { agent: AgentSession['agent'] }
+  source?: SourceRef
+  eventId?: string
+}): SessionRun | undefined {
+  const activity = fields.activity
+  const agent = fields.agent
+
+  if (typeof activity !== 'string' || !turnChange({
+    session,
+    agent,
+    activity,
+    eventId,
+  })) {
+    return undefined
+  }
+
+  const run: SessionRun = {
+    session: sessionId({ agent }),
+    harness: agent.provider,
+  }
+  const model = (fields.settings ?? session?.settings)?.model
+  const pos = source?.adapter === 'transcript' ? source.generation : transcriptSize({ agent })
+
+  if (model) {
+    run.model = model
+  }
+
+  if (agent.account) {
+    run.account = agent.account
+  }
+
+  if (pos !== undefined) {
+    run.pos = pos
+  }
+
+  return run
+}
+
 export function decideSessionFacts({
   state,
   fields,
@@ -114,7 +199,6 @@ export function decideSessionFacts({
   meta,
   task,
   session,
-  cursor,
   key,
 }: {
   state: TitanState
@@ -123,7 +207,6 @@ export function decideSessionFacts({
   meta: Meta
   task?: Card
   session?: AgentSession
-  cursor?: AgentSession['activityCursor']
   key?: string
 }): Decision {
   const agent = fields.agent
@@ -146,6 +229,18 @@ export function decideSessionFacts({
     return { skipped: 'stale' }
   }
 
+  const known = session ?? state.sessions?.[sessionId({ agent })]
+  const saved = owner !== undefined || (known !== undefined && !memoryOnlySession({
+    state,
+    session: known,
+  }))
+  const run = saved ? sessionRun({
+    session: known,
+    fields,
+    source,
+    eventId: meta.id,
+  }) : undefined
+
   return decided({
     state,
     meta,
@@ -158,7 +253,7 @@ export function decideSessionFacts({
       type: 'session.observed',
       data: {
         key,
-        cursor,
+        run,
         fields: {
           ...fields,
           agent,
@@ -262,10 +357,8 @@ export function applySessionFacts({
     state.sessions[id] = session
   }
 
-  if (event.data.cursor) {
-    session.activityCursor = { ...event.data.cursor }
-
-    return
+  if (event.data.run?.pos !== undefined) {
+    session.transcriptPos = event.data.run.pos
   }
 
   session.agent = {
@@ -340,6 +433,7 @@ export function applySessionFacts({
       session,
       event,
       activity: fields.activity,
+      transcript: source?.adapter === 'transcript',
     })
     sessionActivity({
       target: session,
