@@ -513,6 +513,10 @@ test(
       }
     }
 
+    await page.setViewportSize({
+      width: 1440,
+      height: 900,
+    })
     await page.getByRole(
       'button',
       {
@@ -569,21 +573,22 @@ test(
     const unfoldingProject = workspace.locator(`[data-column="${projectPaths[0]}"]`)
     const expandedProjectWidth = await unfoldingProject.evaluate(element =>
       element.getBoundingClientRect().width)
-    await workspace.getByRole(
-      'button',
-      {
-        name: 'Fold all projects',
-        exact: true,
-      },
-    ).click()
-    await workspace.getByRole(
-      'button',
-      {
-        name: 'Fold Titan',
-        exact: true,
-      },
-    ).click()
-    await workspace.getByRole(
+
+    for (const item of [
+      'Fold all projects',
+      'Fold Titan',
+    ]) {
+      await page.locator('.active-titan .titan-chip').click()
+      await page.getByRole(
+        'menuitem',
+        {
+          name: item,
+          exact: true,
+        },
+      ).click()
+    }
+
+    await page.getByRole(
       'button',
       {
         name: 'Project-7',
@@ -671,6 +676,14 @@ test(
           `[data-titan-workspace="${CSS.escape(titan)}"]`,
         )!
         const column = workspace.querySelector<HTMLElement>(`[data-column="${CSS.escape(project)}"]`)!
+        const axis = workspace.closest<HTMLElement>('.workspace-axis')!
+        const pastColumn = column.getBoundingClientRect().right
+          - axis.getBoundingClientRect().left + 1
+        axis.scrollTo({
+          left: axis.scrollLeft + pastColumn,
+          behavior: 'instant',
+        })
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
         const foldedWidth = column.getBoundingClientRect().width
         dispatchEvent(new CustomEvent(
           'othrys:workspace-target',
@@ -1375,13 +1388,12 @@ test(
     const initialDescription = await chrome({
       script: `
     await page.click('[data-titan-workspace="${titan.id}"] .card-open');
-    await page.wait('[data-titan-workspace="${titan.id}"] .card.selected');
-    await page.eval(() => document.querySelector('[data-titan-workspace="${titan.id}"] .card.selected [aria-label="Show task summary"]')?.click());
-    await page.click('[data-titan-workspace="${titan.id}"] .card.selected [role="tab"][id$="-tab-activity"]');
-    await page.click('[data-titan-workspace="${titan.id}"] .card.selected [aria-label="Focus on chat"]');
-    await page.eval(() => document.querySelector('[data-titan-workspace="${titan.id}"] .card.selected').dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
-    await page.wait('[data-titan-workspace="${titan.id}"] [aria-label="Edit task"]');
-    await page.click('[data-titan-workspace="${titan.id}"] [aria-label="Edit task"]');
+    await page.wait('dialog.task-modal .card.selected');
+    await page.click('dialog.task-modal .card.selected [role="tab"][id$="-tab-activity"]');
+    await page.click('dialog.task-modal .card.selected [role="tab"][id$="-tab-chat"]');
+    await page.eval(() => document.querySelector('dialog.task-modal .card.selected').dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+    await page.wait('dialog.task-modal [aria-label="Edit task"]');
+    await page.click('dialog.task-modal [aria-label="Edit task"]');
     await page.wait('.task-editor [aria-label="Description"]');
     console.log(await page.eval(() => JSON.stringify(document.querySelector('.task-editor [aria-label="Description"]').textContent)));
   `,
@@ -1408,11 +1420,12 @@ test(
       const bounds = button.getBoundingClientRect();
       const surface = panel.getBoundingClientRect();
       const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
-      return bounds.top >= Math.max(0, Math.floor(surface.top)) && bounds.bottom <= Math.min(innerHeight, Math.ceil(surface.bottom)) && button.contains(hit);
+      // A scroller's whole-pixel scroll range can leave its last fraction of a pixel below the fold.
+      return bounds.top >= Math.max(0, Math.floor(surface.top)) && bounds.bottom <= Math.min(innerHeight, Math.ceil(surface.bottom) + 1) && button.contains(hit);
     });
     if (!reachable) throw new Error('The description Save button is outside the scrolling card panel');
-    await page.click('[data-titan-workspace="${titan.id}"] .card.selected .task-editor button[type="submit"]');
-    await page.wait('[data-titan-workspace="${titan.id}"] .card.selected .card-panel');
+    await page.click('dialog.task-modal .card.selected .task-editor button[type="submit"]');
+    await page.wait('dialog.task-modal .card.selected .card-panel');
   `,
     })
     await until({
@@ -1428,8 +1441,9 @@ test(
     })
     expect(await chrome({
       script: `
-    await page.click('[data-titan-workspace="${titan.id}"] .card.selected [aria-label="Show task summary"]');
-    console.log(await page.eval(() => document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Description"].card-section')?.textContent));
+    await page.click('dialog.task-modal [role="tab"][id$="-tab-context"]');
+    console.log(await page.eval(() => document.querySelector('dialog.task-modal [aria-label="Description"].card-section')?.textContent));
+    await page.click('dialog.task-modal [aria-label="Close"]');
   `,
     })).toContain('Explain the empty state and its next action.')
     const repositories = await addRevealProjects({ titan })
@@ -1477,7 +1491,7 @@ test.each([
   { viewport: '1440x900' },
   { viewport: '390x844' },
 ])(
-  'folded Titans and project columns keep one aligned vertical strip at $viewport',
+  'a folded Titan keeps one upright strip that unfolds it, and folded project columns keep their marks aligned at $viewport',
   async ({ viewport }) => {
     const titan = await othrys.titan()
     const projects = await addRevealProjects({ titan })
@@ -1539,68 +1553,112 @@ test.each([
         viewport,
       ],
     })
-    const geometry = await chrome({
-      script: `
-    await page.wait('[data-titan-workspace="${titan.id}"] .project-chips .running-count');
-    await page.wait('[data-titan-workspace="${titan.id}"] .project-chips .waiting-count');
-    console.log(await page.eval(async () => {
-      const workspace = document.querySelector('[data-titan-workspace="${titan.id}"]');
-      const uprightCounts = ({ roots }) => ['.waiting-count', '.running-count > span'].every(selector => {
+    const wide = viewport === '1440x900'
+    const workspace = `[data-titan-workspace="${titan.id}"]`
+    const uprightCounts = `({ roots }) => ['.waiting-count', '.running-count > span'].every(selector => {
         const counts = roots.flatMap(root => [...root.querySelectorAll(selector)]);
         return counts.length > 0 && counts.every(count =>
           count.getBoundingClientRect().width > 0 && getComputedStyle(count).writingMode === 'horizontal-tb'
         );
-      });
-      const projects = workspace.querySelector('.project-chips');
-      const bar = workspace.querySelector('.titan-workspace-bar');
-      const add = bar.querySelector('[aria-label="Add project"]');
-      const controls = [bar.querySelector('[aria-label="Fold Titan"]'), bar.querySelector('[aria-label="Fold all projects"]'), bar.querySelector('.titan-drag-name'), add].filter(Boolean);
-      const naturalPositions = controls.map(control => control.getBoundingClientRect());
-      const naturalProjectsLeft = projects.getBoundingClientRect().left;
-      projects.style.maxWidth = '100px';
-      await new Promise(requestAnimationFrame);
-      const positions = controls.map(control => control.getBoundingClientRect());
-      projects.scrollLeft = projects.scrollWidth;
-      await new Promise(requestAnimationFrame);
-      const topbar = {
-        visible: naturalPositions.every(box => box.left >= 0 && box.right <= innerWidth),
-        controlOrder: controls.length === 4
-          && naturalPositions.every((box, index) => index === 0 || box.left >= naturalPositions[index - 1].right)
-          && naturalProjectsLeft >= naturalPositions[3].right,
-        scrolled: projects.scrollLeft > 0,
-        pinned: controls.every((control, index) => control.getBoundingClientRect().left === positions[index].left),
-        singleEntry: workspace.querySelectorAll('[aria-label="Add project"]').length === 1
-          && ![...workspace.querySelectorAll('button')].some(button => button.textContent.trim() === 'Project'),
-      };
-      projects.style.removeProperty('max-width');
-      projects.scrollLeft = 0;
-      const expandedWorkspaceWidth = workspace.getBoundingClientRect().width;
-      workspace.querySelector('[aria-label="Fold Titan"]').click();
-      await new Promise(requestAnimationFrame);
-      projects.style.maxHeight = '100px';
+      })`
+
+    const fold = async ({
+      item,
+      patch,
+    }: {
+      item: string
+      patch: object
+    }) => {
+      if (wide) {
+        await chrome({
+          script: `
+    await page.click('.active-titan .titan-chip');
+    await page.wait('[role="menu"] [role="menuitem"]');
+    await page.eval(() => [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].find(item => item.textContent === ${JSON.stringify(item)}).click());
+  `,
+        })
+
+        return
+      }
+
+      await titan.owner({
+        args: [
+          'view',
+          'set',
+          '--json',
+          JSON.stringify({ workspace: patch }),
+        ],
+      })
+    }
+
+    const expandedWorkspaceWidth = Number(await chrome({
+      script: `
+    await page.wait('${workspace} [data-column] .running-count');
+    await page.wait('${workspace} [data-column] .waiting-count');
+    console.log(await page.eval(() => document.querySelector('${workspace}').getBoundingClientRect().width));
+  `,
+    }))
+    await fold({
+      item: 'Fold Titan',
+      patch: { collapsed: true },
+    })
+    const strip = JSON.parse(await chrome({
+      script: `
+    await page.wait('${workspace} [aria-label="Unfold Titan"]');
+    console.log(await page.eval(async () => {
+      const workspace = document.querySelector('${workspace}');
+      const strip = workspace.querySelector('[aria-label="Unfold Titan"]');
       const box = workspace.getBoundingClientRect();
-      const chips = [...projects.querySelectorAll('button')].map(chip => chip.getBoundingClientRect());
-      const marks = [...workspace.querySelectorAll('.titan-drag-name > svg, .titan-drag-name > .titan-label, .titan-workspace-bar .waiting-count, .titan-workspace-bar .running-count > *')].map(mark => mark.getBoundingClientRect());
+      const marks = [...strip.querySelectorAll('.titan-label, .waiting-count, .running-count > *')].map(mark => mark.getBoundingClientRect());
       const center = (box.left + box.right) / 2;
-      const strip = {
+      return JSON.stringify({
         thin: box.width <= 60,
         bodyHidden: workspace.querySelector('main').getClientRects().length === 0,
-        scrollable: projects.scrollHeight > projects.clientHeight,
-        upright: uprightCounts({ roots: [projects] }),
-        aligned: [...chips, ...marks].every(mark => Math.abs((mark.left + mark.right) / 2 - center) <= 1),
-        contained: [...chips, ...marks].every(mark => mark.left >= box.left && mark.right <= box.right),
-        stacked: chips.length === 5 && chips.every((chip, index) => !index || chip.top >= chips[index - 1].bottom),
-      };
-      projects.style.removeProperty('max-height');
-      workspace.querySelector('[aria-label="Unfold Titan"]').click();
+        upright: (${uprightCounts})({ roots: [strip] }),
+        aligned: marks.length === 4 && marks.every(mark => Math.abs((mark.left + mark.right) / 2 - center) <= 1),
+        contained: marks.every(mark => mark.left >= box.left && mark.right <= box.right),
+      });
+    }));
+  `,
+    }))
+    expect(strip).toEqual({
+      thin: true,
+      bodyHidden: true,
+      upright: true,
+      aligned: true,
+      contained: true,
+    })
+    const columns = JSON.parse(await chrome({
+      script: `
+    await page.click('${workspace} [aria-label="Unfold Titan"]');
+    await page.wait('${workspace} main .project-column');
+    console.log(await page.eval(async () => {
+      const workspace = document.querySelector('${workspace}');
       await new Promise(requestAnimationFrame);
-      const workspaceUnfolded = workspace.getBoundingClientRect().width === expandedWorkspaceWidth
-        && workspace.querySelector('main').getClientRects().length > 0;
+      return JSON.stringify({ unfolded: workspace.getBoundingClientRect().width === ${expandedWorkspaceWidth} });
+    }));
+  `,
+    }))
+    expect(columns).toEqual({ unfolded: true })
+    await fold({
+      item: 'Fold all projects',
+      patch: {
+        foldedProjects: Object.fromEntries([
+          'ideas',
+          ...projects,
+        ].map(id => [
+          id,
+          true,
+        ])),
+      },
+    })
+    const folded = JSON.parse(await chrome({
+      script: `
+    await page.wait('${workspace} [aria-label="Unfold Ideas"]');
+    console.log(await page.eval(async () => {
+      await new Promise(requestAnimationFrame);
+      const workspace = document.querySelector('${workspace}');
       const columns = [...workspace.querySelectorAll('.project-column')];
-      const expandedWidths = columns.map(column => column.getBoundingClientRect().width);
-      workspace.querySelector('[aria-label="Fold all projects"]').click();
-      await new Promise(requestAnimationFrame);
-      const columnCountsUpright = uprightCounts({ roots: columns });
       const folded = columns.length === 5 && columns.every(column => {
         const box = column.getBoundingClientRect();
         const center = (box.left + box.right) / 2;
@@ -1611,44 +1669,13 @@ test.each([
           return bounds.left >= box.left && bounds.right <= box.right && Math.abs((bounds.left + bounds.right) / 2 - center) <= 1;
         });
       });
-      workspace.querySelector('[aria-label="Unfold all projects"]').click();
-      await new Promise(requestAnimationFrame);
-      const unfolded = columns.every((column, index) =>
-        column.getBoundingClientRect().width === expandedWidths[index]
-        && column.querySelector('.column-cards').getClientRects().length > 0
-      );
-      workspace.querySelector('[aria-label="Fold chat"]').click();
-      await new Promise(requestAnimationFrame);
-      add?.click();
-      await new Promise(requestAnimationFrame);
-      const composer = workspace.querySelector('.titan-chat .composer .composer-text');
-      const attachRequested = composer?.textContent.includes(' to this Titan') && document.activeElement === composer;
-      return JSON.stringify({ topbar, strip, workspaceUnfolded, folded, columnCountsUpright, unfolded, attachRequested: !!attachRequested });
+      return JSON.stringify({ folded, upright: (${uprightCounts})({ roots: columns }) });
     }));
-    `,
-    })
-    expect(JSON.parse(geometry)).toEqual({
-      topbar: {
-        visible: true,
-        controlOrder: true,
-        scrolled: true,
-        pinned: true,
-        singleEntry: true,
-      },
-      strip: {
-        thin: true,
-        bodyHidden: true,
-        scrollable: true,
-        upright: true,
-        aligned: true,
-        contained: true,
-        stacked: true,
-      },
-      workspaceUnfolded: true,
+  `,
+    }))
+    expect(folded).toEqual({
       folded: true,
-      columnCountsUpright: true,
-      unfolded: true,
-      attachRequested: true,
+      upright: true,
     })
   },
 )

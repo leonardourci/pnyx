@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant touch (@media (pointer: coarse) and (hover: none));
 /* Bundled fonts use the SIL Open Font License (see each folder's OFL.txt). */
 @font-face { font-family: "GFS Neohellenic"; src: url("/fonts/gfs-neohellenic/GFSNeohellenic.ttf") format("truetype"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "GFS Neohellenic"; src: url("/fonts/gfs-neohellenic/GFSNeohellenicBold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
@@ -34,14 +35,12 @@
   --grid-template-columns-setting: var(--spacing-setting-icon) minmax(0, 1fr);
   --grid-template-columns-setting-preview: var(--spacing-setting-icon) minmax(0, 1fr) var(--spacing-setting-preview);
   --grid-template-columns-dispatch-issue: var(--spacing-dispatch-issue) minmax(0, 1fr);
-  --breakpoint-phone: 760px;
   --spacing-workspace-frame: calc(100vw - --spacing(6));
   --spacing-phone-workspace-frame: calc(100vw - --spacing(3));
-  --spacing-workspace-title: calc(100vw - --spacing(64));
-  --spacing-workspace-bar: calc(100vw - --spacing(14));
   --spacing-phone-chat: calc(100vw - --spacing(9.5));
   --spacing-workspace-axis-top: calc(var(--spacing-topbar-height) + --spacing(2.5));
   --spacing-workspace-axis-phone-top: calc(var(--spacing-topbar-height) + --spacing(2));
+  --spacing-workspace-axis-phone-bottom: calc(--spacing(1.5) + var(--spacing-safe-bottom));
   --spacing-oracle-excerpt: 9em;
   --spacing-search-basis: 140px;
   --color-background: #ffffff;
@@ -179,6 +178,7 @@
   --animate-live-label-reduced: chat-fade-in var(--transition-duration-base) var(--ease-ui) var(--transition-duration-fast) backwards;
   --shadow-jump: 0 4px 12px var(--color-shadow);
   --animate-chat-fade: chat-fade-in var(--transition-duration-base) var(--ease-ui);
+  --animate-sheet-rise: sheet-rise var(--transition-duration-base) var(--ease-ui);
   --animate-titan-spin-reduced: titan-spin var(--transition-duration-ambient) var(--ease-linear) infinite;
   --animate-titan-spin: titan-spin var(--transition-duration-ambient) var(--ease-linear) infinite;
   --animate-reply-dot: reply-dot var(--transition-duration-ambient) var(--ease-ui) infinite;
@@ -186,10 +186,13 @@
   --animate-reply-appear: reply-appear var(--transition-duration-fast) var(--ease-ui);
   --spacing-dialog: min(600px, calc(100vw - 32px));
   --spacing-oracle: min(980px, calc(100vw - 32px));
-  --spacing-topbar-height: calc(var(--spacing) * 12.5);
+  --spacing-topbar-height: calc(var(--spacing) * 12.5 + var(--spacing-safe-top));
   --spacing-oracle-top: calc(var(--spacing-topbar-height) + var(--spacing) * 3.5);
   --spacing-oracle-bottom: calc(var(--spacing) * 5.5);
   --spacing-dialog-height: min(78vh, 760px);
+  --spacing-sheet-height: min(85dvh, 720px);
+  --spacing-safe-top: env(safe-area-inset-top);
+  --spacing-safe-bottom: env(safe-area-inset-bottom);
   --spacing-oracle-height: min(660px, calc(100dvh - var(--spacing-oracle-top) - var(--spacing-oracle-bottom)));
   --spacing-menu: 180px;
   --spacing-model-menu: min(330px, calc(100vw - 64px));
@@ -281,6 +284,7 @@
 }
 
 @theme static {
+  --breakpoint-phone: 900px;
   --transition-duration-highlight: 1200ms;
   --ease-task-highlight: ease-out;
   --shadow-task-highlight: 0 0 0 --spacing(.75) var(--color-gold-line);
@@ -299,6 +303,7 @@
   --block-gap: .75em;
 }
 
+:root[data-nav-hidden] { --spacing-topbar-height: calc(var(--spacing) * 11 + var(--spacing-safe-top)); }
 /* The global switch and OS preference also cover third-party and inline animations. */
 :root[data-motion="off"] { --transition-duration-fast: var(--transition-duration-instant); --transition-duration-base: var(--transition-duration-instant); --transition-duration-slow: var(--transition-duration-instant); --transition-duration-ambient: var(--transition-duration-instant); --transition-duration-highlight: var(--transition-duration-instant); }
 :root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation-duration: var(--transition-duration-instant)!important; animation-delay: var(--transition-duration-instant)!important; animation-iteration-count: 1!important; transition-duration: var(--transition-duration-instant)!important; transition-delay: var(--transition-duration-instant)!important; scroll-behavior: auto!important; }
@@ -397,6 +402,7 @@ kbd {
 @keyframes live-label-fade-out { to { opacity: 0; } }
 
 @keyframes chat-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheet-rise { from { transform: translateY(100%); } to { transform: none; } }
 
 @keyframes comment-jump { 0% { opacity: .2; } 15% { opacity: 1; } 32% { opacity: .5; } 65% { opacity: .5; } 100% { opacity: 0; } }
 
@@ -501,6 +507,5 @@ kbd {
 @utility leading-browser { --tw-leading: normal; line-height: normal; }
 
 @utility scrollbar-stable { scrollbar-gutter: stable; }
-@utility scrollbar-stable-both { scrollbar-gutter: stable both-edges; }
 @utility skip-offscreen-row { content-visibility: auto; contain-intrinsic-size: auto var(--spacing-chat-row); }
 .column-cards { container-type: size; }

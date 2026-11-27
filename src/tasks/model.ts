@@ -146,6 +146,8 @@ export type WorkerCode = 'needs-you' | 'blocked' | 'done' | 'link' | 'note' | 'i
 export interface WorkerLine {
   identity: string
   off: number
+  gen: number
+  tail: string
   discarding?: true
   code: WorkerCode
   text: string

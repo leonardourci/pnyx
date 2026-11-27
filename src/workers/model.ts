@@ -253,11 +253,7 @@ export interface AgentSession {
   turnFinishedSeq?: number
   wakeStarted?: string
   wakeHandled?: string
-  activityCursor?: {
-    source: string
-    identity: string
-    pos: number
-  }
+  transcriptPos?: number
   activityObservedAt?: string
   autoTitle?: import('#tasks/model.ts').AutoTitle
   titleSet?: boolean

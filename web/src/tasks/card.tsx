@@ -24,6 +24,8 @@ import type { Command } from '#web-app/connection.ts'
 import { cardState } from './view.ts'
 import { currentState, waitingQuestions } from '#tasks/card-status.ts'
 import { Tabs, panelId, tabId } from '#web-shared/ui/tabs.tsx'
+import { phoneLayout } from '#web-shared/card-sizing.ts'
+import { useWorkspaceViewport } from '#web-app/workspace-viewport.tsx'
 import { TaskQuestion } from './task-question.tsx'
 import { harnessName } from '#web-workers/view.ts'
 
@@ -32,7 +34,7 @@ import { Icon } from '#web-shared/icons.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { CardState } from './card-state.tsx'
-import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
+import { ACTIONS_TRIGGER, HoverActions } from '#web-shared/ui/hover-actions.tsx'
 import type { CurrentAction } from '#titan/calls.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 
@@ -100,6 +102,43 @@ function ContextIndex({
 
 const CHAT_ONLY_LAYOUT = 'grid-cols-1 grid-rows-1 [&>.task-chat]:border-l-0'
 const DETAILS_AND_CHAT_LAYOUT = 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-2 @task-details/task:grid-rows-1'
+const DETAILS_ONLY_LAYOUT = 'grid-cols-1 grid-rows-1 [&>.task-chat]:hidden'
+const CONTEXT_TAB = {
+  id: 'context',
+  label: 'Context',
+}
+const ACTIVITY_TAB = {
+  id: 'activity',
+  label: 'Activity',
+}
+const CARD_TABS = [
+  CONTEXT_TAB,
+  ACTIVITY_TAB,
+]
+const PHONE_CARD_TABS = [
+  CONTEXT_TAB,
+  {
+    id: 'chat',
+    label: 'Chat',
+  },
+  ACTIVITY_TAB,
+]
+
+const cardTab = ({ id }: { id: string }) => id === 'activity' || id === 'chat' ? id : 'context'
+
+const cardLayout = ({
+  chatOnly,
+  phoneTabs,
+}: {
+  chatOnly: boolean
+  phoneTabs: boolean
+}) => {
+  if (chatOnly) {
+    return CHAT_ONLY_LAYOUT
+  }
+
+  return phoneTabs ? DETAILS_ONLY_LAYOUT : DETAILS_AND_CHAT_LAYOUT
+}
 
 export const TitanCard = memo(function TitanCard({
   card,
@@ -256,7 +295,7 @@ export const TitanCard = memo(function TitanCard({
     chatOnly: prefersChatOnly,
     toggleChatOnly,
   } = useTaskChatOnly()
-  const chatOnly = prefersChatOnly && !editing
+  const phoneTabs = phoneLayout({ width: useWorkspaceViewport().width }) && modal
   const wasModal = useRef(modal)
   useLayoutEffect(
     () => {
@@ -272,7 +311,7 @@ export const TitanCard = memo(function TitanCard({
   const [
     tab,
     setTab,
-  ] = useSessionView<'context' | 'activity'>({
+  ] = useSessionView<'context' | 'activity' | 'chat'>({
     key: taskViewKey({
       titanId,
       id: card.id,
@@ -304,7 +343,13 @@ export const TitanCard = memo(function TitanCard({
     }),
     active: selected && tab === 'activity',
   })
-  const openLayout = chatOnly ? CHAT_ONLY_LAYOUT : DETAILS_AND_CHAT_LAYOUT
+  const visibleTab = !phoneTabs && tab === 'chat' ? 'context' : tab
+  const chatTab = visibleTab === 'chat'
+  const chatOnly = !editing && (phoneTabs ? chatTab : prefersChatOnly)
+  const openLayout = cardLayout({
+    chatOnly,
+    phoneTabs,
+  })
   const [
     reminding,
     setReminding,
@@ -752,23 +797,14 @@ export const TitanCard = memo(function TitanCard({
           )}
           {selected && (
             <div className="flex min-w-0 items-center justify-between gap-2">
-              {!chatOnly && !editing && (
+              {(phoneTabs || !chatOnly) && !editing && (
                 <Tabs
                   divider={false}
                   prefix={tabsId}
                   label="Card sections"
-                  selected={tab}
-                  select={({ id }) => setTab(id === 'activity' ? 'activity' : 'context')}
-                  tabs={[
-                    {
-                      id: 'context',
-                      label: 'Context',
-                    },
-                    {
-                      id: 'activity',
-                      label: 'Activity',
-                    },
-                  ]}
+                  selected={visibleTab}
+                  select={({ id }) => setTab(cardTab({ id }))}
+                  tabs={phoneTabs ? PHONE_CARD_TABS : CARD_TABS}
                 />
               )}
               <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -781,13 +817,15 @@ export const TitanCard = memo(function TitanCard({
                     onClick={toggleChildren}
                   />
                 )}
-                <IconButton
-                  icon={chatOnly ? 'summary_show' : 'summary_hide'}
-                  label={chatOnly ? 'Show task summary' : 'Focus on chat'}
-                  aria-pressed={chatOnly}
-                  disabled={!!editing}
-                  onClick={toggleChatOnly}
-                />
+                {!phoneTabs && (
+                  <IconButton
+                    icon={chatOnly ? 'summary_show' : 'summary_hide'}
+                    label={chatOnly ? 'Show task summary' : 'Focus on chat'}
+                    aria-pressed={chatOnly}
+                    disabled={!!editing}
+                    onClick={toggleChatOnly}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -922,6 +960,14 @@ export const TitanCard = memo(function TitanCard({
           />
         )}
       </CardContent>
+      <span className="card-actions-trigger absolute top-1.5 right-1.5 z-2 hidden bg-card-fill touch:flex">
+        <IconButton
+          label="Card actions"
+          icon="more"
+          size="compact"
+          {...{ [ACTIONS_TRIGGER]: '' }}
+        />
+      </span>
       {hoverActions}
     </TaskCardDrag>
   )

@@ -30,6 +30,19 @@ export function applyTask({
     return true
   }
 
+  if (event.type === 'task.worker-log') {
+    const workerLog = state.cards[event.cardId]?.workerLog
+
+    if (workerLog) {
+      workerLog.latest = {
+        ...workerLog.latest,
+        ...event.data,
+      }
+    }
+
+    return true
+  }
+
   if (event.type === 'task.worker-line') {
     const card = state.cards[event.cardId]
 

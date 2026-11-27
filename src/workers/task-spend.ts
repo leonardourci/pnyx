@@ -5,6 +5,7 @@ import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { UsageReading } from './provider.ts'
 import type { AgentRef } from './model.ts'
 import { readTranscript } from '#workers/transcript-read.ts'
+import { memoryOnlySession } from '#workers/session-attachments.ts'
 
 export interface TaskSpend {
   worker?: number
@@ -121,10 +122,20 @@ export function spendInputs({
     }
   }
 
+  const assigned = new Set(assignments.map(assignment => assignment.session))
+  const counted = Object.values(state.sessions ?? {}).filter(session => {
+    const belongs = !memoryOnlySession({
+      state,
+      session,
+    })
+
+    return belongs || assigned.has(session.id)
+  })
+
   return {
     tasks,
     titanSession: state.config?.titan.session,
-    sessions: Object.values(state.sessions ?? {}).map(session => ({
+    sessions: counted.map(session => ({
       id: session.id,
       taskId: session.taskId,
       agent: {

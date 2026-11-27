@@ -134,7 +134,7 @@ export function Icon({
     name,
   ) && TABLER_ICONS[name]) || IconRobot
 
-  const className = `icon shrink-0 ${name === 'fold_columns' ? 'rotate-90' : ''}`
+  const className = 'icon shrink-0'
 
   return (
     <Mark

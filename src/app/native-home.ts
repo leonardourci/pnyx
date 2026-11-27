@@ -76,6 +76,8 @@ function errorCard({
       latest: {
         identity: 'native-log',
         off: 0,
+        gen: 0,
+        tail: '',
         at: '',
         code: 'invalid',
         text: `${issue.code}: ${issue.message}`,

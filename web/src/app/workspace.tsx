@@ -2,7 +2,7 @@ import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useSessionView, sessionViewKey } from './session-view.ts'
 import { useWorkspaceViewport } from './workspace-viewport.tsx'
 import { afterTaskLayout, afterSteadyLayout } from '#web-tasks/scroll-task.ts'
-import { WORKSPACE_SIZING } from '#web-shared/card-sizing.ts'
+import { WORKSPACE_SIZING, phoneLayout } from '#web-shared/card-sizing.ts'
 import { ProjectTasks } from '#web-tasks/project-tasks.tsx'
 import { ProfileSurface } from './profile-surface.tsx'
 import { timeUIFlow } from './ui-metrics.ts'
@@ -33,7 +33,7 @@ import { SettingsPage } from '#web-settings/settings-page.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
-import { ICON_SIZE } from '#web-shared/icons.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { useKept,useStableActions } from '#web-shared/stable.ts'
 import { useScrollingClass } from '#web-shared/use-scrolling-class.ts'
@@ -51,56 +51,24 @@ import { argument } from '#web-tasks/optimistic.ts'
 import { observedStatus } from '#web-tasks/observed-status.ts'
 import { TaskCreate,type TaskDraft } from '#web-tasks/task-create.tsx'
 import { useTaskNavigation } from '#web-tasks/task-navigation.ts'
-import { useModalTask } from '#web-tasks/presentation.ts'
+import { showTaskModal, useModalTask } from '#web-tasks/presentation.ts'
 import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
 import { useInstallationPending } from '#web-workers/dispatch-resource.ts'
-import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type ReactNode } from 'react'
+import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState } from 'react'
 import { useTitan } from './connection.ts'
 import { useTitanEdits } from './titan-edits.ts'
-import { SortGroup, useSortItem, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
-import { TitanChips } from './titan-chips.tsx'
+import { SortGroup, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
+import { TitanChips, titanWaiting } from './titan-chips.tsx'
+import { useNavHidden, NAV_SHORTCUT } from './nav-visibility.ts'
+import { Chip } from '#web-shared/ui/chip.tsx'
+import { Keycap } from '#web-shared/ui/keycap.tsx'
+import { WaitingCount } from '#web-shared/ui/waiting-count.tsx'
+import { OPEN_WAITING } from '#web-tasks/waiting-decisions.tsx'
 import { Panel } from './panel.tsx'
 import { titanViews,openingView,restoreView,usePersistView } from './restore.ts'
 import { titanTitle } from './view.ts'
-
-function TitanDragName({
-  id,
-  name,
-  disabled,
-  children,
-}: {
-  id: string
-  name: string
-  disabled: boolean
-  children: ReactNode
-}) {
-  const sort = useSortItem({
-    item: {
-      id,
-      kind: 'titan',
-      scope: 'titans',
-      titan: id,
-    },
-    disabled,
-  })
-
-  return (
-    <div
-      ref={sort.setNodeRef}
-      {...sort.attributes}
-      {...sort.listeners}
-      data-sort-key={sort.key}
-      aria-label={`Move ${name}`}
-      data-sort-id={id}
-      data-sort-kind="titan"
-      data-sort-scope="titans"
-      className={`titan-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex max-w-workspace-title min-w-0 flex-none cursor-grab touch-none items-center gap-1.5 border-r border-line pr-2.5 font-brand text-workspace font-bold group-data-[collapsed=true]/workspace:border-r-0 group-data-[collapsed=true]/workspace:pr-0 group-data-[collapsed=true]/workspace:writing-vertical [&_.titan-label]:max-w-workspace-label [&_.titan-label]:truncate`}
-    >{children}
-    </div>
-  )
-}
 
 export function TitanView({
   titan,
@@ -108,16 +76,12 @@ export function TitanView({
   edits,
   preview,
   navigatePage,
-  polisFilter,
-  filterPolis,
 }: {
   titan: ReturnType<typeof useTitan>
   navigatePage: ReturnType<typeof useTitan>['navigate']
   active: boolean
   edits: ReturnType<typeof useTitanEdits>
   preview: SortMove | null
-  polisFilter?: string
-  filterPolis({ polis }: { polis?: string }): void
 }) {
   const {
     state,
@@ -548,7 +512,7 @@ export function TitanView({
     }).width
   }
 
-  const phone = viewport.width <= WORKSPACE_SIZING.phone
+  const phone = phoneLayout({ width: viewport.width })
   const chatWidth = view.workspace.chatCollapsed ? WORKSPACE_SIZING.foldedChat
     : phone ? viewport.width - WORKSPACE_SIZING.phoneChatInset : view.titanWidth
   let projectLeft = (phone ? WORKSPACE_SIZING.phoneInset : WORKSPACE_SIZING.inset) / 2
@@ -690,6 +654,21 @@ export function TitanView({
           return Promise.resolve(false)
         }
 
+        if (phone && !modal) {
+          return open({
+            id,
+            pointer,
+            focusPanel,
+            modal: true,
+          }).then(opened => {
+            if (opened && modalTask !== id) {
+              showTaskModal({ id })
+            }
+
+            return opened
+          })
+        }
+
         return open({
           id,
           pointer,
@@ -751,10 +730,15 @@ export function TitanView({
         id?: string
         path?: string
         answer?: boolean
+        addProject?: boolean
       }>).detail
 
       if (detail.titan !== navigation.titanId) {
         return
+      }
+
+      if (detail.addProject) {
+        requestProject()
       }
 
       if (detail.path) {
@@ -786,11 +770,13 @@ export function TitanView({
     path,
     titan: destination = navigation.titanId,
     answer,
+    addProject,
   }: {
     id?: string
     path?: string
     titan?: string
     answer?: boolean
+    addProject?: boolean
   }) => {
     await navigate({ url: `/titan/${encodeURIComponent(destination)}/` })
 
@@ -802,6 +788,7 @@ export function TitanView({
           id,
           path,
           answer,
+          addProject,
         },
       },
     ))
@@ -916,6 +903,152 @@ export function TitanView({
       block: 'nearest',
       behavior: scrollBehavior(),
     }))
+  }
+
+  const nav = useNavHidden({
+    phone,
+    active,
+  })
+  const titanAsks = columns.reduce(
+    (
+      total,
+      column,
+    ) => total + (column.asks ?? 0),
+    0,
+  )
+  const titanRunning = columns.reduce(
+    (
+      total,
+      column,
+    ) => total + (column.running ?? 0),
+    0,
+  )
+
+  const showChat = () => {
+    setPage({ page: 'titan' })
+    save({
+      patch: {
+        workspace: {
+          collapsed: false,
+          chatCollapsed: false,
+        },
+      },
+    })
+    requestAnimationFrame(() => layer?.querySelector('.workspace-chat')?.scrollIntoView({
+      inline: 'start',
+      block: 'nearest',
+      behavior: scrollBehavior(),
+    }))
+  }
+
+  const openWaiting = () => {
+    showChat()
+    requestAnimationFrame(() => dispatchEvent(new CustomEvent(
+      OPEN_WAITING,
+      { detail: { titan: navigation.titanId } },
+    )))
+  }
+
+  const titanMenu = (
+    <>
+      <Button role="menuitem" onClick={toggleTitan}>{view.workspace.collapsed ? 'Unfold Titan' : 'Fold Titan'}</Button>
+      <Button role="menuitem" onClick={toggleAllProjects}>{allProjectsFolded ? 'Unfold all projects' : 'Fold all projects'}</Button>
+      <Button role="menuitem" disabled={!connected} onClick={requestProject}>Add project</Button>
+      <Button role="menuitem" className="justify-between!" onClick={nav.toggle}>Hide the nav <Keycap>{NAV_SHORTCUT}</Keycap></Button>
+    </>
+  )
+
+  const projectChips = (
+    <div
+      data-sort-surface={`project-chips:${navigation.titanId}`}
+      className="project-chips flex flex-none items-center gap-1.25"
+      role="group"
+      aria-label="Projects"
+    >
+      <SortGroup id={`project-chips:${navigation.titanId}`} items={columns.map(column => column.id)}>
+        {columns.map(column => (
+          <SortableChip
+            item={{
+              id: column.id,
+              kind: 'project',
+              scope: 'projects',
+              titan: navigation.titanId,
+            }}
+            disabledSort={column.id === IDEAS_COLUMN || !connected}
+            key={column.id}
+            data-sort-disabled={column.id === IDEAS_COLUMN}
+            onClick={() => revealProject({ id: column.id })}
+          >{column.title}<ProjectCounts asks={column.asks} running={column.running} />
+          </SortableChip>
+        ))}
+      </SortGroup>
+      <IconButton
+        label="Add project"
+        icon="plus"
+        disabled={!connected}
+        onClick={requestProject}
+      />
+    </div>
+  )
+
+  const navSheet = ({ close }: { close(): void }) => {
+    const choose = ({ action }: { action(): void }) => {
+      close()
+      action()
+    }
+
+    return (
+      <div className="nav-sheet flex min-h-0 flex-col gap-2 overflow-auto p-3 [&_h3]:px-1.75 [&_h3]:pt-2 [&_h3]:text-meta [&_h3]:tracking-eyebrow [&_h3]:text-muted [&_h3]:uppercase">
+        <div className="flex flex-none gap-1.5 overflow-x-auto pb-1">
+          {edits.titans.map(item => (
+            <Chip
+              key={item.id}
+              variant="titan"
+              aria-current={item.id === navigation.titanId ? 'page' : undefined}
+              onClick={() => choose({
+                action: () => navigate({ url: `/titan/${encodeURIComponent(item.id)}/` })
+                  .catch((error: Error) => notify({ text: error.message })),
+              })}
+            >
+              <TitanLabel name={item.name} icon={item.icon} size={ICON_SIZE.control} />
+              <WaitingCount count={titanWaiting({ titan: item })} />
+            </Chip>
+          ))}
+        </div>
+        <section className="flex flex-col" aria-label={shownTitan ? titanTitle(shownTitan) : 'Titan'}>
+          <h3>{shownTitan ? titanTitle(shownTitan) : 'Titan'}</h3>
+          <Button variant="menu-choice" onClick={() => choose({ action: showChat })}><span>Chat</span></Button>
+          <Button variant="menu-choice" disabled={!titanAsks} onClick={() => choose({ action: openWaiting })}><span>Needs you</span><div><WaitingCount count={titanAsks} /></div></Button>
+        </section>
+        <section className="flex flex-col" aria-label="Projects">
+          <h3>Projects</h3>
+          {columns.map(column => (
+            <Button key={column.id} variant="menu-choice" onClick={() => choose({ action: () => revealProject({ id: column.id }) })}>
+              <span>{column.title}</span>
+              <div className="flex items-center gap-2">
+                <ProjectCounts asks={column.asks} running={column.running} />
+                <span className="text-meta text-muted">{column.cards.length}</span>
+              </div>
+            </Button>
+          ))}
+          <Button
+            variant="menu-choice"
+            className="text-gold"
+            disabled={!connected}
+            onClick={() => choose({ action: requestProject })}
+          >
+            <Icon name="plus" size={ICON_SIZE.inline} />
+            <span>Add project</span>
+          </Button>
+        </section>
+        <div className="flex flex-none gap-2 border-t border-line pt-2">
+          <Button variant="surface" onClick={() => choose({ action: () => setPage({ page: 'settings' }) })}>
+            <Icon name="settings" size={ICON_SIZE.inline} />
+            Settings
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   const toggleChat = () => save({
@@ -1040,6 +1173,13 @@ export function TitanView({
       >
         <Panel
           shown={active}
+          phone={phone}
+          hidden={nav.hidden}
+          reveal={nav.toggle}
+          titan={shownTitan}
+          waiting={titanAsks}
+          openWaiting={openWaiting}
+          sheet={navSheet}
           connected={connected}
           offline={offline}
           upgrade={upgrade}
@@ -1093,11 +1233,34 @@ export function TitanView({
           )}
         >
           <TitanChips
-            polisFilter={polisFilter}
-            filterPolis={filterPolis}
             titans={edits.titans}
             current={navigation.titanId}
             navigate={navigate}
+            menu={titanMenu}
+            projects={projectChips}
+            openProject={async ({
+              titan,
+              path,
+            }) => {
+              try {
+                await oracleTarget({
+                  titan,
+                  path,
+                })
+              } catch (error) {
+                notify({ text: error instanceof Error ? error.message : String(error) })
+              }
+            }}
+            addProject={async ({ titan }) => {
+              try {
+                await oracleTarget({
+                  titan,
+                  addProject: true,
+                })
+              } catch (error) {
+                notify({ text: error instanceof Error ? error.message : String(error) })
+              }
+            }}
             createTitan={async () => {
               try {
                 await titan.createTitan(pickName({
@@ -1109,68 +1272,16 @@ export function TitanView({
             }}
           />
         </Panel>
-        <header className="titan-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-workspace-bar flex-none items-center gap-2.5 bg-background px-0.5 pb-2 group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:px-0 [&>.button]:flex-none">
-          <IconButton
-            label={view.workspace.collapsed ? 'Unfold Titan' : 'Fold Titan'}
+        {view.workspace.collapsed && (
+          <Button
+            className="titan-fold-strip flex h-full w-full items-center justify-start gap-1.5 px-0 py-2 font-brand text-workspace font-bold writing-vertical [&_.titan-label]:max-w-workspace-label"
+            aria-label="Unfold Titan"
             onClick={toggleTitan}
-            icon={view.workspace.collapsed ? 'chevron_right' : 'chevron_left'}
-          />
-          <IconButton
-            label={allProjectsFolded ? 'Unfold all projects' : 'Fold all projects'}
-            onClick={toggleAllProjects}
-            icon={allProjectsFolded ? 'unfold_columns' : 'fold_columns'}
-          />
-          <TitanDragName id={navigation.titanId} name={shownTitan?.name ?? 'Titan'} disabled={!connected}>
-            {view.workspace.collapsed && (
-              <ProjectCounts
-                asks={columns.reduce(
-                  (
-                    total,
-                    column,
-                  ) => total + (column.asks ?? 0),
-                  0,
-                )}
-                running={columns.reduce(
-                  (
-                    total,
-                    column,
-                  ) => total + (column.running ?? 0),
-                  0,
-                )}
-              />
-            )}
+          >
+            <ProjectCounts asks={titanAsks} running={titanRunning} />
             <TitanLabel name={shownTitan?.name ?? ''} icon={shownTitan?.icon} size={ICON_SIZE.heading} />
-          </TitanDragName>
-          <IconButton
-            label="Add project"
-            icon="plus"
-            disabled={!connected}
-            onClick={requestProject}
-          />
-          <nav data-sort-surface={`project-chips:${navigation.titanId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:scrollbar-stable-both group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-x-hidden group-data-[collapsed=true]/workspace:overflow-y-auto" aria-label="Projects">
-            <SortGroup id={`project-chips:${navigation.titanId}`} items={columns.map(column => column.id)}>
-              {columns.map(column => (
-                <SortableChip
-                  item={{
-                    id: column.id,
-                    kind: 'project',
-                    scope: 'projects',
-                    titan: navigation.titanId,
-                  }}
-                  disabledSort={column.id === IDEAS_COLUMN || !connected}
-                  vertical={view.workspace.collapsed}
-                  key={column.id}
-                  data-sort-id={column.id}
-                  data-sort-kind="project"
-                  data-sort-scope="projects"
-                  data-sort-disabled={column.id === IDEAS_COLUMN}
-                  onClick={() => revealProject({ id: column.id })}
-                >{column.title}<ProjectCounts asks={column.asks} running={column.running} />
-                </SortableChip>
-              ))}
-            </SortGroup>
-          </nav>
-        </header>
+          </Button>
+        )}
         <FoldContent
           as="main"
           open={!view.workspace.collapsed}

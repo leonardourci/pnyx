@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { closeSync, constants, existsSync, fstatSync, openSync, readSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { loadTitan } from '#app/store.ts'
@@ -13,11 +14,12 @@ import { applyDecision } from '#app/decision.ts'
 import { TitanError } from '#store/errors.ts'
 import { log } from '#app/diagnostics.ts'
 import { background } from '#app/background.ts'
-import { fileIdentity, sameFile } from '#store/file-identity.ts'
+import { fileIdentity } from '#store/file-identity.ts'
 
 const BATCH_BYTES = 64 * 1024
 const LINE_BYTES = 16 * 1024
 const BATCH_LINES = 128
+const TAIL_BYTES = 256
 
 const CODES = new Set<WorkerCode>([
   'needs-you',
@@ -43,6 +45,84 @@ export function workerTaskDir({
   privateDir({ dir })
 
   return dir
+}
+
+export function hashBefore({
+  fd,
+  end,
+}: {
+  fd: number
+  end: number
+}): string {
+  const start = Math.max(
+    0,
+    end - TAIL_BYTES,
+  )
+  const bytes = Buffer.alloc(end - start)
+  const count = readSync(
+    fd,
+    bytes,
+    0,
+    bytes.length,
+    start,
+  )
+
+  return createHash('sha256').update(bytes.subarray(
+    0,
+    count,
+  ))
+    .digest('hex')
+}
+
+function resumePoint({
+  fd,
+  size,
+  identity,
+  previous,
+}: {
+  fd: number
+  size: number
+  identity: string
+  previous?: WorkerLine
+}): {
+  gen: number
+  off: number
+  moved: boolean
+} {
+  if (!previous) {
+    return {
+      gen: 0,
+      off: 0,
+      moved: false,
+    }
+  }
+
+  if (previous.identity === identity) {
+    return {
+      gen: previous.gen,
+      off: previous.off,
+      moved: false,
+    }
+  }
+
+  const sameHistory = size >= previous.off && hashBefore({
+    fd,
+    end: previous.off,
+  }) === previous.tail
+
+  if (sameHistory) {
+    return {
+      gen: previous.gen,
+      off: previous.off,
+      moved: true,
+    }
+  }
+
+  return {
+    gen: previous.gen + 1,
+    off: 0,
+    moved: false,
+  }
 }
 
 function reportDirectory({
@@ -71,6 +151,25 @@ function reportDirectory({
   return taskRuntimeDir({ task })
 }
 
+export function workerLogPath({
+  titanFolder,
+  task,
+  recorded,
+}: {
+  titanFolder: string
+  task: string
+  recorded?: string
+}): string {
+  return join(
+    reportDirectory({
+      titanFolder,
+      task,
+      recorded,
+    }),
+    'worker.log',
+  )
+}
+
 export function foldWorkerLog({
   writer,
   task,
@@ -84,14 +183,11 @@ export function foldWorkerLog({
     return false
   }
 
-  const path = join(
-    reportDirectory({
-      titanFolder: writer.dir,
-      task,
-      recorded: card.workerLogDir,
-    }),
-    'worker.log',
-  )
+  const path = workerLogPath({
+    titanFolder: writer.dir,
+    task,
+    recorded: card.workerLogDir,
+  })
   let fd: number
 
   try {
@@ -123,16 +219,53 @@ export function foldWorkerLog({
 
     const identity = fileIdentity({ stat })
     const previous = card.workerLog?.latest
-    const same = previous !== undefined && sameFile({
-      saved: previous.identity,
+    const {
+      gen,
+      off,
+      moved,
+    } = resumePoint({
+      fd,
+      size: stat.size,
       identity,
+      previous,
     })
-    const off = same ? previous.off : 0
+    const same = previous !== undefined && previous.gen === gen
+
+    if (moved) {
+      writer.append({
+        event: {
+          v: 1,
+          seq: writer.state.seq + 1,
+          id: `worker:${task}:${gen}:${off}:moved:${identity}`,
+          at: new Date().toISOString(),
+          cardId: task,
+          actor: `worker:${task}`,
+          type: 'task.worker-log',
+          data: {
+            identity,
+            off,
+            gen,
+            tail: hashBefore({
+              fd,
+              end: off,
+            }),
+          },
+        },
+      })
+    }
 
     if (stat.size < off) {
       const warning: Omit<WorkerLine, 'at'> = {
         identity,
         off,
+        gen,
+        tail: hashBefore({
+          fd,
+          end: Math.min(
+            off,
+            stat.size,
+          ),
+        }),
         code: 'invalid',
         text: 'worker.log was truncated; restore its appended history or replace the file to resume updates',
       }
@@ -145,7 +278,7 @@ export function foldWorkerLog({
         event: {
           v: 1,
           seq: writer.state.seq + 1,
-          id: `worker:${task}:${identity}:truncated:${off}:${stat.size}`,
+          id: `worker:${task}:${gen}:truncated:${off}:${stat.size}`,
           at: new Date().toISOString(),
           cardId: task,
           actor: `worker:${task}`,
@@ -191,6 +324,11 @@ export function foldWorkerLog({
         const warning: Omit<WorkerLine, 'at'> = {
           identity,
           off: off + next,
+          gen,
+          tail: hashBefore({
+            fd,
+            end: off + next,
+          }),
           code: 'invalid',
           text: 'Line exceeds the worker.log line limit; discarding through its next newline',
         }
@@ -203,7 +341,7 @@ export function foldWorkerLog({
           event: {
             v: 1,
             seq: writer.state.seq + 1,
-            id: `worker:${task}:${identity}:${off + next}`,
+            id: `worker:${task}:${gen}:${off + next}`,
             at: new Date().toISOString(),
             cardId: task,
             actor: `worker:${task}`,
@@ -244,7 +382,7 @@ export function foldWorkerLog({
       }
 
       const lineOff = off + end + 1
-      const id = `worker:${task}:${identity}:${lineOff}`
+      const id = `worker:${task}:${gen}:${lineOff}`
       const at = new Date().toISOString()
       let link
 
@@ -286,6 +424,11 @@ export function foldWorkerLog({
           data: {
             identity,
             off: lineOff,
+            gen,
+            tail: hashBefore({
+              fd,
+              end: lineOff,
+            }),
             code,
             text,
           },

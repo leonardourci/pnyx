@@ -31,7 +31,7 @@ See [AGENTS.md](../AGENTS.md) for the layout and design rules, and [follow-conve
 
 Owner actions run in the daemon, which is the only writer. One ordered queue stages each command against memory and appends its meaningful facts to the Titan and task logs. It syncs the touched files before returning a receipt and publishes the resulting state afterward. State reducers perform no I/O, clock reads or random choices.
 
-Observation-only source advances (`generation`, `cursor` and observed time) live in daemon memory. Their stale-report checks compare the currently reconstructed source refs; restart restores available evidence from native agent files. Push-only ordering watermarks expire at restart. Worker report identity and byte-offset facts remain durable in each task log. Integrations that need ordering across restarts keep their evidence in a native source Othrys can reread.
+Observation-only source advances (`generation`, `cursor` and observed time) live in daemon memory. Their stale-report checks compare the currently reconstructed source refs; restart restores what each transcript wrote after its session's last saved turn record. Push-only ordering watermarks expire at restart. Worker report identity and byte-offset facts remain durable in each task log. Integrations that need ordering across restarts keep their evidence in a native source Othrys can reread.
 
 Dispatch reads use the committed journal without rewriting its human-readable config mirrors. The daemon repairs those mirrors after claiming the home and when preparing a configuration change, so local setup diagnostics cannot overwrite a newer daemon commit.
 

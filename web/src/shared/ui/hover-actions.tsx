@@ -3,6 +3,7 @@ import { useId, useEffect, useLayoutEffect, useRef, useState, useCallback, type 
 import { frame, cancelFrame } from 'motion/react'
 import { HOVER_CLAIM } from './tooltip.tsx'
 
+export const ACTIONS_TRIGGER = 'data-actions-trigger'
 const VIEWPORT_GAP = 8
 const CARD_INSET = 10
 
@@ -99,15 +100,7 @@ export function HoverActions({
         })
       }
 
-      const show = (event: Event) => {
-        if (hiding || card.closest('[data-dragging]') || (event.type === 'focusin' && !keyboardFocus())) {
-          return
-        }
-
-        if (event.target instanceof Element && event.target.closest('.tooltip-anchor')) {
-          return
-        }
-
+      const reveal = () => {
         document.dispatchEvent(new CustomEvent(
           HOVER_CLAIM,
           {
@@ -133,8 +126,22 @@ export function HoverActions({
         }
       }
 
+      const show = (event: Event) => {
+        const touched = event instanceof PointerEvent && event.pointerType === 'touch'
+        const focusedByPointer = event.type === 'focusin' && !keyboardFocus()
+        const onTooltip = event.target instanceof Element && !!event.target.closest('.tooltip-anchor')
+
+        if (touched || hiding || card.closest('[data-dragging]') || focusedByPointer || onTooltip) {
+          return
+        }
+
+        reveal()
+      }
+
       const leave = (event: PointerEvent) => {
-        if (event.relatedTarget instanceof Node && card.contains(event.relatedTarget)) {
+        const lifted = event.pointerType === 'touch'
+
+        if (lifted || (event.relatedTarget instanceof Node && card.contains(event.relatedTarget))) {
           return
         }
 
@@ -153,6 +160,18 @@ export function HoverActions({
 
         if (!hovered()) {
           hide()
+        }
+      }
+
+      const toggle = (event: MouseEvent) => {
+        if (!(event.target instanceof Element) || !event.target.closest(`[${ACTIONS_TRIGGER}]`)) {
+          return
+        }
+
+        if (element.matches(':popover-open')) {
+          hide()
+        } else {
+          reveal()
         }
       }
 
@@ -178,6 +197,10 @@ export function HoverActions({
       card.addEventListener(
         'focusin',
         show,
+      )
+      card.addEventListener(
+        'click',
+        toggle,
       )
       card.addEventListener(
         'focusout',
@@ -237,6 +260,10 @@ export function HoverActions({
         card.removeEventListener(
           'focusin',
           show,
+        )
+        card.removeEventListener(
+          'click',
+          toggle,
         )
         card.removeEventListener(
           'focusout',

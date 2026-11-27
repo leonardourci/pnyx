@@ -2,7 +2,6 @@ import { loadTitan } from '#app/store.ts'
 import { taskChildren } from '#app/task-runtime.ts'
 import { localToken } from '#app/server-state.ts'
 import { foldWorkerLog } from '#workers/worker-log.ts'
-import { readTranscript } from '#workers/transcript-read.ts'
 import { withWriter } from '#app/writer.ts'
 import { quietNativeWatch } from './setup/watch.ts'
 import { workerLine } from './setup/worker-log.ts'
@@ -2004,75 +2003,166 @@ test(
 )
 
 test(
-  'a worker.log and a transcript keep the read positions an older Othrys saved before a reboot renumbered their disk',
+  'a restart keeps a finished worker turn from its saved record without reading the transcript before it',
   async () => {
     const titan = await othrys.titan()
-    const { worker } = await titan.startTask({ key: 'renumbered' })
-    const task = await titan.task({ key: 'renumbered' })
+    await titan.startTask({ key: 'saved-turn' })
+    const task = await titan.task({ key: 'saved-turn' })
+    const card = () => loadTitan({ titanId: titan.id }).state.cards[task.id]!
+    await until({
+      what: 'the first turn to finish',
+      check: () => card().sessionActivity === 'finished',
+    })
+    const transcript = card().agent!.transcriptPath!
+    const taskLog = join(
+      process.env.OTHRYS_HOME!,
+      'titans',
+      titan.id,
+      'tasks',
+      task.id,
+      'task.log',
+    )
+    const turnRecords = () => readFileSync(
+      taskLog,
+      'utf8',
+    ).trimEnd()
+      .split('\n')
+      .map(line => JSON.parse(line))
+      .filter(record => record.t === 'activity')
+    const finished = turnRecords().findLast(record => record.event.data.fields.activity === 'finished')
+    expect(finished.event.data.run).toMatchObject({
+      session: card().sessionIds![0],
+      harness: 'claude-code',
+      account: 'claude:test',
+      transcriptPos: expect.any(Number),
+    })
+    const savedPos: number = finished.event.data.run.transcriptPos
+    const transcriptBefore = readFileSync(transcript)
+    expect(savedPos).toBeGreaterThan(0)
+    const prompt = ({ text }: { text: string }) => JSON.stringify({
+      type: 'user',
+      timestamp: new Date().toISOString(),
+      message: {
+        role: 'user',
+        content: text,
+      },
+    })
+    const promptBeforeSavedPos = prompt({ text: 'x'.repeat(savedPos - 1 - prompt({ text: '' }).length) })
+    await othrys.restart({
+      whileStopped: () => {
+        writeFileSync(
+          transcript,
+          Buffer.concat([
+            Buffer.from(`${promptBeforeSavedPos}\n`),
+            transcriptBefore.subarray(savedPos),
+          ]),
+        )
+      },
+    })
+    const shown = (await titan.owner({
+      args: [
+        'task',
+        'show',
+        task.id,
+        '--full',
+      ],
+    })).task
+    expect(shown.activity).toBe('finished')
+    expect(shown.attention).toEqual([])
+    expect(turnRecords().at(-1).id).toBe(finished.id)
+  },
+)
+
+test(
+  'a worker.log line keeps its id when the file moves to another inode, and a replaced file starts the next generation',
+  async () => {
+    const titan = await othrys.titan()
+    await titan.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'moved-log',
+        '--title',
+        'Moved log',
+      ],
+    })
+    const task = await titan.task({ key: 'moved-log' })
     const log = join(
-      worker.env.OTHRYS_TASK_DIR!,
+      process.env.OTHRYS_HOME!,
+      'runtime',
+      'tasks',
+      task.id,
       'worker.log',
     )
-    const transcript = loadTitan({ titanId: titan.id }).state.cards[task.id]!.agent!.transcriptPath!
-
-    const savedOnEarlierMount = ({ path }: { path: string }) => {
-      const file = statSync(path)
-
-      return `${file.dev + 1}:${file.ino}`
-    }
-
-    const read = readTranscript({
-      cursor: {
-        source: transcript,
-        identity: '',
-        pos: 0,
-      },
-    })!
-    expect(readTranscript({
-      cursor: {
-        source: transcript,
-        identity: savedOnEarlierMount({ path: transcript }),
-        pos: read.end,
-      },
-    })).toMatchObject({
-      reset: false,
-      lines: [],
+    const taskLog = join(
+      process.env.OTHRYS_HOME!,
+      'titans',
+      titan.id,
+      'tasks',
+      task.id,
+      'task.log',
+    )
+    const lineIds = () => readFileSync(
+      taskLog,
+      'utf8',
+    ).trimEnd()
+      .split('\n')
+      .map(line => JSON.parse(line))
+      .filter(record => record.event?.type === 'task.worker-line')
+      .map(record => record.id)
+    await workerLine({
+      titan,
+      key: task.id,
+      line: 'note: first',
     })
-
-    const replayed = await withWriter({
-      titanId: titan.id,
-      fn: ({ writer }) => {
-        appendFileSync(
-          log,
-          'done: shipped before the reboot\n',
+    await workerLine({
+      titan,
+      key: task.id,
+      line: 'done: second',
+    })
+    const inode = statSync(log).ino
+    await othrys.restart({
+      whileStopped: () => {
+        writeFileSync(
+          `${log}.copy`,
+          readFileSync(log),
         )
-        writer.append({
-          event: {
-            v: EVENT_VERSION,
-            seq: writer.state.seq + 1,
-            id: `older-othrys:${task.id}`,
-            at: new Date().toISOString(),
-            cardId: task.id,
-            actor: `worker:${task.id}`,
-            type: 'task.worker-line',
-            data: {
-              identity: savedOnEarlierMount({ path: log }),
-              off: statSync(log).size,
-              code: 'done',
-              text: 'shipped before the reboot',
-            },
-          },
-        })
-        const before = writer.state.seq
-        foldWorkerLog({
-          writer,
-          task: task.id,
-        })
-
-        return writer.state.seq - before
+        renameSync(
+          `${log}.copy`,
+          log,
+        )
       },
     })
-    expect(replayed).toBe(0)
+    expect(statSync(log).ino).not.toBe(inode)
+    await workerLine({
+      titan,
+      key: task.id,
+      line: 'note: third',
+    })
+    expect(lineIds()).toEqual([
+      `worker:${task.id}:0:12`,
+      `worker:${task.id}:0:25`,
+      `worker:${task.id}:0:37`,
+    ])
+    await othrys.restart({
+      whileStopped: () => {
+        writeFileSync(
+          `${log}.new`,
+          'note: fresh file\n',
+        )
+        renameSync(
+          `${log}.new`,
+          log,
+        )
+      },
+    })
+    await until({
+      what: 'the replaced worker.log to be read',
+      check: () => lineIds().length === 4,
+    })
+    expect(lineIds().at(-1)).toBe(`worker:${task.id}:1:17`)
   },
 )
 

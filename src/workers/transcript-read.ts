@@ -1,5 +1,5 @@
 import { openSync, fstatSync, readSync, closeSync } from 'node:fs'
-import { fileIdentity, sameFile } from '#store/file-identity.ts'
+import { fileIdentity } from '#store/file-identity.ts'
 
 export interface TranscriptRead {
   size: number
@@ -41,10 +41,7 @@ export function readTranscript({
   try {
     const stat = fstatSync(fd)
     const identity = fileIdentity({ stat })
-    const replaced = cursor.identity !== '' && !sameFile({
-      saved: cursor.identity,
-      identity,
-    })
+    const replaced = cursor.identity !== '' && cursor.identity !== identity
     const truncated = stat.size < cursor.pos
     const reset = replaced || truncated
     const from = reset ? 0 : cursor.pos

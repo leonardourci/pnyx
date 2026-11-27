@@ -237,12 +237,19 @@ test(
     const first = await othrys.titan()
     const second = await othrys.titan()
     const { worker } = await first.startTask({ key: 'kept' })
-    const before = await first.owner({
-      args: [
-        'task',
-        'show',
-        'kept',
-      ],
+    const before = await until({
+      what: 'the first turn to end',
+      check: async () => {
+        const shown = await first.owner({
+          args: [
+            'task',
+            'show',
+            'kept',
+          ],
+        })
+
+        return shown.task.status === 'idle' && shown
+      },
     })
     await first.owner({
       args: [
