@@ -1,4 +1,4 @@
-import { displayAt, type draftView } from './draft.ts'
+import { displayAt, draftView } from './draft.ts'
 
 // A chip host keeps its Markdown, so one the browser puts back, as on Undo, reads as its chip again.
 const chipSource = ({ node }: { node: Node }) =>
@@ -26,14 +26,7 @@ interface Point {
   offset: number
 }
 
-interface Measured {
-  // Into the draft's Markdown.
-  source: number
-  // Into the display, where a chip is one character.
-  display: number
-}
-
-// A point outside the field stays undefined.
+// Each point becomes its offset into the draft's Markdown; a point outside the field stays undefined.
 function measure({
   field,
   points,
@@ -41,41 +34,35 @@ function measure({
   field: HTMLElement
   points: Point[]
 }) {
-  let source = '', display = 0, endBreak = false
-  const found: (Measured | undefined)[] = points.map(() => undefined)
+  let source = '', endBreak = false
+  const found: (number | undefined)[] = points.map(() => undefined)
 
   const mark = ({
     node,
     offset,
-    at,
   }: {
     node: Node
     offset: number
-    at: Measured
   }) => points.forEach((
     point,
     index,
   ) => {
     if (point.node === node && point.offset === offset) {
-      found[index] = at
+      found[index] = source.length
     }
   })
 
   const visit = ({ node }: { node: Node }) => {
     if (node instanceof Text) {
-      for (let offset = 0; offset <= node.data.length; offset++) {
-        mark({
-          node,
-          offset,
-          at: {
-            source: source.length + offset,
-            display: display + offset,
-          },
-        })
-      }
-
+      points.forEach((
+        point,
+        index,
+      ) => {
+        if (point.node === node) {
+          found[index] = source.length + point.offset
+        }
+      })
       source += node.data
-      display += node.data.length
 
       return
     }
@@ -84,17 +71,13 @@ function measure({
 
     if (chip !== undefined) {
       source += chip
-      display += 1
       // A point inside a chip, as when its text is selected, counts as just after it.
       points.forEach((
         point,
         index,
       ) => {
         if (node.contains(point.node)) {
-          found[index] = {
-            source: source.length,
-            display,
-          }
+          found[index] = source.length
         }
       })
 
@@ -109,7 +92,6 @@ function measure({
 
       if (!endBreak) {
         source += '\n'
-        display += 1
       }
 
       return
@@ -120,7 +102,6 @@ function measure({
 
     if (block && source && !source.endsWith('\n')) {
       source += '\n'
-      display += 1
     }
 
     node.childNodes.forEach((
@@ -130,20 +111,12 @@ function measure({
       mark({
         node,
         offset: index,
-        at: {
-          source: source.length,
-          display,
-        },
       })
       visit({ node: child })
     })
     mark({
       node,
       offset: node.childNodes.length,
-      at: {
-        source: source.length,
-        display,
-      },
     })
   }
 
@@ -155,27 +128,22 @@ function measure({
       0,
       -1,
     )
-    display -= 1
   }
 
   return {
     text: source,
-    display,
-    found: found.map(at => at && {
-      source: Math.min(
-        at.source,
-        source.length,
-      ),
-      display: Math.min(
-        at.display,
-        display,
-      ),
-    }),
+    found: found.map(at => at === undefined ? undefined : Math.min(
+      at,
+      source.length,
+    )),
   }
 }
 
+// The field's draft, and its selection as display offsets when the selection is inside it.
 export function readField({ field }: { field: HTMLElement }) {
   const selection = getSelection()
+  const inside = !!selection?.anchorNode && !!selection.focusNode
+    && field.contains(selection.anchorNode) && field.contains(selection.focusNode)
   const {
     text,
     found: [
@@ -184,24 +152,25 @@ export function readField({ field }: { field: HTMLElement }) {
     ],
   } = measure({
     field,
-    points: selection?.anchorNode && selection.focusNode ? [
+    points: inside ? [
       {
-        node: selection.anchorNode,
+        node: selection.anchorNode!,
         offset: selection.anchorOffset,
       },
       {
-        node: selection.focusNode,
+        node: selection.focusNode!,
         offset: selection.focusOffset,
       },
     ] : [],
   })
-  const shown = ({ at }: { at?: Measured }) => displayAt({
+  const shown = ({ at }: { at?: number }) => displayAt({
     text,
-    offset: at?.source ?? text.length,
+    offset: at ?? text.length,
   })
 
   return {
     text,
+    inside,
     anchor: shown({ at: anchor }),
     focus: shown({ at: focus }),
   }
@@ -214,35 +183,11 @@ const remembered = new WeakMap<HTMLElement, {
 }>()
 
 const liveEnds = ({ field }: { field: HTMLElement }) => {
-  const selection = getSelection()
+  const read = readField({ field })
 
-  if (!selection?.anchorNode || !selection.focusNode || !field.contains(selection.anchorNode)
-    || !field.contains(selection.focusNode)) {
-    return undefined
-  }
-
-  const {
-    found: [
-      anchor,
-      focus,
-    ],
-  } = measure({
-    field,
-    points: [
-      {
-        node: selection.anchorNode,
-        offset: selection.anchorOffset,
-      },
-      {
-        node: selection.focusNode,
-        offset: selection.focusOffset,
-      },
-    ],
-  })
-
-  return anchor && focus ? {
-    anchor: anchor.display,
-    focus: focus.display,
+  return read.inside ? {
+    anchor: read.anchor,
+    focus: read.focus,
   } : undefined
 }
 
@@ -372,10 +317,7 @@ export function focusAtEnd({
   preventScroll?: boolean
 }) {
   field.focus({ preventScroll })
-  const end = measure({
-    field,
-    points: [],
-  }).display
+  const end = draftView({ text: readField({ field }).text }).display.length
   select({
     field,
     anchor: end,
