@@ -34,7 +34,7 @@ import { Icon } from '#web-shared/icons.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { CardState } from './card-state.tsx'
-import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
+import { ACTIONS_TRIGGER, HoverActions } from '#web-shared/ui/hover-actions.tsx'
 import type { CurrentAction } from '#titan/calls.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 
@@ -958,6 +958,13 @@ export const TitanCard = memo(function TitanCard({
           />
         )}
       </CardContent>
+      <IconButton
+        className="card-actions-trigger absolute top-1.5 right-1.5 z-2 hidden bg-card-fill touch:inline-flex"
+        label="Card actions"
+        icon="more"
+        size="compact"
+        {...{ [ACTIONS_TRIGGER]: '' }}
+      />
       {hoverActions}
     </TaskCardDrag>
   )
