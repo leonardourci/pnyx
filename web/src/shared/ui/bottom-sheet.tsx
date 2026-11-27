@@ -31,7 +31,10 @@ export function BottomSheet({
         nativeEvent.preventDefault()
         close()
       }}
-      onClick={({ target, currentTarget }) => {
+      onClick={({
+        target,
+        currentTarget,
+      }) => {
         if (target === currentTarget) {
           close()
         }

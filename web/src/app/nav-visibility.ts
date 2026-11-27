@@ -21,7 +21,10 @@ function readSaved() {
   try {
     return localStorage.getItem(NAV_KEY)
   } catch (error) {
-    console.warn('Cannot read navigation preferences', error)
+    console.warn(
+      'Cannot read navigation preferences',
+      error,
+    )
     sessionSnapshot = '{}'
 
     return sessionSnapshot
@@ -34,7 +37,10 @@ function savedLayouts({ snapshot }: { snapshot: string | null }) {
   try {
     saved = JSON.parse(snapshot ?? '{}')
   } catch (error) {
-    console.warn('Cannot read saved navigation layouts', error)
+    console.warn(
+      'Cannot read saved navigation layouts',
+      error,
+    )
   }
 
   const wide = saved && typeof saved === 'object' && 'wide' in saved ? saved.wide : undefined
@@ -62,8 +68,16 @@ export function useNavHidden({
       const refresh = () => setSnapshot(readSaved())
       const listeners = new AbortController()
       const options = { signal: listeners.signal }
-      addEventListener(NAV_CHANGED, refresh, options)
-      addEventListener('storage', refresh, options)
+      addEventListener(
+        NAV_CHANGED,
+        refresh,
+        options,
+      )
+      addEventListener(
+        'storage',
+        refresh,
+        options,
+      )
       refresh()
 
       return () => listeners.abort()
@@ -84,9 +98,15 @@ export function useNavHidden({
       sessionSnapshot = next
     } else {
       try {
-        localStorage.setItem(NAV_KEY, next)
+        localStorage.setItem(
+          NAV_KEY,
+          next,
+        )
       } catch (error) {
-        console.warn('Cannot save navigation preferences', error)
+        console.warn(
+          'Cannot save navigation preferences',
+          error,
+        )
         sessionSnapshot = next
       }
     }
