@@ -12,7 +12,6 @@ import { Button } from '#web-shared/ui/controls.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import { markdownText } from '#web-titan/markdown-text.ts'
 
-// Asks a Titan's chat to open its list of what waits on the owner.
 export const OPEN_WAITING = 'othrys:open-waiting'
 
 export function WaitingDecisions({

@@ -113,7 +113,6 @@ const CARD_TABS = [
     label: 'Activity',
   },
 ]
-// A task on the phone fills the screen and shows one of its parts at a time.
 const PHONE_CARD_TABS = [
   CARD_TABS[0]!,
   {

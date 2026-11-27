@@ -58,7 +58,6 @@ function TitanChip({
   )
 }
 
-// Hovering another Titan's chip drops down its projects; choosing one opens that Titan there.
 function HoverProjects({
   titan,
   openProject,
@@ -200,7 +199,6 @@ function HoverProjects({
   )
 }
 
-// The active Titan's chip opens its menu, and its project chips follow it in the same group.
 function ActiveTitan({
   titan,
   menu,
@@ -251,7 +249,6 @@ export function TitanChips({
   current: string
   navigate({ url }: { url: string }): Promise<void>
   createTitan(): unknown
-  // The active Titan's menu entries and its project chips, which its workspace provides.
   menu: ReactNode
   projects: ReactNode
   openProject({
@@ -272,7 +269,6 @@ export function TitanChips({
         ) => {
           const polis = titan.polis ?? 'shared'
           const previousPolis = titans[index - 1]?.polis ?? 'shared'
-          // Titans keep their polis order; a wider gap marks where the next polis starts.
           const startsPolis = index > 0 && previousPolis !== polis
           const active = <ActiveTitan titan={titan} menu={menu} projects={projects} />
           const chip = titan.id === current ? active : (

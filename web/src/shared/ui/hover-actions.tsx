@@ -3,7 +3,6 @@ import { useId, useEffect, useLayoutEffect, useRef, useState, useCallback, type 
 import { frame, cancelFrame } from 'motion/react'
 import { HOVER_CLAIM } from './tooltip.tsx'
 
-// The attribute that marks a card's button opening its actions on touch screens.
 export const ACTIONS_TRIGGER = 'data-actions-trigger'
 const VIEWPORT_GAP = 8
 const CARD_INSET = 10

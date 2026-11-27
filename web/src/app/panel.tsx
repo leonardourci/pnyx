@@ -97,7 +97,6 @@ export function Panel({
   navigate({ page }: { page: string }): void
   oracle: ReactNode
   phone: boolean
-  // The nav is hidden for the current layout: a small Titan chip on wide screens, a short header on the phone.
   hidden: boolean
   reveal(): void
   titan?: TitanSummary

@@ -654,7 +654,6 @@ export function TitanView({
           return Promise.resolve(false)
         }
 
-        // A task on the phone opens full screen rather than inside its column.
         if (phone && !modal) {
           return open({
             id,

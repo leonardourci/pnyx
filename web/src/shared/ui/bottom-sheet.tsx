@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import { OverlaySurface } from './overlay-surface.tsx'
 
-// A modal panel that rises from the bottom edge; a press on the backdrop or Escape closes it.
 export function BottomSheet({
   label,
   close,

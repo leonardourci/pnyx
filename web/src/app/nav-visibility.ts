@@ -2,7 +2,6 @@ import { useEffect, useSyncExternalStore } from 'react'
 
 const NAV_KEY = 'othrys:nav-hidden'
 const NAV_CHANGED = 'othrys:nav-hidden-changed'
-// The phone starts with its nav hidden; wide screens start with it shown.
 const HIDDEN_BY_DEFAULT = {
   wide: false,
   phone: true,
