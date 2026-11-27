@@ -593,7 +593,11 @@ export function Messages({
       const tapElsewhere = (event: MouseEvent) => {
         const target = event.target instanceof Element ? event.target : null
 
-        if (!target?.closest(SELECTION_ACTIONS_SELECTOR) && !selectedPassage({ messages: root.current })) {
+        if (target?.closest(SELECTION_ACTIONS_SELECTOR)) {
+          return
+        }
+
+        if (!selectedPassage({ messages: root.current })) {
           setSelection(null)
         }
       }
@@ -782,7 +786,8 @@ export function Messages({
     }
 
     const fromMessages = event.target === event.currentTarget
-    const fromSelectionAction = event.target instanceof Element && event.target.closest(SELECTION_ACTIONS_SELECTOR)
+    const target = event.target instanceof Element ? event.target : null
+    const fromSelectionAction = target?.closest(SELECTION_ACTIONS_SELECTOR)
 
     if (key === 'Escape' && !shiftKey && (fromMessages || fromSelectionAction)) {
       event.preventDefault()

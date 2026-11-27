@@ -110,7 +110,9 @@ for (const engine of [
               throw new Error('The reply selection disappeared')
             }
 
-            return element.getBoundingClientRect().top - selection.getRangeAt(0).getBoundingClientRect().bottom
+            const selectionBottom = selection.getRangeAt(0).getBoundingClientRect().bottom
+
+            return element.getBoundingClientRect().top - selectionBottom
           })).toBeGreaterThanOrEqual(MINIMUM_TOUCH_GAP)
         }
 
