@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { focusAtEnd } from '#web-shared/ui/focus.ts'
+import { focusAtEnd } from './composer-editable.ts'
 
 const APPLE_PLATFORM = /Mac|iPhone|iPad/.test(navigator.platform)
 const COMPOSER = '.composer textarea'

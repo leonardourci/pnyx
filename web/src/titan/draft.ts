@@ -3,8 +3,11 @@ import { IMAGE, imageNames, imagePaths } from '#titan/images.ts'
 import { FILE_BLOCK } from '#titan/attachments.ts'
 import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '#titan/mentions.ts'
 
-// The draft stays the Markdown Titan receives; the textarea shows each chip as its label.
+// The draft stays the Markdown Titan receives; the field shows each chip as one inline element.
 export type ChipKind = ReferenceKind
+
+// In the display, a chip is this one character, so offsets count it as a single step.
+export const CHIP = '\uFFFC'
 
 // An image still uploading holds its place in the draft as an image token for a path no file has.
 const PENDING_IMAGE = '/pending-image/'
@@ -16,19 +19,19 @@ export const isPendingImage = ({ path }: { path: string }) => path.startsWith(PE
 export const hasPendingImage = ({ text }: { text: string }) =>
   imagePaths({ text }).some(path => isPendingImage({ path }))
 
-// An em space holds an icon's room in the textarea (a task chip has two); the chip draws icons over them.
+// An em space holds an icon's room in a chip (a task chip has two); the chip draws its icon over it.
 export const ICON_SPACE = '\u2003'
 export const QUARTER_SPACE = '\u2005'
 export const CHIP_SPACE = QUARTER_SPACE + QUARTER_SPACE
 const NO_BREAK_SPACE = '\u00A0'
 export const WORD_JOINER = '\u2060'
 export const CHIP_JOIN = WORD_JOINER + NO_BREAK_SPACE + WORD_JOINER
-const REFERENCE_ROOM: Partial<Record<ChipKind, string>> = {
-  column: ICON_SPACE + CHIP_JOIN,
-  task: ICON_SPACE + WORD_JOINER + ICON_SPACE + CHIP_JOIN,
-  slot: '',
-}
-const CARD_NAME_MAX = 20
+// These read as their bare name; any other reference shows an @ before it.
+const BARE_REFERENCES = new Set<ChipKind>([
+  'column',
+  'task',
+  'slot',
+])
 const LETTERS = new Intl.Segmenter(
   undefined,
   { granularity: 'grapheme' },
@@ -48,38 +51,16 @@ export function skillProjectLabel({ text }: { text: string }): string {
 export const cardChip = ({ chip }: { chip: Pick<DraftChip, 'kind' | 'attached'> }) =>
   chip.kind === 'image' || (chip.kind === 'file' && chip.attached)
 
-// A card is drawn as one box over this room, so word joiners keep it on one line and a long name is cut.
-function cardLabel({ name }: { name: string }) {
-  const letters = Array.from(
-    LETTERS.segment(name),
-    letter => letter.segment === ' ' ? NO_BREAK_SPACE : letter.segment,
-  )
-  const shown = letters.length > CARD_NAME_MAX ? [
-    ...letters.slice(
-      0,
-      CARD_NAME_MAX - 1,
-    ),
-    '…',
-  ] : letters
-
-  return [
-    ICON_SPACE,
-    ICON_SPACE,
-    QUARTER_SPACE,
-    ...shown,
-    ICON_SPACE,
-    ICON_SPACE,
-  ].join(WORD_JOINER)
-}
+export const chipText = ({ chip }: { chip: Pick<DraftChip, 'kind' | 'name'> }) =>
+  BARE_REFERENCES.has(chip.kind) ? chip.name : `@${chip.name}`
 
 interface DraftChip {
   kind: ChipKind
   // An attachment carries the image or file itself; a reference only points at something.
   attached: boolean
   value: string
-  // What the chip is called; its label adds the room the chip draws its icons and controls over.
+  // What the chip is called.
   name: string
-  label: string
   start: number
   end: number
 }
@@ -104,7 +85,6 @@ function draftChips({ text }: { text: string }): DraftChip[] {
       attached: true,
       value: match[1]!,
       name: match[1]!,
-      label: cardLabel({ name: match[1]! }),
       start: match.index,
       end: match.index + match[0].length,
     })
@@ -121,7 +101,6 @@ function draftChips({ text }: { text: string }): DraftChip[] {
         attached: true,
         value: match[1]!,
         name,
-        label: cardLabel({ name }),
         start: match.index,
         end: match.index + match[0].length,
       })
@@ -136,18 +115,9 @@ function draftChips({ text }: { text: string }): DraftChip[] {
       const kind = match[2] as ChipKind
       const name = referenceLabel({ label: match[1]! })
       const value = decodeValue({ value: match[3]! }) ?? match[3]!
-      const skill = kind === 'skill' ? readSkillReference({ value }) : undefined
 
-      if (kind === 'skill' && !skill) {
+      if (kind === 'skill' && !readSkillReference({ value })) {
         continue
-      }
-
-      const prefix = REFERENCE_ROOM[kind] ?? '@'
-      let label = `${prefix}${name}`
-
-      if (skill) {
-        const project = skill.project ? skillProjectLabel({ text: skill.project }) + CHIP_JOIN : ''
-        label = `${ICON_SPACE}${CHIP_JOIN}${project}/${skill.name}${CHIP_JOIN}${ICON_SPACE}`
       }
 
       chips.push({
@@ -155,12 +125,6 @@ function draftChips({ text }: { text: string }): DraftChip[] {
         attached: false,
         value,
         name,
-        label: cardChip({
-          chip: {
-            kind,
-            attached: false,
-          },
-        }) ? cardLabel({ name }) : label,
         start: match.index,
         end: match.index + match[0].length,
       })
@@ -181,7 +145,7 @@ export function draftView({ text }: { text: string }): DraftView {
       chip.start,
     )
     const from = display.length
-    display += CHIP_SPACE + chip.label + CHIP_SPACE
+    display += CHIP
     cursor = chip.end
 
     return {
@@ -248,57 +212,6 @@ export const displayAt = ({
   view: draftView({ text }),
   offset,
 })
-
-// A caret never rests inside a chip: it moves to the edge it was heading for.
-function snapCaret({
-  view,
-  offset,
-  backward,
-}: {
-  view: DraftView
-  offset: number
-  backward: boolean
-}) {
-  const chip = view.chips.find(c => c.from < offset && offset < c.to)
-
-  return chip ? backward ? chip.from : chip.to : offset
-}
-
-// A selection never ends inside a chip: its moving end jumps over a chip the way it was heading, and its
-// fixed end widens to take the whole chip.
-export function snapSelection({
-  view,
-  anchor,
-  focus,
-  previous,
-}: {
-  view: DraftView
-  anchor: number
-  focus: number
-  previous: number
-}) {
-  const moved = snapCaret({
-    view,
-    offset: focus,
-    backward: focus < previous,
-  })
-
-  if (anchor === focus) {
-    return {
-      anchor: moved,
-      focus: moved,
-    }
-  }
-
-  return {
-    anchor: snapCaret({
-      view,
-      offset: anchor,
-      backward: moved > anchor,
-    }),
-    focus: moved,
-  }
-}
 
 // A chip the range touches goes as a whole, so its Markdown is never left half edited.
 export function replaceDisplay({
@@ -402,11 +315,6 @@ export function placeImages({
     )
   }
 
-  caret = snapCaret({
-    view,
-    offset: caret,
-    backward: false,
-  })
   const before = pointBefore({
     text: shown,
     at: caret,
@@ -545,8 +453,7 @@ export function shownDraft({
   for (const chip of draftChips({ text })) {
     const attachedFile = chip.kind === 'file' && chip.attached
     const attachedImage = chip.kind === 'image' && chip.attached
-    const shownBare = chip.attached || chip.kind === 'skill' || REFERENCE_ROOM[chip.kind] !== undefined
-    const reference = shownBare ? chip.name : `@${chip.name}`
+    const reference = chip.attached || chip.kind === 'skill' ? chip.name : chipText({ chip })
     const shown = attachedImage ? image({
       path: chip.value,
       name: chip.name,
@@ -642,49 +549,4 @@ export function placeBlock({
     text: edit.text,
     caret,
   }
-}
-
-// The caret places the edit when the same character repeats around it: typed text ends at the caret.
-export function editDraft({
-  text,
-  next,
-  caret,
-}: {
-  text: string
-  next: string
-  caret: number
-}) {
-  const view = draftView({ text }), before = view.display
-  const typed = Math.max(
-    0,
-    next.length - before.length,
-  )
-  let prefix = 0, suffix = 0
-
-  while (prefix < caret - typed && prefix < before.length && before[prefix] === next[prefix]) {
-    prefix++
-  }
-
-  while (suffix < next.length - caret && suffix < before.length - prefix
-    && before[before.length - 1 - suffix] === next[next.length - 1 - suffix]) {
-    suffix++
-  }
-
-  const to = before.length - suffix
-  const insert = next.slice(
-    prefix,
-    next.length - suffix,
-  )
-  const erased = insert || prefix === to ? undefined
-    : view.chips.find(chip => cardChip({ chip }) && chip.from <= prefix && to <= chip.to)
-
-  return erased ? removeChip({
-    text,
-    chip: erased,
-  }) : replaceDisplay({
-    text,
-    from: prefix,
-    to,
-    insert,
-  })
 }

@@ -140,6 +140,7 @@ export function taggedParagraphs({ text }: { text: string }): (TaskMention & { t
     })
 }
 
+// The composer shows each chip as U+FFFC, which ends a mention and may come right before one.
 export function mentionQuery({
   text,
   cursor,
@@ -150,7 +151,7 @@ export function mentionQuery({
   start: number
   query: string
 } | null {
-  const match = /(?:^|\s)@([^@\n\r[\]()]*)$/.exec(text.slice(
+  const match = /(?:^|[\s\uFFFC])@([^@\n\r[\]()\uFFFC]*)$/.exec(text.slice(
     0,
     cursor,
   ))

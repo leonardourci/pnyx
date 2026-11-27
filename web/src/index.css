@@ -433,6 +433,11 @@ kbd {
   @supports selector(::-webkit-scrollbar) {
     scrollbar-width: auto; scrollbar-color: auto;
   }
+  /* Out of the flow, so the caret of an empty field stays where typing starts. */
+  &[data-empty]::before {
+    @apply pointer-events-none absolute text-muted;
+    content: attr(data-placeholder);
+  }
 }
 /* Utility aliases keep shared layout on semantic elements owned by their callers. */
 @layer utilities{

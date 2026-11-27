@@ -18,7 +18,7 @@ export function MentionPicker({
   anchor,
 }: {
   id: string
-  anchor: RefObject<HTMLTextAreaElement | null>
+  anchor: RefObject<HTMLElement | null>
   matches: RowMatch<MentionItem>[]
   active: number
   choose({ item }: { item: MentionItem }): void

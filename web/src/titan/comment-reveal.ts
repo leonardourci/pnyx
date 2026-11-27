@@ -1,4 +1,4 @@
-import { focusAtEnd } from '#web-shared/ui/focus.ts'
+import { focusAtEnd } from './composer-editable.ts'
 import { commentRange } from './comment-highlight.ts'
 import type { ChatComment } from './chat.ts'
 import { COMMENT_REVEAL, scrollMessage } from './comment-motion.ts'

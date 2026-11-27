@@ -1,6 +1,7 @@
 import type { ChatDrafts } from './chat-drafts.ts'
 import { imageLine } from '#titan/images.ts'
-import { focusAtEnd, isEditing } from '#web-shared/ui/focus.ts'
+import { isEditing } from '#web-shared/ui/focus.ts'
+import { focusAtEnd } from './composer-editable.ts'
 import {
   type ClipboardEvent as PasteEvent,
 } from 'react'

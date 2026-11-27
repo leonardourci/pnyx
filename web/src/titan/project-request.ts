@@ -2,6 +2,7 @@ import type { RefObject, Dispatch, SetStateAction } from 'react'
 import { reference } from '#titan/mentions.ts'
 import { displayAt, draftView, replaceDisplay } from './draft.ts'
 import type { MentionItem } from './mention-picker.tsx'
+import { selectionRange } from './composer-editable.ts'
 
 // Add project asks Titan in the composer: the @ opens the project and folder picker, and the goal is an optional blank.
 const GOAL_SLOT = reference({
@@ -88,7 +89,7 @@ export function projectRequestActions({
   trackMention,
   setGoal,
 }: {
-  input: RefObject<HTMLTextAreaElement | null>
+  input: RefObject<HTMLDivElement | null>
   read(): string
   write({
     text,
@@ -120,7 +121,7 @@ export function projectRequestActions({
 
   const fillGoal = ({ text }: { text: string }) => {
     // The goal the caret is on, so a second request never fills the first one's blank.
-    const caret = input.current?.selectionStart ?? 0
+    const caret = input.current ? selectionRange({ field: input.current }).start : 0
     const draft = read()
     const slots = draftView({ text: draft }).chips.filter(chip => chip.kind === 'slot')
     const onCaret = slots.find(chip => chip.from <= caret && caret <= chip.to)

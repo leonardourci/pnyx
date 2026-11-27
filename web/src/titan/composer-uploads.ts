@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { imageLine, imagePaths } from '#titan/images.ts'
 import { checkImages, uploadImage } from './image-upload.ts'
 import { isPendingImage, pendingImage, placeImages, settleImage, withoutPendingImages } from './draft.ts'
-import { selectionEnds } from './composer-caret.ts'
+import { selectionEnds, selectionRange } from './composer-editable.ts'
 
 // Placeholders whose upload still runs; a field that mounts on the same text keeps them.
 const uploadingImages = new Set<string>()
@@ -11,15 +11,13 @@ const uploadingImages = new Set<string>()
 export function useComposerUploads({
   current,
   input,
-  caretLast,
   latestChange,
   write,
   notify,
   setUploads,
 }: {
   current: RefObject<string>
-  input: RefObject<HTMLTextAreaElement | null>
-  caretLast: RefObject<number>
+  input: RefObject<HTMLDivElement | null>
   latestChange: RefObject<({ text }: { text: string }) => void>
   write({
     text,
@@ -48,7 +46,7 @@ export function useComposerUploads({
       if (orphaned) {
         write({
           text: withoutPendingImages({ text: restored }),
-          caret: caretLast.current,
+          caret: input.current ? selectionEnds({ field: input.current }).focus : 0,
         })
       }
 
@@ -81,8 +79,8 @@ export function useComposerUploads({
     }
 
     const ends = input.current ? selectionEnds({ field: input.current }) : {
-      anchor: caretLast.current,
-      focus: caretLast.current,
+      anchor: 0,
+      focus: 0,
     }
     const settled = settleImage({
       text: current.current,
@@ -165,7 +163,7 @@ export function useComposerUploads({
     }))
     write(placeImages({
       text: current.current,
-      caret: input.current?.selectionEnd,
+      caret: input.current ? selectionRange({ field: input.current }).end : undefined,
       lines: placed.map(({ path }) => imageLine({ path })),
     }))
     input.current?.focus()
