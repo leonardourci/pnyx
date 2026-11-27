@@ -407,6 +407,11 @@ test(
     await workspace.locator(`[data-column="${folders[0]}"] [role="tabpanel"]`).first()
       .waitFor()
     await expect(page.locator('dialog.task-modal').count()).resolves.toBe(0)
+    await expect(workspace.getByRole(
+      'button',
+      { name: 'Card actions' },
+    ).first()
+      .isVisible()).resolves.toBe(false)
   },
 )
 
