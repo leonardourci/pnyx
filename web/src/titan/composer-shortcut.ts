@@ -2,15 +2,15 @@ import { useEffect } from 'react'
 import { focusAtEnd } from './composer-editable.ts'
 
 const APPLE_PLATFORM = /Mac|iPhone|iPad/.test(navigator.platform)
-const COMPOSER = '.composer textarea'
+const COMPOSER = '.composer .composer-text'
 
 export const chatAround = ({ from }: { from: Element | null }) => from?.closest('.chat-frame') ?? null
 
 const chatComposer = ({ from }: { from: Element | null }) =>
-  chatAround({ from })?.querySelector<HTMLTextAreaElement>(COMPOSER) ?? null
+  chatAround({ from })?.querySelector<HTMLElement>(COMPOSER) ?? null
 
 const shownTitanComposer = ({ titanId }: { titanId: string }) =>
-  document.querySelector<HTMLTextAreaElement>(`[data-titan-workspace="${CSS.escape(titanId)}"] .titan-chat ${COMPOSER}`)
+  document.querySelector<HTMLElement>(`[data-titan-workspace="${CSS.escape(titanId)}"] .titan-chat ${COMPOSER}`)
 
 export function focusChatComposer({ from }: { from: Element | null }) {
   const composer = chatComposer({ from })

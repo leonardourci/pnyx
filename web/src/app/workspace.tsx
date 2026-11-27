@@ -139,7 +139,7 @@ export function TitanView({
     () => {
       if (titan.creating) {
         setPage({ page: 'titan' })
-        const frame = requestAnimationFrame(() => layer?.querySelector<HTMLTextAreaElement>('.titan-chat textarea')?.focus())
+        const frame = requestAnimationFrame(() => layer?.querySelector<HTMLElement>('.titan-chat .composer-text')?.focus())
 
         return () => cancelAnimationFrame(frame)
       }
@@ -655,7 +655,7 @@ export function TitanView({
         title: card.title,
       })}: `.trimStart(),
     })
-    requestAnimationFrame(() => layer?.querySelector<HTMLTextAreaElement>('.titan-chat textarea')?.focus())
+    requestAnimationFrame(() => layer?.querySelector<HTMLElement>('.titan-chat .composer-text')?.focus())
   }
 
   // Stable callbacks let unchanged cards retain their memoized render.

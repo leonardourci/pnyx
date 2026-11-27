@@ -148,7 +148,7 @@ export function TitanChat({
   useEffect(
     () => {
       if (new URLSearchParams(location.search).has('new-chat')) {
-        scroll.scroller.current?.closest('.titan-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
+        scroll.scroller.current?.closest('.titan-chat')?.querySelector<HTMLElement>('.composer .composer-text')
           ?.focus()
         const url = new URL(location.href)
         url.searchParams.delete('new-chat'); history.replaceState(
@@ -486,7 +486,7 @@ export function TitanChat({
 
         if (question) {
           centerMessage({ element: question })
-          question.querySelector<HTMLElement>('.ask button:not(:disabled), .ask textarea')?.focus({ preventScroll: true })
+          question.querySelector<HTMLElement>('.ask button:not(:disabled), .ask .composer-text')?.focus({ preventScroll: true })
         }
       })
     } catch (error) {

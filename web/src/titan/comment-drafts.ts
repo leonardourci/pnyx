@@ -73,8 +73,8 @@ export function useCommentDrafts({
       }); clearSelection()
     })
     window.getSelection()?.removeAllRanges()
-    const note = root.current?.querySelector<HTMLTextAreaElement>(
-      `[data-comment-id="${comment.id}"] textarea`,
+    const note = root.current?.querySelector<HTMLElement>(
+      `[data-comment-id="${comment.id}"] .composer-text`,
     )
 
     if (note) {

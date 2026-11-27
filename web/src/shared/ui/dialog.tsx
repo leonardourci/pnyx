@@ -69,7 +69,7 @@ export function Dialog({
       // eslint-disable-next-line othrys/object-params -- React owns the dialog event signature.
       onKeyDown={e => {
         if (e.key === 'Tab') {
-          const controls = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])')]
+          const controls = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), [contenteditable=plaintext-only], select:not(:disabled), [tabindex]:not([tabindex="-1"])')]
             .filter(element => element.getClientRects().length > 0 && !element.closest('[hidden], [inert]'))
           const first = controls[0]
           const last = controls.at(-1)

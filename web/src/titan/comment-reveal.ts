@@ -10,8 +10,8 @@ export function revealComment({
   host: HTMLElement
   comment: ChatComment
 }) {
-  const note = host.querySelector<HTMLTextAreaElement>(
-    `[data-comment-id="${CSS.escape(comment.id)}"] textarea`,
+  const note = host.querySelector<HTMLElement>(
+    `[data-comment-id="${CSS.escape(comment.id)}"] .composer-text`,
   )
   const range = commentRange({
     host,

@@ -318,7 +318,7 @@ export function useTaskNavigation({
       view: current,
       page: 'titan',
     }))
-    requestAnimationFrame(() => focusElement({ selector: `[data-titan-workspace="${CSS.escape(titanId)}"] .titan-chat textarea` }))
+    requestAnimationFrame(() => focusElement({ selector: `[data-titan-workspace="${CSS.escape(titanId)}"] .titan-chat .composer-text` }))
   }
 
   const keepRevealed = ({ id }: { id: string }) => {

@@ -142,7 +142,7 @@ export function useChatThread({
 
   const loadComment = async ({ comment }: { comment: ChatComment }) => {
     scroll.stopFollowing()
-    const selector = `[data-comment-id="${CSS.escape(comment.id)}"] textarea`
+    const selector = `[data-comment-id="${CSS.escape(comment.id)}"] .composer-text`
 
     if (scroll.content.current?.querySelector(selector)) {
       return
