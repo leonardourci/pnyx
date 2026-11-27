@@ -1026,8 +1026,10 @@ export function ComposerField({
               event.preventDefault(); attach({ files })
             }
           }}
-          onCompositionStart={() => {
+          onCompositionStart={event => {
             composingText.current = true
+            // The text being composed is not painted yet, so the placeholder goes now.
+            event.currentTarget.removeAttribute('data-empty')
           }}
           onCompositionEnd={() => {
             composingText.current = false
