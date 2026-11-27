@@ -309,7 +309,7 @@ export const TitanCard = memo(function TitanCard({
   )
   const tabsId = useId()
   const [
-    savedTab,
+    tab,
     setTab,
   ] = useSessionView<'context' | 'activity' | 'chat'>({
     key: taskViewKey({
@@ -341,10 +341,10 @@ export const TitanCard = memo(function TitanCard({
       id: card.id,
       field: 'activityScroll',
     }),
-    active: selected && savedTab === 'activity',
+    active: selected && tab === 'activity',
   })
-  const tab = !phoneTabs && savedTab === 'chat' ? 'context' : savedTab
-  const chatTab = phoneTabs && tab === 'chat'
+  const visibleTab = !phoneTabs && tab === 'chat' ? 'context' : tab
+  const chatTab = visibleTab === 'chat'
   const chatOnly = !editing && (phoneTabs ? chatTab : prefersChatOnly)
   const openLayout = cardLayout({
     chatOnly,
@@ -802,7 +802,7 @@ export const TitanCard = memo(function TitanCard({
                   divider={false}
                   prefix={tabsId}
                   label="Card sections"
-                  selected={tab}
+                  selected={visibleTab}
                   select={({ id }) => setTab(cardTab({ id }))}
                   tabs={phoneTabs ? PHONE_CARD_TABS : CARD_TABS}
                 />
