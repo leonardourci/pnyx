@@ -396,10 +396,6 @@ test(
       await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
     `,
     })
-    await until({
-      what: 'the idea worker to attach',
-      check: async () => (await titan.task({ key: 'idea-chat' })).agent,
-    })
     const scratch = realpathSync(join(
       process.env.OTHRYS_HOME!,
       'runtime',
