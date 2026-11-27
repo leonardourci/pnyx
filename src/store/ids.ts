@@ -14,3 +14,10 @@ export function freeId({
 
   return id
 }
+
+// The seq a generated id was made from, or 0 for a caller-chosen one.
+export function generatedSeq({ id }: { id: string }): number {
+  const generated = /^evt_(\d+)(?:_\d+)?$/.exec(id)
+
+  return generated ? Number(generated[1]) : 0
+}
