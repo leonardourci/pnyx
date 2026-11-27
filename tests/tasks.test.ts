@@ -2,6 +2,7 @@ import { withWriter } from '#app/writer.ts'
 import { loadTitan } from '#app/store.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
+import { refreshDone } from '#tasks/retention-rules.ts'
 import { emptyTitan, reduce, replay } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
@@ -1827,6 +1828,87 @@ test(
       asks: 0,
       projects: [expect.objectContaining({ asks: 0 })],
     })
+  },
+)
+
+test(
+  'refreshing done states lists the sessions as often for many worker cards as for one',
+  () => {
+    const at = '2026-01-01T00:00:00.000Z'
+
+    const sessionListings = ({ keys }: { keys: string[] }) => {
+      const state = replay({
+        state: emptyTitan(),
+        events: keys.flatMap((
+          key,
+          index,
+        ) => [
+          {
+            v: 1 as const,
+            seq: 2 * index + 1,
+            id: `create:${key}`,
+            at,
+            actor: 'cli',
+            cardId: key,
+            type: 'task.edited' as const,
+            data: {
+              key,
+              title: key,
+            },
+          },
+          {
+            v: 1 as const,
+            seq: 2 * index + 2,
+            id: `observed:${key}`,
+            at,
+            actor: 'othrys',
+            cardId: key,
+            type: 'session.observed' as const,
+            data: {
+              task: key,
+              fields: {
+                agent: {
+                  provider: 'claude',
+                  sessionId: key,
+                },
+                activity: 'finished',
+              },
+            },
+          },
+        ]),
+      })
+      const recorded = { ...state.sessions }
+      let listed = 0
+      const sessions = new Proxy(
+        recorded,
+        {
+          ownKeys() {
+            listed++
+
+            return Reflect.ownKeys(recorded)
+          },
+        },
+      )
+
+      refreshDone({
+        state: {
+          ...state,
+          sessions,
+        },
+        at,
+      })
+      expect(keys.every(key => state.cards[key]?.agent)).toBe(true)
+
+      return listed
+    }
+
+    expect(sessionListings({
+      keys: [
+        'first',
+        'second',
+        'third',
+      ],
+    })).toBe(sessionListings({ keys: ['first'] }))
   },
 )
 

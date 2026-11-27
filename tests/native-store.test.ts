@@ -7,6 +7,10 @@ import { readEvents } from '#app/event-log.ts'
 import { loadTitan } from '#app/store.ts'
 import { nativeHome } from '#app/native-home.ts'
 import { readNativeTitan } from '#app/native-read.ts'
+import { assembleNative, nativeReferences } from '#app/native-state.ts'
+import { NativePositions } from '#app/native-positions.ts'
+import { emptyTitan, replay } from '#app/reducer.ts'
+import { EVENT_VERSION } from '#store/events.ts'
 import { withWriter } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
 import { operationEvent } from '#titan/operations.ts'
@@ -1716,5 +1720,133 @@ test(
       }),
     })).toMatchObject({ applied: true })
     expect((await target.task({ key: 'destination-receipt' })).title).toBe('Independent destination intent')
+  },
+)
+
+test(
+  'a saved sequence number names the newest id recorded at its position',
+  () => {
+    const ids = new NativePositions({
+      entries: [
+        [
+          'first',
+          1,
+        ],
+        [
+          'second',
+          2,
+        ],
+      ],
+    })
+    const saved = () => nativeReferences({
+      kind: 'event',
+      value: {
+        seq: 2,
+        createdSeq: 1,
+      },
+      ids,
+    })
+
+    expect(saved()).toEqual({
+      seq: { native: 'second' },
+      createdSeq: { native: 'first' },
+    })
+
+    ids.set(
+      'first',
+      2,
+    )
+    expect(saved()).toEqual({
+      seq: { native: 'second' },
+      createdSeq: 0,
+    })
+
+    ids.delete('second')
+    expect(saved()).toEqual({
+      seq: { native: 'first' },
+      createdSeq: 0,
+    })
+  },
+)
+
+test(
+  'a Titan read back from its saved tasks keeps each task’s attention order',
+  () => {
+    const at = '2026-01-01T00:00:00.000Z'
+    const state = replay({
+      state: emptyTitan(),
+      events: [
+        {
+          v: EVENT_VERSION,
+          seq: 1,
+          id: 'create',
+          at,
+          actor: 'cli',
+          cardId: 'restored',
+          type: 'task.edited',
+          data: {
+            key: 'restored',
+            title: 'Restored',
+          },
+        },
+        {
+          v: EVENT_VERSION,
+          seq: 2,
+          id: 'observed',
+          at,
+          actor: 'othrys',
+          cardId: 'restored',
+          type: 'session.observed',
+          data: {
+            task: 'restored',
+            fields: {
+              agent: {
+                provider: 'claude',
+                sessionId: 'restored-session',
+              },
+              activity: 'working',
+              attention: [
+                {
+                  kind: 'permission',
+                  key: 'hook:tool:Bash',
+                  blocking: true,
+                  text: 'Run the tests?',
+                },
+              ],
+            },
+          },
+        },
+        {
+          v: EVENT_VERSION,
+          seq: 3,
+          id: 'permission',
+          at,
+          actor: 'othrys',
+          cardId: 'restored',
+          type: 'task.permission',
+          data: {
+            id: 'request',
+            session: 'claude:restored-session',
+            tool: 'Bash',
+            input: { command: 'pnpm test' },
+            status: 'pending',
+          },
+        },
+      ],
+    })
+    const saved = structuredClone({
+      card: state.cards.restored,
+      sessions: state.sessions,
+    })
+    const restored = assembleNative({
+      tasks: [
+        [
+          'restored',
+          saved,
+        ],
+      ],
+    })
+
+    expect(restored.cards.restored.attention).toEqual(state.cards.restored.attention)
   },
 )

@@ -11,6 +11,7 @@ import { generatedSeq } from '#store/ids.ts'
 import type { TitanEvent, TitanState } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { assembleNative, reduceNative, nativeReferences, nativeId, nativeEventId, type NativeState } from './native-state.ts'
+import { NativePositions } from './native-positions.ts'
 import { log } from './diagnostics.ts'
 import type { Output } from './cli-support.ts'
 
@@ -88,7 +89,7 @@ function loadedState({
   positions,
 }: {
   view: NativeView
-  positions: ReadonlyMap<string, number>
+  positions: NativePositions
 }): TitanState {
   if (view.issue) {
     throw view.issue
@@ -261,7 +262,7 @@ export class NativeHome {
   readonly files: NativeFiles
   readonly records = new Map<string, NativeHeld>()
   readonly held = new Set<string>()
-  private readonly timelines = new Map<string, Map<string, number>>()
+  private readonly timelines = new Map<string, NativePositions>()
   private readonly clocks = new Map<string, number>()
   readonly receipts = new Map<string, Map<string, {
     digest: string
@@ -404,14 +405,14 @@ export class NativeHome {
     ).unref()
   }
 
-  references({ titan }: { titan: string }): Map<string, number> {
+  references({ titan }: { titan: string }): NativePositions {
     const known = this.timelines.get(titan)
 
     if (known) {
       return known
     }
 
-    const positions = new Map<string, number>()
+    const positions = new NativePositions()
     this.timelines.set(
       titan,
       positions,

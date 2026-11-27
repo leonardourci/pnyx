@@ -3,6 +3,7 @@ import type { TitanEvent, TitanState } from './model.ts'
 import { emptyTitan } from './reducer.ts'
 import { recordEventId } from './command-meta.ts'
 import { projectSession } from '#workers/session-attachments.ts'
+import { refreshTasks } from '#tasks/refresh.ts'
 import { applyHistory } from '#titan/history.ts'
 import { applyTitan } from '#titan/reduce.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
@@ -11,6 +12,7 @@ import type { AgentSession } from '#workers/model.ts'
 import { TitanError } from '#store/errors.ts'
 import { plainJson, type LogEntry, type LogFact } from '#store/log.ts'
 import type { Output } from './cli-support.ts'
+import { NativePositions } from './native-positions.ts'
 
 interface Inscription {
   id: string
@@ -603,7 +605,7 @@ export function nativeReferences({
   kind = 'state',
 }: {
   value: unknown
-  ids: ReadonlyMap<string, number>
+  ids: NativePositions
   restore?: boolean
   references?: boolean
   kind?: 'state' | 'card' | 'event' | 'inscribe' | 'receipt'
@@ -638,11 +640,9 @@ export function nativeReferences({
     }
 
     if (!restore && internal && sequence && typeof value === 'number' && value > 0) {
-      const found = [...ids].findLast(([
-        , seq,
-      ]) => seq === value)
+      const found = ids.newestIdAt({ position: value })
 
-      return found ? { native: found[0] } : 0
+      return found ? { native: found } : 0
     }
 
     if (Array.isArray(value)) {
@@ -689,7 +689,7 @@ export function nativeReferences({
 export const nativeJson = <Value>({ value }: { value: Value }): Value => plainJson({
   value: nativeReferences({
     value,
-    ids: new Map(),
+    ids: new NativePositions(),
     references: false,
   }) as Value,
 })
@@ -697,11 +697,11 @@ export const nativeJson = <Value>({ value }: { value: Value }): Value => plainJs
 export function projectNative({
   state,
   task,
-  ids = new Map(Object.entries(state.eventIds)),
+  ids = new NativePositions({ entries: Object.entries(state.eventIds) }),
 }: {
   state: TitanState
   task?: string
-  ids?: ReadonlyMap<string, number>
+  ids?: NativePositions
 }): NativeState {
   const card = state.cards[task ?? TITAN_CARD]
   const sessions = Object.fromEntries(Object.entries(state.sessions ?? {}).filter(([
@@ -772,7 +772,7 @@ export function nativeInscribe({
   beforeSeq,
 }: {
   event: Extract<TitanEvent, { type: 'titan.operation' }>
-  ids: ReadonlyMap<string, number>
+  ids: NativePositions
   basis: NativeState
   beforeSeq: number
 }): NativeFact {
@@ -862,7 +862,7 @@ export function nativeDecision({
   ids,
 }: {
   event: TitanEvent
-  ids: ReadonlyMap<string, number>
+  ids: NativePositions
 }): NativeFact['event'] {
   const decision = Object.fromEntries(Object.entries(event).filter(([key]) => ![
     'seq',
@@ -889,7 +889,7 @@ export function nativeFact({
   before: TitanState
   after: TitanState
   task?: string
-  ids?: ReadonlyMap<string, number>
+  ids?: NativePositions
   basis?: NativeState
 }): NativeFact {
   const fact: NativeFact = {
@@ -899,7 +899,7 @@ export function nativeFact({
     id: event.id,
     event: nativeDecision({
       event,
-      ids: ids ?? new Map(Object.entries(after.eventIds)),
+      ids: ids ?? new NativePositions({ entries: Object.entries(after.eventIds) }),
     }),
     change: nativeDecisionChanges({
       before: projectNative({
@@ -945,7 +945,7 @@ export function nativeEvent({
   scope,
 }: {
   entry: LogEntry
-  ids: ReadonlyMap<string, number>
+  ids: NativePositions
   scope: string
 }): TitanEvent | undefined {
   const fact = entry as NativeFact
@@ -1058,6 +1058,8 @@ export function assembleNative({
       session,
     })
   }
+
+  refreshTasks({ state })
 
   for (const [
     key,

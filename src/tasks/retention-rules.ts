@@ -5,6 +5,7 @@ import type { Card } from './model.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 import { isManagedTask } from './select.ts'
 import { cardStatus } from './card-status.ts'
+import { findSessionsWithWorkingChild } from '#workers/activity.ts'
 
 export const DEFAULT_DONE_HOURS = 1
 export const MAX_DONE_HOURS = 876000
@@ -31,6 +32,9 @@ export function refreshDone({
   at: string
 }): void {
   const children = new Map<string, Card[]>()
+  const sessionsWithWorkingChild = state.sessions
+    ? findSessionsWithWorkingChild({ sessions: state.sessions })
+    : undefined
 
   for (const card of Object.values(state.cards)) {
     if (!card.parentId) {
@@ -50,13 +54,13 @@ export function refreshDone({
       continue
     }
 
+    const workerReportsDone = card.workerLog?.status?.code === 'done'
     const status = cardStatus({
-      card: {
-        ...card,
-        doneAt: card.workerLog?.status?.code === 'done' ? card.doneAt : undefined,
-      },
+      card,
       cards: state.cards,
       sessions: state.sessions,
+      sessionsWithWorkingChild,
+      countDoneAt: workerReportsDone,
     }).kind
     const done = status === 'done' || status === 'merged'
 

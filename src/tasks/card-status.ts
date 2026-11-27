@@ -48,11 +48,16 @@ export function cardStatus({
   card,
   cards,
   sessions,
+  sessionsWithWorkingChild,
+  countDoneAt = true,
 }: {
   card: Card
   cards?: Record<string, Card>
   sessions?: Record<string, AgentSession>
+  sessionsWithWorkingChild?: ReadonlySet<string>
+  countDoneAt?: boolean
 }): CardStatus {
+  const doneAt = countDoneAt ? card.doneAt : undefined
   const waiting = waitingQuestions({
     card,
     cards,
@@ -84,6 +89,7 @@ export function cardStatus({
     card,
     cards,
     sessions,
+    sessionsWithWorkingChild,
   })
 
   if (activity === 'working') {
@@ -136,19 +142,19 @@ export function cardStatus({
     }
   }
 
-  if (activity === 'finished' && !card.doneAt && !completedOutcome) {
+  if (activity === 'finished' && !doneAt && !completedOutcome) {
     return {
       kind: 'finished',
       text: 'idle',
     }
   }
 
-  if (complete || card.doneAt) {
+  if (complete || doneAt) {
     return {
       kind: 'done',
       state: 'done',
       text: 'done',
-      at: worker?.code === 'done' ? worker.at : card.doneAt,
+      at: worker?.code === 'done' ? worker.at : doneAt,
     }
   }
 

@@ -16,7 +16,8 @@ import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { base } from '#app/command-meta.ts'
 import type { TitanState } from '#app/model.ts'
-import { emptyTitan, replayOwned } from '#app/reducer.ts'
+import { emptyTitan, reduce, replay, replayOwned } from '#app/reducer.ts'
+import { cardStatus } from '#tasks/card-status.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { applySessionMove } from '#workers/reduce.ts'
 import { applySessionFacts } from '#workers/session-facts.ts'
@@ -257,6 +258,158 @@ test(
       ],
     })
     expect(state.sessions?.['codex:titan']?.titanTurn?.finishedThrough).toBe(finished)
+  },
+)
+
+test(
+  'a session observation leaves the cards of other sessions untouched',
+  () => {
+    const at = '2026-01-01T00:00:00.000Z'
+    let state = emptyTitan()
+
+    for (const [
+      index,
+      key,
+    ] of [
+        'observed',
+        'other',
+      ].entries()) {
+      state = reduce({
+        state,
+        event: {
+          v: EVENT_VERSION,
+          seq: index + 1,
+          id: `create:${key}`,
+          at,
+          actor: 'cli',
+          cardId: key,
+          type: 'task.edited',
+          data: {
+            key,
+            title: key,
+          },
+        },
+      })
+    }
+
+    const next = reduce({
+      state,
+      event: {
+        v: EVENT_VERSION,
+        seq: 3,
+        id: 'observed',
+        at,
+        actor: 'othrys',
+        cardId: 'observed',
+        type: 'session.observed',
+        data: {
+          task: 'observed',
+          fields: {
+            agent: {
+              provider: 'claude',
+              sessionId: 'observed-session',
+            },
+            activity: 'working',
+          },
+        },
+      },
+    })
+
+    expect(next.sessions?.['claude:observed-session']?.taskId).toBe('observed')
+    expect(next.cards.observed).not.toBe(state.cards.observed)
+    expect(next.cards.other).toBe(state.cards.other)
+  },
+)
+
+test(
+  'a working subagent keeps its task running after the task’s own session finishes',
+  () => {
+    const at = '2026-01-01T00:00:00.000Z'
+    const agent = {
+      provider: 'claude',
+      sessionId: 'parent-session',
+    }
+    const subagent = {
+      ...agent,
+      agentId: 'explore',
+    }
+    const status = ({ state }: { state: TitanState }) => cardStatus({
+      card: state.cards.parent,
+      cards: state.cards,
+      sessions: state.sessions,
+    }).text
+    const working = replay({
+      state: emptyTitan(),
+      events: [
+        {
+          v: EVENT_VERSION,
+          seq: 1,
+          id: 'create',
+          at,
+          actor: 'cli',
+          cardId: 'parent',
+          type: 'task.edited',
+          data: {
+            key: 'parent',
+            title: 'Parent',
+          },
+        },
+        {
+          v: EVENT_VERSION,
+          seq: 2,
+          id: 'parent-finished',
+          at,
+          actor: 'othrys',
+          cardId: 'parent',
+          type: 'session.observed',
+          data: {
+            task: 'parent',
+            fields: {
+              agent,
+              activity: 'finished',
+            },
+          },
+        },
+        {
+          v: EVENT_VERSION,
+          seq: 3,
+          id: 'subagent-working',
+          at,
+          actor: 'othrys',
+          cardId: 'parent',
+          type: 'session.observed',
+          data: {
+            task: 'parent',
+            fields: {
+              agent: subagent,
+              activity: 'working',
+            },
+          },
+        },
+      ],
+    })
+    const finished = reduce({
+      state: working,
+      event: {
+        v: EVENT_VERSION,
+        seq: 4,
+        id: 'subagent-finished',
+        at,
+        actor: 'othrys',
+        cardId: 'parent',
+        type: 'session.observed',
+        data: {
+          task: 'parent',
+          fields: {
+            agent: subagent,
+            activity: 'finished',
+          },
+        },
+      },
+    })
+
+    expect(status({ state: working })).toBe('running')
+    expect(status({ state: finished })).toBe('idle')
   },
 )
 
