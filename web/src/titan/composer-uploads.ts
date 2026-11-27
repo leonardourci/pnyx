@@ -3,39 +3,49 @@ import { flushSync } from 'react-dom'
 import { imageLine, imagePaths } from '#titan/images.ts'
 import { checkImages, uploadImage } from './image-upload.ts'
 import { isPendingImage, pendingImage, placeImages, settleImage, withoutPendingImages } from './draft.ts'
-import { selectionEnds } from './composer-caret.ts'
+import { selectionRange } from './composer-editable.ts'
+import { rewriteSteps, type Snapshot, type UndoHistory } from './composer-history.ts'
 
 // Placeholders whose upload still runs; a field that mounts on the same text keeps them.
 const uploadingImages = new Set<string>()
 
+type Write = ({
+  text,
+  caret,
+  anchor,
+}: {
+  text: string
+  caret: number
+  anchor?: number
+}) => void
+
 export function useComposerUploads({
   current,
   input,
-  caretLast,
+  composingText,
   latestChange,
+  history,
+  snapshotNow,
   write,
+  writeWithoutUndoStep,
   notify,
   setUploads,
 }: {
   current: RefObject<string>
-  input: RefObject<HTMLTextAreaElement | null>
-  caretLast: RefObject<number>
+  input: RefObject<HTMLDivElement | null>
+  composingText: RefObject<boolean>
   latestChange: RefObject<({ text }: { text: string }) => void>
-  write({
-    text,
-    caret,
-    anchor,
-  }: {
-    text: string
-    caret: number
-    anchor?: number
-  }): void
+  history: RefObject<UndoHistory>
+  snapshotNow(): Snapshot
+  write: Write
+  writeWithoutUndoStep: Write
   notify({ text }: { text: string }): void
   setUploads: Dispatch<SetStateAction<Record<string, number>>>
 }) {
   // A placeholder lives only while this field's upload runs, so a restored one goes and leaving stops them.
   const uploading = useRef(new AbortController())
   const ownUploads = useRef(new Set<string>())
+  const waitingForComposition = useRef<(() => void)[]>([])
   useEffect(
     () => {
       const controller = new AbortController()
@@ -46,9 +56,9 @@ export function useComposerUploads({
       const orphaned = pending.length > 0 && pending.every(path => !uploadingImages.has(path))
 
       if (orphaned) {
-        write({
+        writeWithoutUndoStep({
           text: withoutPendingImages({ text: restored }),
-          caret: caretLast.current,
+          caret: snapshotNow().focus,
         })
       }
 
@@ -80,20 +90,29 @@ export function useComposerUploads({
       return
     }
 
-    const ends = input.current ? selectionEnds({ field: input.current }) : {
-      anchor: caretLast.current,
-      focus: caretLast.current,
+    if (composingText.current) {
+      waitingForComposition.current.push(() => settle({
+        path,
+        line,
+      }))
+
+      return
     }
-    const settled = settleImage({
-      text: current.current,
-      ...ends,
+
+    const settleIn = ({ snapshot }: { snapshot: Snapshot }) => settleImage({
+      ...snapshot,
       path,
       line,
     })
+    rewriteSteps({
+      history: history.current,
+      rewrite: settleIn,
+    })
+    const settled = settleIn({ snapshot: snapshotNow() })
 
     // Written before the next keystroke or upload reads the draft and caret.
     if (settled) {
-      flushSync(() => write({
+      flushSync(() => writeWithoutUndoStep({
         text: settled.text,
         caret: settled.focus,
         anchor: settled.anchor,
@@ -165,7 +184,7 @@ export function useComposerUploads({
     }))
     write(placeImages({
       text: current.current,
-      caret: input.current?.selectionEnd,
+      caret: input.current ? selectionRange({ field: input.current }).end : undefined,
       lines: placed.map(({ path }) => imageLine({ path })),
     }))
     input.current?.focus()
@@ -176,5 +195,17 @@ export function useComposerUploads({
     }
   }
 
-  return attach
+  const settleAfterComposition = () => {
+    const waiting = waitingForComposition.current
+    waitingForComposition.current = []
+
+    for (const settleWaiting of waiting) {
+      settleWaiting()
+    }
+  }
+
+  return {
+    attach,
+    settleAfterComposition,
+  }
 }

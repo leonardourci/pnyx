@@ -204,7 +204,7 @@ test(
         repeat: true,
       },
     )
-    expect(await composer.inputValue()).toBe(draft)
+    expect(await composer.textContent()).toBe(draft)
     await composer.dispatchEvent(
       'keydown',
       {
@@ -212,7 +212,7 @@ test(
         keyCode: 229,
       },
     )
-    expect(await composer.inputValue()).toBe(draft)
+    expect(await composer.textContent()).toBe(draft)
     await composer.fill(unmatched)
     await page.getByText(
       'Nothing in this Titan matches.',
@@ -223,7 +223,7 @@ test(
       unmatched,
       { exact: true },
     ).waitFor()
-    expect(await composer.inputValue()).toBe('')
+    expect(await composer.textContent()).toBe('')
     const copied = await titanChat.evaluate(chat => {
       const paragraph = [...chat.querySelectorAll('p')].find(p => p.textContent?.startsWith('Check'))!
       const range = document.createRange()
@@ -1723,13 +1723,26 @@ test(
         exact: true,
       },
     )
-    const composerFocus = () => composer.evaluate((field: HTMLTextAreaElement) => ({
-      focused: field === document.activeElement,
-      caret: field.selectionStart,
-    }))
+    const composerFocus = () => composer.evaluate(field => {
+      const selection = getSelection()!
+      const before = document.createRange()
+      before.setStart(
+        field,
+        0,
+      )
+      before.setEnd(
+        selection.focusNode!,
+        selection.focusOffset,
+      )
+
+      return {
+        focused: field === document.activeElement,
+        caret: before.toString().length,
+      }
+    })
     await composer.fill('Draft')
-    await composer.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(
-      0,
+    await composer.evaluate(field => getSelection()?.collapse(
+      field,
       0,
     ))
     const note = workspace.getByRole(
@@ -1784,7 +1797,7 @@ test(
     ).evaluate(list => list === document.activeElement)).toBe(true)
     await selectReply()
     await page.keyboard.type('looks right')
-    expect(await note.inputValue()).toBe('looks right')
+    expect(await note.textContent()).toBe('looks right')
     await page.keyboard.press('ControlOrMeta+l')
     expect(await composerFocus()).toEqual({
       focused: true,

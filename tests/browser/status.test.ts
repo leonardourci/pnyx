@@ -2,7 +2,7 @@ import { readEvents } from '#app/event-log.ts'
 import { existsSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { chrome } from './chrome.ts'
+import { chrome, fillComposer } from './chrome.ts'
 import { workerLine } from '../setup/worker-log.ts'
 import { startOthrys, until, type Othrys } from '../setup/othrys.ts'
 
@@ -241,7 +241,10 @@ test(
         const started = await chrome({
           script: `
           await page.eval(() => { window.badgeFrames = []; });
-          await page.fill('${titanChat} [aria-label="Reply to Titan"]', ${JSON.stringify(text)});
+          ${fillComposer({
+            selector: `${titanChat} [aria-label="Reply to Titan"]`,
+            text,
+          })}
           await page.wait('${titanChat} [aria-label="Send reply"]:not(:disabled)', 5000);
           await page.click('${titanChat} [aria-label="Send reply"]');
           console.log(JSON.stringify(await page.eval(() => window.firstSentFrame)));
@@ -339,7 +342,10 @@ test(
       const text = 'Continue in the destination Titan'
       await chrome({
         script: `
-        await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, ${JSON.stringify(text)});
+        ${fillComposer({
+          selector: `${selector} [aria-label="Message worker"]`,
+          text,
+        })}
         await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
         await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
       `,
@@ -465,7 +471,10 @@ test(
 
     const firstSend = await chrome({
       script: `
-      await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, 'Start the never-attached worker');
+      ${fillComposer({
+        selector: `${selector} [aria-label="Message worker"]`,
+        text: 'Start the never-attached worker',
+      })}
       await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
       await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
       console.log(JSON.stringify(await page.eval(() => window.firstSentFrame)));
@@ -513,7 +522,10 @@ test(
         const started = await chrome({
           script: `
           await page.eval(() => { window.badgeFrames = []; });
-          await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, ${JSON.stringify(text)});
+          ${fillComposer({
+            selector: `${selector} [aria-label="Message worker"]`,
+            text,
+          })}
           await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
           await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
           console.log(JSON.stringify(await page.eval(() => window.firstSentFrame)));
@@ -600,13 +612,19 @@ test(
     })
     await chrome({
       script: `
-      await page.fill('${titanChat} [aria-label="Reply to Titan"]', 'Refuse Titan badge turn');
+      ${fillComposer({
+        selector: `${titanChat} [aria-label="Reply to Titan"]`,
+        text: 'Refuse Titan badge turn',
+      })}
       await page.click('${titanChat} [aria-label="Send reply"]');
     `,
     })
     const result = await chrome({
       script: `
-      await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, 'Refuse worker badge turn');
+      ${fillComposer({
+        selector: `${selector} [aria-label="Message worker"]`,
+        text: 'Refuse worker badge turn',
+      })}
       await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
       await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
       await page.wait('${titanChat} [aria-label="Titan status"][data-status*="refused this turn"]', 5000);
@@ -653,7 +671,10 @@ test(
     try {
       await chrome({
         script: `
-        await page.fill('${titanChat} [aria-label="Reply to Titan"]', 'Recover Titan badge turn');
+        ${fillComposer({
+          selector: `${titanChat} [aria-label="Reply to Titan"]`,
+          text: 'Recover Titan badge turn',
+        })}
         await page.click('${titanChat} [aria-label="Send reply"]');
         await page.wait('${titanChat} [data-status="Thinking"]', 5000);
       `,
@@ -720,7 +741,10 @@ test(
     })
     const outsideFailure = await chrome({
       script: `
-      await page.fill(${JSON.stringify(`${outsideSelector} [aria-label="Message worker"]`)}, 'Try the outside route');
+      ${fillComposer({
+        selector: `${outsideSelector} [aria-label="Message worker"]`,
+        text: 'Try the outside route',
+      })}
       await page.wait(${JSON.stringify(`${outsideSelector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
       await page.click(${JSON.stringify(`${outsideSelector} [aria-label="Send to worker"]`)});
       await page.wait(${JSON.stringify(`${outsideSelector} .agent-activity[aria-label*="process exited"]`)}, 5000);

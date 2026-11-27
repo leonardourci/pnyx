@@ -197,10 +197,10 @@ test(
       'menuitem',
       { name: 'Add project' },
     ).click()
-    const composer = page.locator(`[data-titan-workspace="${poseidon.titan.id}"] .titan-chat .composer textarea`)
+    const composer = page.locator(`[data-titan-workspace="${poseidon.titan.id}"] .titan-chat .composer .composer-text`)
     await until({
       what: 'Add project to write its request into the composer',
-      check: async () => (await composer.inputValue()).includes(' to this Titan')
+      check: async () => (await composer.textContent())?.includes(' to this Titan')
         && await composer.evaluate(element => element === document.activeElement),
     })
 
@@ -385,7 +385,7 @@ test(
       check: () => task.evaluate(element => {
         const box = element.getBoundingClientRect()
         const details = element.querySelector('.card-details')
-        const composer = element.querySelector('.task-chat textarea')
+        const composer = element.querySelector('.task-chat .composer-text')
 
         return box.width === innerWidth && box.height === innerHeight
           && details?.getClientRects().length === 0 && composer?.getClientRects().length === 1

@@ -1,19 +1,5 @@
 export const isEditing = ({ target }: { target: Element }) =>
-  !!target.closest('input,textarea')
-
-export function focusAtEnd({
-  field,
-  preventScroll = false,
-}: {
-  field: HTMLTextAreaElement
-  preventScroll?: boolean
-}) {
-  field.focus({ preventScroll })
-  field.setSelectionRange(
-    field.value.length,
-    field.value.length,
-  )
-}
+  !!target.closest('input,textarea,[contenteditable]')
 
 export function focusElement({ selector }: { selector: string }) {
   const element = document.querySelector<HTMLElement>(selector)

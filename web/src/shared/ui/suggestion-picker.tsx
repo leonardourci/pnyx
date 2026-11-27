@@ -187,7 +187,7 @@ export function SuggestionPicker<T extends PickerItem>({
   className = '',
 }: {
   id: string
-  anchor: RefObject<HTMLTextAreaElement | null>
+  anchor: RefObject<HTMLElement | null>
   matches: RowMatch<T>[]
   active: number
   choose({ item }: { item: T }): void

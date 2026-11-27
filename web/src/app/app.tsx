@@ -571,7 +571,7 @@ export function App() {
         inline: 'start',
         block: 'nearest',
       })
-      group?.querySelector<HTMLTextAreaElement>('.titan-chat textarea')?.focus({ preventScroll: true })
+      group?.querySelector<HTMLElement>('.titan-chat .composer-text')?.focus({ preventScroll: true })
       alignment.current?.abort()
       const controller = new AbortController()
       alignment.current = controller

@@ -1,4 +1,4 @@
-import { focusAtEnd } from '#web-shared/ui/focus.ts'
+import { focusAtEnd } from './composer-editable.ts'
 import { commentRange } from './comment-highlight.ts'
 import type { ChatComment } from './chat.ts'
 import { COMMENT_REVEAL, scrollMessage } from './comment-motion.ts'
@@ -10,8 +10,8 @@ export function revealComment({
   host: HTMLElement
   comment: ChatComment
 }) {
-  const note = host.querySelector<HTMLTextAreaElement>(
-    `[data-comment-id="${CSS.escape(comment.id)}"] textarea`,
+  const note = host.querySelector<HTMLElement>(
+    `[data-comment-id="${CSS.escape(comment.id)}"] .composer-text`,
   )
   const range = commentRange({
     host,
