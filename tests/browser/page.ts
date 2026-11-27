@@ -64,7 +64,19 @@ export async function openTitan({
     )
   }
 
-  const context = await (await browser).newContext({
+  let launched: Browser
+
+  try {
+    launched = await browser
+  } catch (error) {
+    if (browsers.get(engine) === browser) {
+      browsers.delete(engine)
+    }
+
+    throw error
+  }
+
+  const context = await launched.newContext({
     viewport,
     hasTouch: touch,
     isMobile: touch,

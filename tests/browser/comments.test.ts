@@ -62,7 +62,10 @@ for (const engine of [
           'group',
           { name: 'Selected text' },
         )
-        const pill = workspace.locator('.comment-pill')
+        const pill = workspace.getByRole(
+          'group',
+          { name: 'Actions by selected text' },
+        )
         const press = ({ target }: { target: Locator }) =>
           layout.touch ? target.tap() : target.click()
 
@@ -183,7 +186,13 @@ for (const engine of [
         await pill.waitFor({ state: 'detached' })
 
         await selectPassage({ words: 'proof they were read' })
-        await dropTouchSelection()
+
+        if (!layout.touch) {
+          await page.evaluate(() => getSelection()?.removeAllRanges())
+          await bar.waitFor({ state: 'detached' })
+          await pill.waitFor({ state: 'detached' })
+        }
+
         await press({
           target: workspace.getByText(
             'Say something',

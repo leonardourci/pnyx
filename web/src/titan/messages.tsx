@@ -566,9 +566,11 @@ export function Messages({
         const focusNode = browserSelection?.focusNode ?? null
         const block = root.current?.contains(focusNode) ? messageBlock({ node: focusNode }) : null
         const next = selectedPassage({ messages: root.current })
-        // Safari drops the selection when a pill or bar button takes focus.
-        const keepPassage = retainCollapsedSelection && (browserSelection?.isCollapsed ?? true)
-          || Boolean(document.activeElement?.closest(SELECTION_ACTIONS_SELECTOR))
+        const focusedAction = document.activeElement?.closest(SELECTION_ACTIONS_SELECTOR)
+        const actionInThisChat = focusedAction
+          && focusedAction.closest('.chat-viewport') === root.current?.closest('.chat-viewport')
+        const selectionCollapsed = browserSelection?.isCollapsed ?? true
+        const keepPassage = selectionCollapsed && (retainCollapsedSelection || actionInThisChat)
 
         const blockKey = block?.dataset.messageBlock
 
@@ -599,7 +601,7 @@ export function Messages({
           return
         }
 
-        if (!selectedPassage({ messages: root.current })) {
+        if (retainCollapsedSelection || !selectedPassage({ messages: root.current })) {
           setSelection(null)
         }
       }
@@ -898,6 +900,8 @@ export function Messages({
           <div
             className="comment-pill absolute z-5 mt-1.5 flex items-center gap-0.5 p-0.75 border border-gold-line rounded-lg bg-surface shadow-comment-pill whitespace-nowrap touch:mt-7 [&_.button]:min-h-6.5 [&_.button]:py-0.5 [&_.button]:px-2 [&_.button]:gap-1.25 [&_.button]:text-meta [&_.button:first-child]:text-gold [&_kbd]:py-0 [&_kbd]:px-1 touch:[&_kbd]:hidden"
             ref={pill}
+            role="group"
+            aria-label="Actions by selected text"
           >
             <SelectionActionButton
               aria-label="Comment on selection"
