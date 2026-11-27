@@ -1120,24 +1120,21 @@ export function ComposerField({
               data: event.clipboardData,
             })) {
               event.preventDefault()
-              browserEdit.current = {
-                kind: 'deleteByCut',
-                before: snapshotNow(),
-              }
-              const deletedByBrowser = document.execCommand('delete')
-
-              if (!deletedByBrowser) {
-                const {
-                  start,
-                  end,
-                } = selectionRange({ field: event.currentTarget })
-                write(replaceDisplay({
-                  text: draft,
-                  from: start,
-                  to: end,
-                  insert: '',
-                }))
-              }
+              const {
+                start,
+                end,
+              } = selectionRange({ field: event.currentTarget })
+              const edit = replaceDisplay({
+                text: draft,
+                from: start,
+                to: end,
+                insert: '',
+              })
+              write(edit)
+              updatePickers({
+                text: edit.text,
+                cursor: edit.caret,
+              })
             }
           }}
           // A dragged chip carries its Markdown too, so it lands as a chip, not its label.

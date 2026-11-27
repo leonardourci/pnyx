@@ -333,7 +333,7 @@ test(
 )
 
 test(
-  'what the composer sends keeps every chip as its Markdown through copy, paste, cut, Undo, Redo and new lines; Undo reselects a cut, closes the @ picker and takes back a whole uploaded image',
+  'what the composer sends keeps every chip as its Markdown through copy, paste, cut, Undo, Redo and new lines; Undo reselects a cut, closes the @ picker and takes back a whole uploaded image; a word still in composition, as phone keyboards keep it, enables Send',
   async () => {
     const titan = await othrys.titan()
     othrys.claude.plan({
@@ -416,5 +416,20 @@ test(
       what: 'the message with its chips as Markdown',
       check: () => session.received.some(heard => heard.includes(sent)),
     })
+
+    const send = '[data-titan-workspace][data-active=true] [aria-label="Send reply"]'
+    await page.locator(`${send}:disabled`).waitFor()
+    await composer.click()
+    const composed = 'still composing'
+    const keyboard = await page.context().newCDPSession(page)
+    await keyboard.send(
+      'Input.imeSetComposition',
+      {
+        text: composed,
+        selectionStart: composed.length,
+        selectionEnd: composed.length,
+      },
+    )
+    await page.locator(`${send}:enabled`).waitFor()
   },
 )

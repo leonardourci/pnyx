@@ -154,7 +154,6 @@ export function draftView({ text }: { text: string }): DraftView {
   }
 }
 
-// A display offset inside a chip maps to the chip's end.
 function sourceOffset({
   view,
   offset,
@@ -165,8 +164,8 @@ function sourceOffset({
   let shift = 0
 
   for (const chip of view.chips) {
-    if (offset < chip.to) {
-      return offset <= chip.from ? offset + shift : chip.end
+    if (offset <= chip.from) {
+      return offset + shift
     }
 
     shift += chip.end - chip.start - (chip.to - chip.from)
@@ -206,7 +205,6 @@ export const displayAt = ({
   offset,
 })
 
-// A chip the range touches goes as a whole, so its Markdown is never left half edited.
 export function replaceDisplay({
   text,
   from,
@@ -222,31 +220,16 @@ export function replaceDisplay({
   caret: number
 } {
   const view = draftView({ text })
-  let start = from, end = to
-
-  for (const chip of view.chips) {
-    if (start < end ? start < chip.to && end > chip.from : chip.from < start && start < chip.to) {
-      start = Math.min(
-        start,
-        chip.from,
-      )
-      end = Math.max(
-        end,
-        chip.to,
-      )
-    }
-  }
-
   const head = sourceOffset({
     view,
-    offset: start,
+    offset: from,
   })
   const next = text.slice(
     0,
     head,
   ) + insert + text.slice(sourceOffset({
     view,
-    offset: end,
+    offset: to,
   }))
 
   return {
@@ -476,9 +459,9 @@ export function copyDraft({
   to: number
 }) {
   const view = draftView({ text })
-  const touched = view.chips.filter(chip => from < chip.to && to > chip.from)
+  const holdsChip = view.chips.some(chip => from < chip.to && to > chip.from)
 
-  if (!touched.length) {
+  if (!holdsChip) {
     return undefined
   }
 
@@ -486,17 +469,11 @@ export function copyDraft({
     text: text.slice(
       sourceOffset({
         view,
-        offset: Math.min(
-          from,
-          ...touched.map(chip => chip.from),
-        ),
+        offset: from,
       }),
       sourceOffset({
         view,
-        offset: Math.max(
-          to,
-          ...touched.map(chip => chip.to),
-        ),
+        offset: to,
       }),
     ),
   })
