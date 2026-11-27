@@ -2,9 +2,9 @@ import { inform } from '#app/command-notices.ts'
 import { protectedCopiesFolder } from './remove-pool.ts'
 import { createHash } from 'node:crypto'
 import { lstatSync, mkdirSync, realpathSync } from 'node:fs'
-import { dirname, isAbsolute } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
-import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, createTaskBranch } from './git.ts'
+import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, createTaskBranch, isGitFolder } from './git.ts'
 import { checkCopy } from './copy-check.ts'
 import { branchTitanName, checkout, copiesDir, freshSlot, liveCopy, recordedBranches, releasedCopyOwner, requireUnlinkedCopyFolder, reusable, slots, take, unclaim } from './copy-pool.ts'
 import type { TitanProject, TaskCopy } from './model.ts'
@@ -20,7 +20,7 @@ import { titanEvent } from '#titan/titan.ts'
 import { titanConfig } from '#titan/config.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { TitanError } from '#store/errors.ts'
-import { canonical } from '#store/paths.ts'
+import { canonical, taskRuntimeDir } from '#store/paths.ts'
 import { othrysHome } from '#store/storage.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { titanIds } from '#app/home-migration.ts'
@@ -232,7 +232,6 @@ async function worktreeCopy({
   card: Card
   project: TitanProject
 }): Promise<TaskCopy> {
-  await gitProject({ project })
   const pool = copiesDir()
   requireUnlinkedCopyFolder({ path: pool })
   mkdirSync(
@@ -522,12 +521,30 @@ async function commandCopy({
   }
 }
 
+// A task without a project works in a folder of its own beside its runtime files, which Othrys keeps for the task.
+export const scratchPath = ({ task }: { task: string }) => join(
+  taskRuntimeDir({ task }),
+  'scratch',
+)
+
+function scratchFolder({ task }: { task: string }): string {
+  const path = scratchPath({ task })
+  mkdirSync(
+    path,
+    { recursive: true },
+  )
+
+  return realpathSync(path)
+}
+
+// `worker` prepares the folder for the worker already attached, which is then told to continue there.
 export async function taskFolder({
   titanId,
   task,
   folder,
   inPlace,
   ownFolder,
+  worker = false,
   meta,
 }: {
   titanId: string
@@ -535,6 +552,7 @@ export async function taskFolder({
   folder?: string
   inPlace?: boolean
   ownFolder?: boolean
+  worker?: boolean
   meta: Meta
 }): Promise<string | undefined> {
   const state = loadTitan({ titanId }).state
@@ -579,11 +597,11 @@ export async function taskFolder({
       })
     }
 
-    return folder
+    return card.folder ?? scratchFolder({ task: card.id })
   }
 
   // A busy task is the route's own refusal; it gets no copy first.
-  if (card.sessionIds?.length) {
+  if (card.sessionIds?.length && !worker) {
     return folder
   }
 
@@ -628,6 +646,12 @@ export async function taskFolder({
       project,
       command: project.copy,
     }) : undefined)
+
+  // A project folder outside git has no copies or branches, so its workers share the folder itself.
+  if (!ready && !await isGitFolder({ path: project.path })) {
+    return project.path
+  }
+
   const copy = ready ?? await worktreeCopy({
     titanId,
     card,
@@ -659,7 +683,7 @@ export async function taskFolder({
         }
 
         // Another start may have won while this copy was prepared: it leaves its session and copy as they are.
-        const startedMeanwhile = Boolean(now.sessionIds?.length)
+        const startedMeanwhile = !worker && Boolean(now.sessionIds?.length)
         const copiedMeanwhile = now.copy?.state === 'active' && now.copy.path !== card.copy?.path
           && now.copy.path !== copy.path
 

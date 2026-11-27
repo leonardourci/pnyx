@@ -294,21 +294,13 @@ async function originHead({ cwd }: { cwd: string }): Promise<string | undefined>
   return head.ok && head.out.startsWith(ORIGIN_REFS) ? head.out : undefined
 }
 
-export async function gitProject({ project }: { project: TitanProject }): Promise<void> {
-  if (!(await git({
-    cwd: project.path,
-    args: [
-      'rev-parse',
-      '--show-toplevel',
-    ],
-  })).ok) {
-    throw new TitanError({
-      message: `project ${project.name} is not a git repository`,
-      code: 'VALIDATION_ERROR',
-      help: ['Set a copy command for the project in Settings.'],
-    })
-  }
-}
+export const isGitFolder = async ({ path }: { path: string }) => (await git({
+  cwd: path,
+  args: [
+    'rev-parse',
+    '--show-toplevel',
+  ],
+})).ok
 
 export async function branchStart({ project }: { project: TitanProject }): Promise<{
   base?: string

@@ -382,6 +382,15 @@ test(
     })
     await titan.owner({
       args: [
+        'project',
+        'set',
+        folder,
+        '--copy',
+        'echo no copy >&2; exit 1',
+      ],
+    })
+    await titan.owner({
+      args: [
         'task',
         'create',
         '--no-start',
@@ -423,7 +432,7 @@ test(
     await releaseSends()
     await status({
       selector,
-      label: 'Project live-badges is not a git repository',
+      label: 'The copy command of live-badges failed: no copy',
     })
     expect((await titan.task({ key: 'live-badges' })).agent).toBeUndefined()
     await titan.owner({

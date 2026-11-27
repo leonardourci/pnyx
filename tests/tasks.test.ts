@@ -971,11 +971,30 @@ test(
     ])
     expect((await titan.agent({ cwd: folder })).received[0]).toContain('Archive the old invoices')
 
+    const sketches = titan.folder({ name: 'sketches' })
+    await titan.owner({
+      args: [
+        'project',
+        'add',
+        sketches,
+      ],
+    })
+    await titan.owner({
+      args: [
+        'project',
+        'set',
+        sketches,
+        '--copy',
+        'exit 1',
+      ],
+    })
     const idea = [
       'task',
       'create',
       '--title',
       'Sketch the invoice archive',
+      '--project',
+      'sketches',
       '--actor',
       'titan',
       '--reason',
