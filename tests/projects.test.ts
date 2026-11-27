@@ -2559,6 +2559,26 @@ test(
       'first sketch\n',
     )
 
+    const missing = titan.folder({ name: 'missing-project' })
+    await titan.owner({
+      args: [
+        'project',
+        'add',
+        missing,
+      ],
+    })
+    rmSync(missing, { recursive: true })
+    const unavailable = await titan.owner({
+      args: [
+        'task',
+        'project',
+        'idea',
+        '--project',
+        'missing-project',
+      ],
+    })
+    expect(unavailable.worker).toContain('the project folder is unavailable')
+
     const project = await createProject({
       titan,
       landing: 'pr',

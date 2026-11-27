@@ -654,6 +654,13 @@ export async function taskFolder({
     }) : undefined)
 
   if (!ready && !await isGitFolder({ path: project.path })) {
+    if (!isFolder({ path: project.path })) {
+      throw new TitanError({
+        code: 'COPY_FAILED',
+        message: `the project folder is unavailable: ${project.path}`,
+      })
+    }
+
     return project.path
   }
 
