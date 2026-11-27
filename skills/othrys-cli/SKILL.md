@@ -10,7 +10,7 @@ metadata:
 
 Use `othrys --help` for syntax. Pass your assigned `--titan <id>` on actions.
 
-- `othrys task create --title "<work>" --brief "<instructions>"` saves a task and starts its worker. Pass an assigned project and explicit worker settings as flags.
+- `othrys task create --title "<work>" --brief "<instructions>"` saves a task and starts its worker. Pass an assigned project and explicit worker settings as flags; without `--project` the worker starts in a scratch folder of its own, and `othrys task project <task> --project <name|path>` attaches one later.
 - `othrys send --text "<message>"` sends to Titan. Add `--task <id>` to address a worker. Give `--file <path|->` instead of `--text` to read a message from a file.
 - `othrys answer <task> <question> --text "<answer>"` answers a saved question. Titan relaying an owner decision identifies its source with `--from-message <id>`.
 - `othrys task ack <task> <instruction-id> --session <session> --generation '<native-reference>'` records that the assigned worker read that exact instruction. Copy the assignment arguments from its notice or native record; acknowledgement is neither completion nor permission approval.

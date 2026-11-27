@@ -4,7 +4,7 @@
 
 ## Where data lives
 
-Task copies are allocated under `<data-home>/copies/`, shared by every Titan. Copy reuse checks task and session ownership across the home, so a Titan cannot reuse another Titan’s attached checkout. Existing recorded copy paths stay where they are.
+Task copies are allocated under `<data-home>/copies/`, shared by every Titan; a task without a project works in `runtime/tasks/<task>/scratch/` instead. Copy reuse checks task and session ownership across the home, so a Titan cannot reuse another Titan’s attached checkout. Existing recorded copy paths stay where they are.
 
 Native workers keep their runtime files in `<data-home>/runtime/tasks/<task-id>/`: `worker.log` is the worker’s append-only report, and `children.json` records its process groups for restart recovery and cleanup. Moving a task to another Titan preserves its native session, pending permission, compaction inputs and runtime folder. The worker’s captured Titan environment resolves to its current Titan when it calls the CLI. Removing the source Titan leaves the moved worker running; closing it or removing the destination stops its tools. Tasks can move during compaction and while messages are held. A worker that is still starting must finish startup before moving.
 

@@ -30,7 +30,8 @@ othrys setup [check|hooks|skills] [--preview]
 othrys debug health
 
 Task creation starts its worker. Use --harness, --account, --model, --effort,
---mode, --fast or --rule to choose its settings.
+--mode, --fast or --rule to choose its settings. Without --project it works in a
+scratch folder; task project <task> --project <name|path> attaches one later.
 Send addresses Titan unless --task names a worker. --file <path|-> reads message text.
 Read titan.log, tasks/<task>/task.log, worker.log and snapshot.json directly.
 Add --json when a script reads an action receipt or the Titan.
