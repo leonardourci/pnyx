@@ -48,14 +48,13 @@ export function cardStatus({
   card,
   cards,
   sessions,
-  workingChildren,
+  sessionsWithWorkingChild,
   countDoneAt = true,
 }: {
   card: Card
   cards?: Record<string, Card>
   sessions?: Record<string, AgentSession>
-  workingChildren?: Set<string>
-  // The done refresh records doneAt itself, so it counts a recorded one only while the worker reports done.
+  sessionsWithWorkingChild?: ReadonlySet<string>
   countDoneAt?: boolean
 }): CardStatus {
   const doneAt = countDoneAt ? card.doneAt : undefined
@@ -90,7 +89,7 @@ export function cardStatus({
     card,
     cards,
     sessions,
-    workingChildren,
+    sessionsWithWorkingChild,
   })
 
   if (activity === 'working') {

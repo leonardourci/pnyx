@@ -637,7 +637,7 @@ export function nativeReferences({
     }
 
     if (!restore && internal && sequence && typeof value === 'number' && value > 0) {
-      const found = ids.idAt({ position: value })
+      const found = ids.newestIdAt({ position: value })
 
       return found ? { native: found } : 0
     }

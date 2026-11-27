@@ -2,16 +2,15 @@ import type { AgentSession } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { sessionId } from './session-attachments.ts'
 
-// The sessions that have a working subagent, by session id. A pass over every card builds it once and passes it to each call.
-export function workingChildSessions({
+export function findSessionsWithWorkingChild({
   sessions,
 }: {
   sessions: Record<string, AgentSession>
 }): Set<string> {
-  const working = Object.values(sessions).filter(child =>
+  const workingChildren = Object.values(sessions).filter(child =>
     child.agent.agentId && (child.sessionActivity ?? child.activity) === 'working')
 
-  return new Set(working.map(child => sessionId({
+  return new Set(workingChildren.map(child => sessionId({
     agent: {
       provider: child.agent.provider,
       sessionId: child.agent.sessionId,
@@ -24,12 +23,12 @@ export function agentActivity({
   card,
   cards,
   sessions,
-  workingChildren = sessions && workingChildSessions({ sessions }),
+  sessionsWithWorkingChild,
 }: {
   card: Card
   cards?: Record<string, Card>
   sessions?: Record<string, AgentSession>
-  workingChildren?: Set<string>
+  sessionsWithWorkingChild?: ReadonlySet<string>
 }): 'working' | 'finished' | 'stopped' | undefined {
   const agent = card.agent
 
@@ -56,8 +55,8 @@ export function agentActivity({
       sessionId: agent.sessionId,
     },
   })
-  const observedChildWorking = workingChildren
-    ? workingChildren.has(parent)
+  const observedChildWorking = sessions
+    ? (sessionsWithWorkingChild ?? findSessionsWithWorkingChild({ sessions })).has(parent)
     : card.facts?.childWorking ?? childSeen()
   const childWorking = !agent.agentId && observedChildWorking
 

@@ -205,8 +205,7 @@ function catchUp({
   const deleteDocs = db.prepare('DELETE FROM docs WHERE source=?')
   const deleteCursor = db.prepare('DELETE FROM cursors WHERE source=?')
   const currentSources = new Set(sources.map(source => source.key))
-  // The snapshot reaches the search worker as a cloned plain Map.
-  const ids = new NativePositions({ entries: positions })
+  const indexedPositions = new NativePositions({ entries: positions })
 
   transaction({
     db,
@@ -263,7 +262,7 @@ function catchUp({
               last = entry.id
               const event = nativeEvent({
                 entry,
-                ids,
+                ids: indexedPositions,
                 scope: source.scope,
               })
 

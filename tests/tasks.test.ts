@@ -1832,77 +1832,82 @@ test(
 )
 
 test(
-  'refreshing done states lists the sessions once, however many cards have a worker',
+  'refreshing done states lists the sessions as often for many worker cards as for one',
   () => {
     const at = '2026-01-01T00:00:00.000Z'
-    const keys = [
-      'first',
-      'second',
-      'third',
-    ]
-    const state = replay({
-      state: emptyTitan(),
-      events: keys.flatMap((
-        key,
-        index,
-      ) => [
-        {
-          v: 1 as const,
-          seq: 2 * index + 1,
-          id: `create:${key}`,
-          at,
-          actor: 'cli',
-          cardId: key,
-          type: 'task.edited' as const,
-          data: {
-            key,
-            title: key,
-          },
-        },
-        {
-          v: 1 as const,
-          seq: 2 * index + 2,
-          id: `observed:${key}`,
-          at,
-          actor: 'othrys',
-          cardId: key,
-          type: 'session.observed' as const,
-          data: {
-            task: key,
-            fields: {
-              agent: {
-                provider: 'claude',
-                sessionId: key,
-              },
-              activity: 'finished',
+    const sessionListings = ({ keys }: { keys: string[] }) => {
+      const state = replay({
+        state: emptyTitan(),
+        events: keys.flatMap((
+          key,
+          index,
+        ) => [
+          {
+            v: 1 as const,
+            seq: 2 * index + 1,
+            id: `create:${key}`,
+            at,
+            actor: 'cli',
+            cardId: key,
+            type: 'task.edited' as const,
+            data: {
+              key,
+              title: key,
             },
           },
+          {
+            v: 1 as const,
+            seq: 2 * index + 2,
+            id: `observed:${key}`,
+            at,
+            actor: 'othrys',
+            cardId: key,
+            type: 'session.observed' as const,
+            data: {
+              task: key,
+              fields: {
+                agent: {
+                  provider: 'claude',
+                  sessionId: key,
+                },
+                activity: 'finished',
+              },
+            },
+          },
+        ]),
+      })
+      const recorded = { ...state.sessions }
+      let listed = 0
+      const sessions = new Proxy(
+        recorded,
+        {
+          ownKeys() {
+            listed++
+
+            return Reflect.ownKeys(recorded)
+          },
         },
-      ]),
-    })
-    let listed = 0
-    const sessions = new Proxy(
-      state.sessions!,
-      {
-        // eslint-disable-next-line othrys/object-params -- ProxyHandler owns this signature.
-        ownKeys(target) {
-          listed++
+      )
 
-          return Reflect.ownKeys(target)
+      refreshDone({
+        state: {
+          ...state,
+          sessions,
         },
-      },
-    )
+        at,
+      })
+      expect(keys.every(key => state.cards[key]?.agent)).toBe(true)
 
-    refreshDone({
-      state: {
-        ...state,
-        sessions,
-      },
-      at,
-    })
+      return listed
+    }
 
-    expect(keys.every(key => state.cards[key]?.agent)).toBe(true)
-    expect(listed).toBe(1)
+    expect(sessionListings({
+      keys: [
+        'first',
+        'second',
+        'third',
+      ],
+    })).toBe(sessionListings({ keys: ['first'] }))
   },
 )
 

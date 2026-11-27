@@ -63,7 +63,7 @@ export function steeringNotice({
   claim: SteeringClaim
 }): string {
   const assignment = nativeHome().references({ titan: titanId })
-    .idAt({ position: claim.generation })
+    .newestIdAt({ position: claim.generation })
 
   if (assignment === undefined) {
     throw new TitanError({
