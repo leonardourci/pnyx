@@ -60,7 +60,10 @@ for (const engine of [
         await reply.waitFor()
         const bar = workspace.getByRole(
           'group',
-          { name: 'Selected text' },
+          {
+            name: 'Selected text',
+            exact: true,
+          },
         )
         const pill = workspace.getByRole(
           'group',
