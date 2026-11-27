@@ -1,6 +1,6 @@
 import { beforeAll, expect, test } from 'vitest'
 import type { Page } from 'playwright-core'
-import { startOthrys, type Othrys } from '../setup/othrys.ts'
+import { startOthrys, until, type Othrys } from '../setup/othrys.ts'
 import { openTitan } from './page.ts'
 
 let othrys: Othrys
@@ -58,7 +58,16 @@ test(
 
     const caretAfterLastLetter = () => composer.evaluate(field => {
       const caret = getSelection()!.getRangeAt(0).getBoundingClientRect()
-      const text = [...field.childNodes].filter(node => node instanceof Text).at(-1)!
+      const texts = document.createTreeWalker(
+        field,
+        NodeFilter.SHOW_TEXT,
+      )
+      let text = texts.lastChild() as Text
+
+      while (text.parentElement?.closest('[contenteditable=false]')) {
+        text = texts.previousNode() as Text
+      }
+
       const letter = document.createRange()
       letter.setStart(
         text,
@@ -191,6 +200,19 @@ test(
       await press({ key })
     }
 
+    await composer.fill('[@Review](othrys-column:review)[@Ideas](othrys-column:ideas) x [@Done](othrys-column:done)')
+    await composer.press('Home')
+
+    for (const key of [
+      'ArrowRight',
+      'ArrowRight',
+      'End',
+      'ArrowLeft',
+      'Backspace',
+    ]) {
+      await press({ key })
+    }
+
     expect(steps).toEqual([
       [
         'ArrowRight',
@@ -244,6 +266,80 @@ test(
         'Delete',
         'ab |cd',
       ],
+      [
+        'ArrowRight',
+        '#|# x #',
+      ],
+      [
+        'ArrowRight',
+        '##| x #',
+      ],
+      [
+        'End',
+        '## x #|',
+      ],
+      [
+        'ArrowLeft',
+        '## x |#',
+      ],
+      [
+        'Backspace',
+        '## x|#',
+      ],
     ])
+  },
+)
+
+test(
+  'what the composer sends keeps every chip as its Markdown through copy, paste, cut, Undo and new lines',
+  async () => {
+    const titan = await othrys.titan()
+    othrys.claude.plan({
+      titan: titan.id,
+      text: 'Start the chat',
+      reply: 'Ready.',
+    })
+    const session = await titan.chat({ text: 'Start the chat' })
+    const page = await openTitan({
+      port: othrys.port(),
+      titanId: titan.id,
+    })
+    await page.context().grantPermissions([
+      'clipboard-read',
+      'clipboard-write',
+    ])
+    const composer = composerOf({ page })
+
+    await composer.click()
+    await page.keyboard.type('hello')
+    await page.keyboard.press('Shift+Enter')
+    await page.keyboard.type('world')
+
+    for (let step = 0; step < 4; step++) {
+      await page.keyboard.press('ControlOrMeta+z')
+    }
+
+    expect(await composer.textContent()).toBe('')
+
+    await composer.fill('see [@Review](othrys-column:review) and [image: /tmp/shot.png]')
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.press('ControlOrMeta+c')
+    await page.keyboard.press('End')
+    await page.keyboard.press('Backspace')
+    await page.keyboard.type(' then ')
+    await page.keyboard.press('ControlOrMeta+v')
+    await page.keyboard.press('Shift+Enter')
+    await page.keyboard.type('last line')
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.press('ControlOrMeta+x')
+    expect(await composer.textContent()).toBe('')
+    await page.keyboard.press('ControlOrMeta+z')
+    await page.keyboard.press('Enter')
+
+    const sent = 'see [@Review](othrys-column:review) and then see [@Review](othrys-column:review) and [image: /tmp/shot.png]\nlast line'
+    await until({
+      what: 'the message with its chips as Markdown',
+      check: () => session.received.some(heard => heard.includes(sent)),
+    })
   },
 )
