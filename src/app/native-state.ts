@@ -3,6 +3,7 @@ import type { TitanEvent, TitanState } from './model.ts'
 import { emptyTitan } from './reducer.ts'
 import { recordEventId } from './command-meta.ts'
 import { projectSession } from '#workers/session-attachments.ts'
+import { refreshTasks } from '#tasks/refresh.ts'
 import { applyHistory } from '#titan/history.ts'
 import { applyTitan } from '#titan/reduce.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
@@ -1057,6 +1058,8 @@ export function assembleNative({
       session,
     })
   }
+
+  refreshTasks({ state })
 
   for (const [
     key,

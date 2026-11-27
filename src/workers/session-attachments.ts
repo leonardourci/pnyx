@@ -18,6 +18,15 @@ export function sessionId({ agent }: { agent: AgentRef }): string {
   return `${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}`
 }
 
+export function rootSessionId({ agent }: { agent: AgentRef }): string {
+  return sessionId({
+    agent: {
+      provider: agent.provider,
+      sessionId: agent.sessionId,
+    },
+  })
+}
+
 export function interactive({ session }: { session: AgentSession }): boolean {
   return Boolean(session.terminal?.tty || session.agent.host)
 }
@@ -122,12 +131,7 @@ export function sessionTask({
   agent: AgentRef
 }): Card | undefined {
   const id = sessionId({ agent })
-  const parent = sessionId({
-    agent: {
-      provider: agent.provider,
-      sessionId: agent.sessionId,
-    },
-  })
+  const parent = rootSessionId({ agent })
   const root = state.sessions?.[parent]
   const task = agent.agentId ? root?.taskId : state.sessions?.[id]?.taskId
 
@@ -181,12 +185,7 @@ export function projectSession({
   session: AgentSession
 }): void {
   if (session.agent.agentId) {
-    const parent = state.sessions?.[sessionId({
-      agent: {
-        provider: session.agent.provider,
-        sessionId: session.agent.sessionId,
-      },
-    })]
+    const parent = state.sessions?.[rootSessionId({ agent: session.agent })]
 
     if (parent) {
       projectSession({

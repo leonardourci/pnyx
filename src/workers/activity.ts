@@ -1,6 +1,6 @@
 import type { AgentSession } from './model.ts'
 import type { Card } from '#tasks/model.ts'
-import { sessionId } from './session-attachments.ts'
+import { rootSessionId } from './session-attachments.ts'
 
 export function findSessionsWithWorkingChild({
   sessions,
@@ -10,12 +10,7 @@ export function findSessionsWithWorkingChild({
   const workingChildren = Object.values(sessions).filter(child =>
     child.agent.agentId && (child.sessionActivity ?? child.activity) === 'working')
 
-  return new Set(workingChildren.map(child => sessionId({
-    agent: {
-      provider: child.agent.provider,
-      sessionId: child.agent.sessionId,
-    },
-  })))
+  return new Set(workingChildren.map(child => rootSessionId({ agent: child.agent })))
 }
 
 // A worker whose session ended is stopped, so a dead job never reads as active.
@@ -49,14 +44,8 @@ export function agentActivity({
     child.agent?.agentId && child.agent.provider === agent.provider
     && child.agent.sessionId === agent.sessionId
     && agentActivity({ card: child }) === 'working')
-  const parent = sessionId({
-    agent: {
-      provider: agent.provider,
-      sessionId: agent.sessionId,
-    },
-  })
   const observedChildWorking = sessions
-    ? (sessionsWithWorkingChild ?? findSessionsWithWorkingChild({ sessions })).has(parent)
+    ? (sessionsWithWorkingChild ?? findSessionsWithWorkingChild({ sessions })).has(rootSessionId({ agent }))
     : card.facts?.childWorking ?? childSeen()
   const childWorking = !agent.agentId && observedChildWorking
 
