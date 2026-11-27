@@ -387,7 +387,8 @@ test(
         name: 'Add to message',
         exact: true,
       },
-    ).click()
+    )
+      .click()
     await page.getByRole(
       'dialog',
       {
@@ -400,7 +401,8 @@ test(
         name: 'Mention',
         exact: true,
       },
-    ).click()
+    )
+      .click()
     await mentions.waitFor()
     await page.keyboard.press('ControlOrMeta+z')
     expect(await composer.textContent()).toBe('hello')
