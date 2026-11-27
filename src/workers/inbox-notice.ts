@@ -62,9 +62,8 @@ export function steeringNotice({
   ids: string[]
   claim: SteeringClaim
 }): string {
-  const assignment = [...nativeHome().references({ titan: titanId })].findLast(([
-    , position,
-  ]) => position === claim.generation)?.[0]
+  const assignment = nativeHome().references({ titan: titanId })
+    .idAt({ position: claim.generation })
 
   if (assignment === undefined) {
     throw new TitanError({
