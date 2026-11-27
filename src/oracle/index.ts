@@ -5,6 +5,7 @@ import { createRequire } from 'node:module'
 import type { TitanEvent } from '#app/model.ts'
 import { titanDir } from '#app/home-migration.ts'
 import { nativeEvent } from '#app/native-state.ts'
+import { NativePositions } from '#app/native-positions.ts'
 import { readLog, type LogPosition } from '#store/log.ts'
 import { TitanError } from '#store/errors.ts'
 import { log } from '#app/diagnostics.ts'
@@ -204,6 +205,8 @@ function catchUp({
   const deleteDocs = db.prepare('DELETE FROM docs WHERE source=?')
   const deleteCursor = db.prepare('DELETE FROM cursors WHERE source=?')
   const currentSources = new Set(sources.map(source => source.key))
+  // The snapshot reaches the search worker as a cloned plain Map.
+  const ids = new NativePositions({ entries: positions })
 
   transaction({
     db,
@@ -260,7 +263,7 @@ function catchUp({
               last = entry.id
               const event = nativeEvent({
                 entry,
-                ids: positions,
+                ids,
                 scope: source.scope,
               })
 
