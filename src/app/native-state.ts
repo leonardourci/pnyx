@@ -551,6 +551,8 @@ export const nativeId = ({
   id: string
 }): string => `${scope}\0${id}`
 
+export const nativeEventId = ({ key }: { key: string }): string => key.slice(key.indexOf('\0') + 1)
+
 const STATE_FIELDS = new Set([
   'fields',
   'card',
@@ -1063,7 +1065,7 @@ export function assembleNative({
   ] of positions) {
     recordEventId({
       state,
-      id: key.slice(key.indexOf('\0') + 1),
+      id: nativeEventId({ key }),
       seq,
     })
     state.seq = Math.max(

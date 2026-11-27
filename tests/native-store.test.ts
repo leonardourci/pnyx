@@ -171,18 +171,28 @@ test.each([
 )
 
 test(
-  'event ids keep rising across a restart that drops unsaved changes',
+  'event ids stay above saved ones across a restart that drops unsaved changes and in the Titan a task moves to',
   async () => {
-    const titan = await othrys.titan()
-    const eventNumber = ({ id }: { id: string }) => Number(/^evt_(\d+)/.exec(id)![1])
-    const sendMessage = ({ text }: { text: string }) => withWriter({
-      titanId: titan.id,
+    const source = await othrys.titan()
+    const destination = await othrys.titan()
+    const eventNumber = ({ id }: { id: string }) => Number(id.slice('evt_'.length))
+    const sendMessage = ({
+      titanId,
+      text,
+      id,
+    }: {
+      titanId: string
+      text: string
+      id?: string
+    }) => withWriter({
+      titanId,
       fn: ({ writer }) => {
         const event = {
           ...base({
             state: writer.state,
             cardId: '$all',
             meta: {
+              id,
               actor: 'cli',
               at: new Date().toISOString(),
             },
@@ -201,9 +211,9 @@ test(
     })
 
     await withWriter({
-      titanId: titan.id,
+      titanId: source.id,
       fn: ({ writer }) => {
-        for (let count = 0; count < 20; count++) {
+        for (let count = 0; count < 50; count++) {
           const at = new Date().toISOString()
           writer.append({
             event: {
@@ -225,12 +235,49 @@ test(
         }
       },
     })
-    const before = await sendMessage({ text: 'Saved after unsaved status changes' })
+    const created = await source.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Saved after unsaved status changes',
+      ],
+    })
+    const task = created.card.id as string
+    const saved = eventNumber({ id: created.event.id })
+    await sendMessage({
+      titanId: source.id,
+      text: 'Saved under a chosen id too large to be a seq',
+      id: 'evt_99999999999999999999',
+    })
 
     await othrys.restart()
-    const after = await sendMessage({ text: 'First message after the restart' })
+    const first = await sendMessage({
+      titanId: source.id,
+      text: 'First message after the restart',
+    })
+    const second = await sendMessage({
+      titanId: source.id,
+      text: 'Second message after the restart',
+    })
+    await source.owner({
+      args: [
+        'task',
+        'move',
+        task,
+        '--to-titan',
+        destination.id,
+      ],
+    })
+    const arrived = await sendMessage({
+      titanId: destination.id,
+      text: 'First message after the move',
+    })
 
-    expect(eventNumber({ id: after })).toBeGreaterThan(eventNumber({ id: before }))
+    expect(eventNumber({ id: first })).toBeGreaterThan(saved)
+    expect(eventNumber({ id: second })).toBeGreaterThan(eventNumber({ id: first }))
+    expect(eventNumber({ id: arrived })).toBeGreaterThan(saved)
   },
 )
 
