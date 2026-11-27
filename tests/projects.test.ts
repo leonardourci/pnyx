@@ -2595,6 +2595,26 @@ test(
       sketch,
       'utf8',
     )).toBe('first sketch\n')
+
+    const other = titan.folder({ name: 'other-project' })
+    await titan.owner({
+      args: [
+        'project',
+        'add',
+        other,
+      ],
+    })
+    const reassigned = await titan.owner({
+      args: [
+        'task',
+        'project',
+        'idea',
+        '--project',
+        other,
+      ],
+    })
+    expect(reassigned.worker).toContain('the task still has a copy')
+    expect(reassigned.worker).toContain(copy.path)
   },
 )
 

@@ -1,5 +1,5 @@
 import { readEvents } from '#app/event-log.ts'
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { chrome } from './chrome.ts'
@@ -396,14 +396,18 @@ test(
       await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
     `,
     })
-    const scratch = realpathSync(join(
+    const scratch = join(
       process.env.OTHRYS_HOME!,
       'runtime',
       'tasks',
       card.id,
       'scratch',
-    ))
-    const worker = await titan.agent({ cwd: scratch })
+    )
+    await until({
+      what: 'the idea worker’s scratch folder to exist',
+      check: () => existsSync(scratch),
+    })
+    const worker = await titan.agent({ cwd: realpathSync(scratch) })
     await until({
       what: 'the idea worker to receive the first message',
       check: () => worker.received.some(text => text.includes('Start on the idea')),

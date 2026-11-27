@@ -627,6 +627,14 @@ export async function taskFolder({
   }
 
   if (live && live.project !== project.path) {
+    if (continuingSession) {
+      throw new TitanError({
+        code: 'CONFLICT',
+        message: `the task still has a copy of ${live.project} at ${live.path}`,
+        help: ['Land its work and remove the copy before continuing in the new project.'],
+      })
+    }
+
     inform({
       task: card.id,
       reason: `Continuing in the existing copy of ${live.project} at ${live.path}`,
