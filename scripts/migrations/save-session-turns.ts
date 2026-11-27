@@ -81,9 +81,10 @@ async function saveWorkerLogPositions({ titanId }: { titanId: string }): Promise
 
           try {
             const stat = fstatSync(fd)
-            const savedFileHoldsPosition = fileIdentity({ stat }) === identity && stat.size >= latest.off
+            const savedFile = fileIdentity({ stat }) === identity
+            const holdsPosition = stat.size >= latest.off
 
-            if (savedFileHoldsPosition) {
+            if (savedFile && holdsPosition) {
               tail = hashBefore({
                 fd,
                 end: latest.off,
