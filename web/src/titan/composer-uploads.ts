@@ -4,16 +4,29 @@ import { imageLine, imagePaths } from '#titan/images.ts'
 import { checkImages, uploadImage } from './image-upload.ts'
 import { isPendingImage, pendingImage, placeImages, settleImage, withoutPendingImages } from './draft.ts'
 import { selectionEnds, selectionRange } from './composer-editable.ts'
+import { rewriteSteps, type Snapshot, type UndoHistory } from './composer-history.ts'
 
 // Placeholders whose upload still runs; a field that mounts on the same text keeps them.
 const uploadingImages = new Set<string>()
+
+type Write = ({
+  text,
+  caret,
+  anchor,
+}: {
+  text: string
+  caret: number
+  anchor?: number
+}) => void
 
 export function useComposerUploads({
   current,
   input,
   composing,
   latestChange,
+  history,
   write,
+  writeWithoutUndoStep,
   notify,
   setUploads,
 }: {
@@ -21,15 +34,9 @@ export function useComposerUploads({
   input: RefObject<HTMLDivElement | null>
   composing: RefObject<boolean>
   latestChange: RefObject<({ text }: { text: string }) => void>
-  write({
-    text,
-    caret,
-    anchor,
-  }: {
-    text: string
-    caret: number
-    anchor?: number
-  }): void
+  history: RefObject<UndoHistory>
+  write: Write
+  writeWithoutUndoStep: Write
   notify({ text }: { text: string }): void
   setUploads: Dispatch<SetStateAction<Record<string, number>>>
 }) {
@@ -47,7 +54,7 @@ export function useComposerUploads({
       const orphaned = pending.length > 0 && pending.every(path => !uploadingImages.has(path))
 
       if (orphaned) {
-        write({
+        writeWithoutUndoStep({
           text: withoutPendingImages({ text: restored }),
           caret: input.current ? selectionEnds({ field: input.current }).focus : 0,
         })
@@ -90,20 +97,29 @@ export function useComposerUploads({
       return
     }
 
+    const settleIn = ({ snapshot }: { snapshot: Snapshot }) => settleImage({
+      ...snapshot,
+      path,
+      line,
+    })
+    rewriteSteps({
+      history: history.current,
+      rewrite: settleIn,
+    })
     const ends = input.current ? selectionEnds({ field: input.current }) : {
       anchor: 0,
       focus: 0,
     }
-    const settled = settleImage({
-      text: current.current,
-      ...ends,
-      path,
-      line,
+    const settled = settleIn({
+      snapshot: {
+        text: current.current,
+        ...ends,
+      },
     })
 
     // Written before the next keystroke or upload reads the draft and caret.
     if (settled) {
-      flushSync(() => write({
+      flushSync(() => writeWithoutUndoStep({
         text: settled.text,
         caret: settled.focus,
         anchor: settled.anchor,

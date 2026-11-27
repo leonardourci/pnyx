@@ -1,15 +1,13 @@
-// The composer keeps its own Undo: the browser's own one replays edits against nodes the field has since
-// repainted around a chip, which in WebKit brings back text from older drafts.
 export interface Snapshot {
   text: string
   anchor: number
   focus: number
 }
 
-export interface History {
+export interface UndoHistory {
   past: Snapshot[]
   future: Snapshot[]
-  last?: {
+  lastEdit?: {
     kind: string
     at: number
   }
@@ -17,34 +15,34 @@ export interface History {
 
 const KEPT_STEPS = 200
 const TYPING_PAUSE_MS = 1000
-const TYPING = new Set([
+const TYPING_INPUT_TYPES = new Set([
   'insertText',
   'insertCompositionText',
   'deleteContentBackward',
   'deleteContentForward',
 ])
 
-export const emptyHistory = (): History => ({
+export const emptyHistory = (): UndoHistory => ({
   past: [],
   future: [],
 })
 
-// Typing of one kind without a pause is one step, as in a text field; anything else is a step of its own.
 export function record({
   history,
   before,
   kind,
   at,
 }: {
-  history: History
+  history: UndoHistory
   before: Snapshot
   kind: string
   at: number
 }) {
-  const last = history.last
-  const typing = TYPING.has(kind) && last?.kind === kind && at - last.at < TYPING_PAUSE_MS
+  const lastEdit = history.lastEdit
+  const continuesTypingRun = TYPING_INPUT_TYPES.has(kind) && lastEdit?.kind === kind
+    && at - lastEdit.at < TYPING_PAUSE_MS
 
-  if (!typing) {
+  if (!continuesTypingRun) {
     history.past = [
       ...history.past.slice(-(KEPT_STEPS - 1)),
       before,
@@ -52,7 +50,7 @@ export function record({
   }
 
   history.future = []
-  history.last = {
+  history.lastEdit = {
     kind,
     at,
   }
@@ -60,31 +58,41 @@ export function record({
 
 export function step({
   history,
-  now,
+  present,
   back,
 }: {
-  history: History
-  now: Snapshot
+  history: UndoHistory
+  present: Snapshot
   back: boolean
 }) {
-  const from = back ? history.past : history.future
-  const target = from.at(-1)
+  const source = back ? 'past' : 'future'
+  const destination = back ? 'future' : 'past'
+  const target = history[source].at(-1)
 
   if (!target) {
     return undefined
   }
 
-  const into = back ? 'future' : 'past'
-  const rest = back ? 'past' : 'future'
-  history[rest] = from.slice(
+  history[source] = history[source].slice(
     0,
     -1,
   )
-  history[into] = [
-    ...history[into],
-    now,
+  history[destination] = [
+    ...history[destination],
+    present,
   ]
-  history.last = undefined
+  history.lastEdit = undefined
 
   return target
+}
+
+export function rewriteSteps({
+  history,
+  rewrite,
+}: {
+  history: UndoHistory
+  rewrite({ snapshot }: { snapshot: Snapshot }): Snapshot | undefined
+}) {
+  history.past = history.past.map(snapshot => rewrite({ snapshot }) ?? snapshot)
+  history.future = history.future.map(snapshot => rewrite({ snapshot }) ?? snapshot)
 }

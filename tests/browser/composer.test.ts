@@ -22,6 +22,14 @@ const composerOf = ({ page }: { page: Page }) => page.locator('[data-titan-works
   },
 )
 
+const mentionsOf = ({ page }: { page: Page }) => page.getByRole(
+  'listbox',
+  {
+    name: 'Mention',
+    exact: true,
+  },
+)
+
 const skill = ({
   name,
   project,
@@ -287,13 +295,7 @@ test(
       ],
     ])
 
-    const mentions = page.getByRole(
-      'listbox',
-      {
-        name: 'Mention',
-        exact: true,
-      },
-    )
+    const mentions = mentionsOf({ page })
     await composer.press('Home')
     await composer.press('ArrowRight')
     await page.keyboard.type('@')
@@ -304,7 +306,7 @@ test(
 )
 
 test(
-  'what the composer sends keeps every chip as its Markdown through copy, paste, cut, Undo and new lines',
+  'what the composer sends keeps every chip as its Markdown through copy, paste, cut, Undo and new lines; Undo reselects a cut, closes the @ picker and takes back a whole uploaded image',
   async () => {
     const titan = await othrys.titan()
     othrys.claude.plan({
@@ -322,17 +324,40 @@ test(
       'clipboard-write',
     ])
     const composer = composerOf({ page })
+    const mentions = mentionsOf({ page })
 
     await composer.click()
     await page.keyboard.type('hello')
     await page.keyboard.press('Shift+Enter')
-    await page.keyboard.type('world')
+    await page.keyboard.type('world @')
+    await mentions.waitFor()
 
     for (let step = 0; step < 4; step++) {
       await page.keyboard.press('ControlOrMeta+z')
     }
 
+    await mentions.waitFor({ state: 'detached' })
     expect(await composer.textContent()).toBe('')
+
+    await composer.evaluate(field => {
+      const pasted = new DataTransfer()
+      pasted.items.add(new File(
+        ['image'],
+        'shot.png',
+        { type: 'image/png' },
+      ))
+      field.dispatchEvent(new ClipboardEvent(
+        'paste',
+        {
+          clipboardData: pasted,
+          bubbles: true,
+          cancelable: true,
+        },
+      ))
+    })
+    await composer.locator('[data-source^="[image: "]:not([data-source*="/pending-image/"])').waitFor()
+    await page.keyboard.press('ControlOrMeta+z')
+    expect(await composer.locator('[contenteditable=false]').count()).toBe(0)
 
     await composer.fill('see [@Review](othrys-column:review) and [image: /tmp/shot.png]')
     await page.keyboard.press('ControlOrMeta+a')
@@ -350,6 +375,7 @@ test(
     await page.keyboard.press('ControlOrMeta+x')
     expect(await composer.textContent()).toBe('')
     await page.keyboard.press('ControlOrMeta+z')
+    expect(await composer.evaluate(() => getSelection()?.isCollapsed)).toBe(false)
     await page.keyboard.press('Enter')
 
     const sent = 'see [@Review](othrys-column:review) and then see [@Review](othrys-column:review) and [image: /tmp/shot.png]\nlast line'

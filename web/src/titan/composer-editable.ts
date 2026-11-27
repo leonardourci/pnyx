@@ -182,11 +182,11 @@ export function readField({ field }: { field: HTMLElement }) {
     text,
     offset: at ?? text.length,
   })
+  const bothEndsInText = anchor !== undefined && focus !== undefined
 
   return {
     text,
-    // WebKit can report an offset past the field's children after they are replaced; that is no selection.
-    inside: anchor !== undefined && focus !== undefined,
+    inside: bothEndsInText,
     anchor: shown({ at: anchor }),
     focus: shown({ at: focus }),
   }

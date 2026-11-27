@@ -219,12 +219,10 @@ export function ComposerField({
     focus: number
   } | null>(null)
   const history = useRef(emptyHistory())
-  // The draft and selection just before the browser's own edit, so Undo returns to them.
-  const nativeEdit = useRef<{
+  const browserEdit = useRef<{
     kind: string
     before: Snapshot
   } | null>(null)
-  const restoringHistory = useRef(false)
   const composingText = useRef(false)
   const focusingByPointer = useRef(false)
   // An upload settles after later renders, so it writes through the newest change, never a stale one.
@@ -443,7 +441,20 @@ export function ComposerField({
     }
   }
 
-  const write = ({
+  const snapshotNow = (): Snapshot => {
+    const field = input.current
+    const ends = field ? selectionEnds({ field }) : {
+      anchor: 0,
+      focus: 0,
+    }
+
+    return {
+      text: current.current,
+      ...ends,
+    }
+  }
+
+  const writeWithoutUndoStep = ({
     text,
     caret,
     anchor = caret,
@@ -452,24 +463,6 @@ export function ComposerField({
     caret: number
     anchor?: number
   }) => {
-    const edit = nativeEdit.current
-    nativeEdit.current = null
-
-    if (text !== current.current && !restoringHistory.current) {
-      record({
-        history: history.current,
-        before: edit?.before ?? {
-          text: current.current,
-          ...input.current ? selectionEnds({ field: input.current }) : {
-            anchor: 0,
-            focus: 0,
-          },
-        },
-        kind: edit?.kind ?? 'script',
-        at: Date.now(),
-      })
-    }
-
     const next = draftView({ text })
     const chipsChanged = view.chips.length !== next.chips.length
       || view.chips.some((
@@ -502,6 +495,34 @@ export function ComposerField({
     }
 
     latestChange.current({ text })
+  }
+
+  const write = ({
+    text,
+    caret,
+    anchor,
+  }: {
+    text: string
+    caret: number
+    anchor?: number
+  }) => {
+    const editByBrowser = browserEdit.current
+    browserEdit.current = null
+
+    if (text !== current.current) {
+      record({
+        history: history.current,
+        before: editByBrowser?.before ?? snapshotNow(),
+        kind: editByBrowser?.kind ?? 'script',
+        at: Date.now(),
+      })
+    }
+
+    writeWithoutUndoStep({
+      text,
+      caret,
+      anchor,
+    })
   }
 
   useLayoutEffect(
@@ -574,6 +595,27 @@ export function ComposerField({
     [],
   )
 
+  const updatePickers = ({
+    text,
+    cursor,
+  }: {
+    text: string
+    cursor: number
+  }) => {
+    if (goal !== null) {
+      setGoal(null)
+    }
+
+    if (active !== 0) {
+      setActive(0)
+    }
+
+    trackMention({
+      text,
+      cursor,
+    })
+  }
+
   const readInput = () => {
     const element = input.current
 
@@ -587,16 +629,7 @@ export function ComposerField({
       caret: edit.focus,
       anchor: edit.anchor,
     })
-
-    if (goal !== null) {
-      setGoal(null)
-    }
-
-    if (active !== 0) {
-      setActive(0)
-    }
-
-    trackMention({
+    updatePickers({
       text: edit.text,
       cursor: edit.focus,
     })
@@ -629,30 +662,25 @@ export function ComposerField({
   }
 
   const stepHistory = ({ back }: { back: boolean }) => {
-    const element = input.current
-
-    if (!element) {
-      return
-    }
-
     const target = step({
       history: history.current,
-      now: {
-        text: current.current,
-        ...selectionEnds({ field: element }),
-      },
+      present: snapshotNow(),
       back,
     })
 
-    if (target) {
-      restoringHistory.current = true
-      write({
-        text: target.text,
-        caret: target.focus,
-        anchor: target.anchor,
-      })
-      restoringHistory.current = false
+    if (!target) {
+      return
     }
+
+    writeWithoutUndoStep({
+      text: target.text,
+      caret: target.focus,
+      anchor: target.anchor,
+    })
+    updatePickers({
+      text: target.text,
+      cursor: target.focus,
+    })
   }
 
   const latestDeleteChipBeside = useRef(deleteChipBeside)
@@ -684,12 +712,9 @@ export function ComposerField({
           return
         }
 
-        nativeEdit.current = {
+        browserEdit.current = {
           kind: event.inputType,
-          before: {
-            text: current.current,
-            ...selectionEnds({ field }),
-          },
+          before: snapshotNow(),
         }
       }
 
@@ -851,7 +876,9 @@ export function ComposerField({
     input,
     composing: composingText,
     latestChange,
+    history,
     write,
+    writeWithoutUndoStep,
     notify,
     setUploads,
   })
@@ -1072,6 +1099,10 @@ export function ComposerField({
               data: event.clipboardData,
             })) {
               event.preventDefault()
+              browserEdit.current = {
+                kind: 'deleteByCut',
+                before: snapshotNow(),
+              }
               const deletedByBrowser = document.execCommand('delete')
 
               if (!deletedByBrowser) {
@@ -1116,12 +1147,14 @@ export function ComposerField({
             }
 
             const key = e.key.toLowerCase()
-            const undoKey = (e.metaKey || e.ctrlKey) && !e.altKey && key === 'z'
-            const redoKey = e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && key === 'y'
+            const commandZ = (e.metaKey || e.ctrlKey) && !e.altKey && key === 'z'
+            const controlY = e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && key === 'y'
+            const undo = commandZ && !e.shiftKey
+            const redo = (commandZ && e.shiftKey) || controlY
 
-            if (undoKey || redoKey) {
+            if (undo || redo) {
               e.preventDefault()
-              stepHistory({ back: undoKey && !e.shiftKey })
+              stepHistory({ back: undo })
 
               return
             }
