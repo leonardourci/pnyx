@@ -11,6 +11,7 @@ const closedMinimumHeight = parseFloat(
   styles?.getPropertyValue('--spacing-card-closed-height') ?? '',
 )
 const subtaskIndent = parseFloat(styles?.getPropertyValue('--spacing-subtask-indent') ?? '')
+const phoneBreakpoint = parseFloat(styles?.getPropertyValue('--breakpoint-phone') ?? '')
 
 export const WORKSPACE_SIZING = {
   subtaskIndent: Number.isFinite(subtaskIndent) ? subtaskIndent : 26,
@@ -21,11 +22,12 @@ export const WORKSPACE_SIZING = {
   foldedColumn: unit * 12,
   createColumn: unit * 57.5,
   foldedChat: unit * 10,
-  phone: unit * 190,
   phoneChatInset: unit * 9.5,
   frameMargin: unit * 6,
   phoneFrameMargin: unit * 3,
 } as const
+
+export const phoneLayout = ({ width }: { width: number }) => width < phoneBreakpoint
 
 export const CARD_SIZING = {
   closed: {

@@ -1,5 +1,5 @@
 import { DEFAULT_PROJECT_WIDTH, PROJECT_MIN_WIDTH } from '#preferences/workspace.ts'
-import { CARD_SIZING, WORKSPACE_SIZING } from '#web-shared/card-sizing.ts'
+import { CARD_SIZING, WORKSPACE_SIZING, phoneLayout } from '#web-shared/card-sizing.ts'
 import type { Card } from '#tasks/model.ts'
 
 export const PROJECT_CONTENT_INSET = 18
@@ -26,7 +26,7 @@ export function projectWidth({
   viewport: number
   preview?: number | null
 }) {
-  const phone = viewport <= WORKSPACE_SIZING.phone
+  const phone = phoneLayout({ width: viewport })
   const minimum = Math.max(
     PROJECT_MIN_WIDTH,
     expandedWidth + PROJECT_CONTENT_INSET,
