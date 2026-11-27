@@ -566,7 +566,9 @@ export function Messages({
         const focusNode = browserSelection?.focusNode ?? null
         const block = root.current?.contains(focusNode) ? messageBlock({ node: focusNode }) : null
         const next = selectedPassage({ messages: root.current })
+        // Safari drops the selection when a pill or bar button takes focus.
         const keepPassage = retainCollapsedSelection && (browserSelection?.isCollapsed ?? true)
+          || Boolean(document.activeElement?.closest(SELECTION_ACTIONS_SELECTOR))
 
         const blockKey = block?.dataset.messageBlock
 
