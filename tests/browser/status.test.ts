@@ -1,4 +1,6 @@
 import { readEvents } from '#app/event-log.ts'
+import { existsSync, realpathSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { chrome, fillComposer } from './chrome.ts'
 import { workerLine } from '../setup/worker-log.ts'
@@ -375,6 +377,54 @@ test(
 )
 
 test(
+  'a saved idea without a project starts its worker from its chat in a scratch folder of its own',
+  async () => {
+    const titan = await othrys.titan()
+    const { card } = await titan.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'idea-chat',
+        '--title',
+        'Idea from chat',
+      ],
+    })
+    const selector = await openChat({
+      titanId: titan.id,
+      taskId: card.id,
+    })
+    await chrome({
+      script: `
+      ${fillComposer({
+        selector: `${selector} [aria-label="Message worker"]`,
+        text: 'Start on the idea',
+      })}
+      await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
+      await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
+    `,
+    })
+    const scratch = join(
+      process.env.OTHRYS_HOME!,
+      'runtime',
+      'tasks',
+      card.id,
+      'scratch',
+    )
+    await until({
+      what: 'the idea worker’s scratch folder to exist',
+      check: () => existsSync(scratch),
+    })
+    const worker = await titan.agent({ cwd: realpathSync(scratch) })
+    await until({
+      what: 'the idea worker to receive the first message',
+      check: () => worker.received.some(text => text.includes('Start on the idea')),
+    })
+  },
+)
+
+test(
   'worker first send shows Starting… before attachment, reports a refused start and follows later live turns',
   async () => {
     const titan = await othrys.titan()
@@ -384,6 +434,15 @@ test(
         'project',
         'add',
         folder,
+      ],
+    })
+    await titan.owner({
+      args: [
+        'project',
+        'set',
+        folder,
+        '--copy',
+        'echo no copy >&2; exit 1',
       ],
     })
     await titan.owner({
@@ -432,7 +491,7 @@ test(
     await releaseSends()
     await status({
       selector,
-      label: 'Project live-badges is not a git repository',
+      label: 'The copy command of live-badges failed: no copy',
     })
     expect((await titan.task({ key: 'live-badges' })).agent).toBeUndefined()
     await titan.owner({

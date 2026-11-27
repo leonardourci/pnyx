@@ -84,7 +84,6 @@ export function TaskChat({
     setAssigning,
   ] = useState(false)
   const showRepository = !outside && !project
-  const needsRepository = showRepository && !card.agent
   const repositories = (state.projects ?? []).filter(project => !project.detached)
     .map(project => ({
       value: project.path,
@@ -427,7 +426,7 @@ export function TaskChat({
               setAssigning(true)
 
               try {
-                await command({
+                const receipt = await command({
                   name: 'task',
                   args: [
                     'project',
@@ -438,6 +437,11 @@ export function TaskChat({
                     crypto.randomUUID(),
                   ],
                 })
+
+                if (receipt && typeof receipt === 'object' && 'worker' in receipt
+                  && typeof receipt.worker === 'string' && receipt.worker.startsWith('not moved:')) {
+                  notify({ text: receipt.worker })
+                }
               } catch (error) {
                 chooseRepository('')
                 notify({ text: error instanceof Error ? error.message : String(error) })
@@ -470,7 +474,7 @@ export function TaskChat({
         fieldLabel="Message worker"
         placeholder="Message worker…"
         sendLabel="Send to worker"
-        unavailable={!connected || assigning || needsRepository || card.createdSeq === 0}
+        unavailable={!connected || assigning || card.createdSeq === 0}
         loadComment={thread.loadComment}
         command={async ({
           name,

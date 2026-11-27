@@ -2,9 +2,9 @@ import { inform } from '#app/command-notices.ts'
 import { protectedCopiesFolder } from './remove-pool.ts'
 import { createHash } from 'node:crypto'
 import { lstatSync, mkdirSync, realpathSync } from 'node:fs'
-import { dirname, isAbsolute } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
-import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, createTaskBranch } from './git.ts'
+import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, createTaskBranch, isGitFolder } from './git.ts'
 import { checkCopy } from './copy-check.ts'
 import { branchTitanName, checkout, copiesDir, freshSlot, liveCopy, recordedBranches, releasedCopyOwner, requireUnlinkedCopyFolder, reusable, slots, take, unclaim } from './copy-pool.ts'
 import type { TitanProject, TaskCopy } from './model.ts'
@@ -20,7 +20,7 @@ import { titanEvent } from '#titan/titan.ts'
 import { titanConfig } from '#titan/config.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { TitanError } from '#store/errors.ts'
-import { canonical } from '#store/paths.ts'
+import { canonical, taskRuntimeDir } from '#store/paths.ts'
 import { othrysHome } from '#store/storage.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { titanIds } from '#app/home-migration.ts'
@@ -232,7 +232,6 @@ async function worktreeCopy({
   card: Card
   project: TitanProject
 }): Promise<TaskCopy> {
-  await gitProject({ project })
   const pool = copiesDir()
   requireUnlinkedCopyFolder({ path: pool })
   mkdirSync(
@@ -522,12 +521,28 @@ async function commandCopy({
   }
 }
 
+export const scratchPath = ({ task }: { task: string }) => join(
+  taskRuntimeDir({ task }),
+  'scratch',
+)
+
+function scratchFolder({ task }: { task: string }): string {
+  const path = scratchPath({ task })
+  mkdirSync(
+    path,
+    { recursive: true },
+  )
+
+  return realpathSync(path)
+}
+
 export async function taskFolder({
   titanId,
   task,
   folder,
   inPlace,
   ownFolder,
+  continuingSession,
   meta,
 }: {
   titanId: string
@@ -535,6 +550,7 @@ export async function taskFolder({
   folder?: string
   inPlace?: boolean
   ownFolder?: boolean
+  continuingSession?: string
   meta: Meta
 }): Promise<string | undefined> {
   const state = loadTitan({ titanId }).state
@@ -571,6 +587,13 @@ export async function taskFolder({
   }
 
   if (!project) {
+    if (continuingSession) {
+      throw new TitanError({
+        code: 'CONFLICT',
+        message: 'the task no longer has an attached project',
+      })
+    }
+
     if (inPlace) {
       throw new TitanError({
         message: '--in-place needs a task with an attached project',
@@ -579,11 +602,11 @@ export async function taskFolder({
       })
     }
 
-    return folder
+    return card.folder ?? scratchFolder({ task: card.id })
   }
 
   // A busy task is the route's own refusal; it gets no copy first.
-  if (card.sessionIds?.length) {
+  if (card.sessionIds?.length && !continuingSession) {
     return folder
   }
 
@@ -611,6 +634,14 @@ export async function taskFolder({
   }
 
   if (live && live.project !== project.path) {
+    if (continuingSession) {
+      throw new TitanError({
+        code: 'CONFLICT',
+        message: `the task still has a copy of ${live.project} at ${live.path}`,
+        help: ['Land its work and remove the copy before continuing in the new project.'],
+      })
+    }
+
     inform({
       task: card.id,
       reason: `Continuing in the existing copy of ${live.project} at ${live.path}`,
@@ -628,7 +659,21 @@ export async function taskFolder({
       project,
       command: project.copy,
     }) : undefined)
-  const copy = ready ?? await worktreeCopy({
+
+  if (!ready && !isFolder({ path: project.path })) {
+    throw new TitanError({
+      code: 'COPY_FAILED',
+      message: `the project folder is unavailable: ${project.path}`,
+    })
+  }
+
+  const plainFolder = !ready && !await isGitFolder({ path: project.path })
+
+  if (plainFolder && !continuingSession) {
+    return project.path
+  }
+
+  const copy = plainFolder ? undefined : ready ?? await worktreeCopy({
     titanId,
     card,
     project,
@@ -650,7 +695,7 @@ export async function taskFolder({
 
         if (!sameProjectPath({
           left: selectedProject?.path,
-          right: copy.project,
+          right: project.path,
         })) {
           throw new TitanError({
             message: `the project of task ${card.id} changed while its copy was being prepared; start it again`,
@@ -658,12 +703,13 @@ export async function taskFolder({
           })
         }
 
-        // Another start may have won while this copy was prepared: it leaves its session and copy as they are.
-        const startedMeanwhile = Boolean(now.sessionIds?.length)
+        const sessionChanged = continuingSession
+          ? now.sessionIds?.[0] !== continuingSession
+          : Boolean(now.sessionIds?.length)
         const copiedMeanwhile = now.copy?.state === 'active' && now.copy.path !== card.copy?.path
-          && now.copy.path !== copy.path
+          && now.copy.path !== copy?.path
 
-        if (startedMeanwhile || copiedMeanwhile) {
+        if (sessionChanged || copiedMeanwhile) {
           throw new TitanError({
             message: `task ${card.id} was started meanwhile; its session keeps ${now.copy?.path ?? now.folder ?? 'its folder'}`,
             code: 'SESSION_CONFLICT',
@@ -675,6 +721,17 @@ export async function taskFolder({
           ...meta,
           id,
           ifRevision: undefined,
+        }
+
+        if (!copy) {
+          pushFolder({
+            writer,
+            card: now,
+            folder: project.path,
+            meta: recorded,
+          })
+
+          return project.path
         }
 
         const previousCopy = now.copy
@@ -715,7 +772,7 @@ export async function taskFolder({
       },
     })
   } finally {
-    if (!ready && copy.via === 'worktree') {
+    if (!ready && copy?.via === 'worktree') {
       unclaim({ path: copy.path })
     }
   }

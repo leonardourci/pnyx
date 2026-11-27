@@ -127,7 +127,6 @@ export function TaskCreate({
   )
   const imagesLoading = hasPendingImage({ text: description })
   const descriptionTooLong = descriptionExceedsLimit({ text: description })
-  const needsRepository = repositories.length > 1 && !repository
   const sameGroup = before && (repository
     ? before.repositories.includes(repository) : !before.repositories.length)
   const beforeTask = sameGroup
@@ -142,9 +141,8 @@ export function TaskCreate({
     text?: string
   } = {}) => {
     const invalidDescription = hasPendingImage({ text }) || descriptionExceedsLimit({ text })
-    const missingRepository = start && needsRepository
 
-    if (disabled || invalidDescription || missingRepository) {
+    if (disabled || invalidDescription) {
       return
     }
 
@@ -273,7 +271,7 @@ export function TaskCreate({
         fieldLabel="Description"
         placeholder="What should happen?"
         sendLabel="Start worker"
-        unavailable={disabled || !repository}
+        unavailable={disabled}
         command={async ({
           name,
           args,

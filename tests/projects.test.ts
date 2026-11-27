@@ -6,7 +6,7 @@ import * as processes from '#app/run-process.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { readEvents } from '#app/event-log.ts'
 import { spawnSync } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test, vi } from 'vitest'
 import { parsed, operation, startOthrys, until, type Othrys } from './setup/othrys.ts'
@@ -2515,6 +2515,231 @@ test(
         '--show-current',
       ],
     })).toBe('poseidon-2/chart-2')
+  },
+)
+
+test(
+  'a projectless worker starts in scratch and gets directions to its project copy when a project is attached',
+  async () => {
+    const titan = await othrys.titan()
+    const created = await titan.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Sketch an idea',
+        '--key',
+        'idea',
+        '--brief',
+        'Sketch the idea',
+        '--harness',
+        'claude',
+      ],
+    })
+    expect(created.launch).toBe('started')
+    const task = (await titan.task({ key: 'idea' })).id as string
+    const scratch = realpathSync(join(
+      process.env.OTHRYS_HOME!,
+      'runtime',
+      'tasks',
+      task,
+      'scratch',
+    ))
+    const worker = await titan.agent({ cwd: scratch })
+    await until({
+      what: 'the idea worker’s first turn',
+      check: () => worker.answered === 1,
+    })
+    const sketch = join(
+      scratch,
+      'sketch.md',
+    )
+    writeFileSync(
+      sketch,
+      'first sketch\n',
+    )
+
+    const missing = titan.folder({ name: 'missing-project' })
+    await titan.owner({
+      args: [
+        'project',
+        'add',
+        missing,
+      ],
+    })
+    writeFileSync(
+      join(
+        missing,
+        '.git',
+      ),
+      'invalid git metadata\n',
+    )
+    const unreadable = await titan.owner({
+      args: [
+        'task',
+        'project',
+        'idea',
+        '--project',
+        'missing-project',
+      ],
+    })
+    expect(unreadable.worker).toContain('could not inspect the project repository')
+
+    rmSync(
+      missing,
+      { recursive: true },
+    )
+    const unavailable = await titan.owner({
+      args: [
+        'task',
+        'project',
+        'idea',
+        '--project',
+        'missing-project',
+      ],
+    })
+    expect(unavailable.worker).toContain('the project folder is unavailable')
+
+    const notes = titan.folder({ name: 'idea-notes' })
+    await titan.owner({
+      args: [
+        'project',
+        'add',
+        notes,
+      ],
+    })
+    const plain = await titan.owner({
+      args: [
+        'task',
+        'project',
+        'idea',
+        '--project',
+        notes,
+      ],
+    })
+    const destination = realpathSync(notes)
+    expect(plain.worker).toBe(`asked to continue in ${destination}`)
+    const saved = await titan.owner({
+      args: [
+        'task',
+        'show',
+        'idea',
+        '--full',
+      ],
+    })
+    expect(saved.task.folder).toBe(destination)
+    await until({
+      what: 'the worker to receive the plain project folder',
+      check: () => worker.received.some(text => text.includes(`Continue the work in ${JSON.stringify(destination)}`)),
+    })
+
+    const project = await createProject({
+      titan,
+      landing: 'pr',
+      name: 'later',
+    })
+    const attached = await titan.owner({
+      args: [
+        'task',
+        'project',
+        'idea',
+        '--project',
+        'later',
+      ],
+    })
+    const { copy } = await titan.owner({
+      args: [
+        'task',
+        'copy',
+        'idea',
+      ],
+    })
+    expect(copy).toMatchObject({
+      project: realpathSync(project),
+      state: 'active',
+    })
+    expect(copy.path).not.toBe(realpathSync(project))
+    expect(attached.worker).toBe(`asked to continue in ${copy.path}`)
+    const told = await until({
+      what: 'the worker to be told where to continue',
+      check: () => worker.received.find(text => text.includes(`Continue the work in ${JSON.stringify(copy.path)}`)),
+    })
+    expect(told).toContain(scratch)
+    expect(readFileSync(
+      sketch,
+      'utf8',
+    )).toBe('first sketch\n')
+
+    const other = titan.folder({ name: 'other-project' })
+    await titan.owner({
+      args: [
+        'project',
+        'add',
+        other,
+      ],
+    })
+    const reassigned = await titan.owner({
+      args: [
+        'task',
+        'project',
+        'idea',
+        '--project',
+        other,
+      ],
+    })
+    expect(reassigned.worker).toContain('the task still has a copy')
+    expect(reassigned.worker).toContain(copy.path)
+  },
+)
+
+test(
+  'a plain folder outside git attaches as a project, and its task’s worker works in that folder with no copy',
+  async () => {
+    const titan = await othrys.titan()
+    const notes = titan.folder({ name: 'notes' })
+    writeFileSync(
+      join(
+        notes,
+        'todo.md',
+      ),
+      'tidy up\n',
+    )
+    await titan.owner({
+      args: [
+        'project',
+        'add',
+        notes,
+      ],
+    })
+    expect((await titan.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Tidy the notes',
+        '--key',
+        'tidy',
+        '--brief',
+        'Tidy the notes',
+        '--project',
+        'notes',
+        '--harness',
+        'claude',
+      ],
+    })).launch).toBe('started')
+
+    const worker = await titan.agent({ cwd: realpathSync(notes) })
+    await until({
+      what: 'the notes worker’s first turn',
+      check: () => worker.answered === 1,
+    })
+    expect((await titan.owner({
+      args: [
+        'task',
+        'copy',
+        'tidy',
+      ],
+    })).copy).toBe('none: this task has no copy of its own')
   },
 )
 
