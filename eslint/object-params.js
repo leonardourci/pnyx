@@ -235,6 +235,8 @@ const boundary = ({
         'Button',
         'Input',
         'Textarea',
+        'DraftChip',
+        'ReferenceBadge',
       ].includes(element.name))
       && /^on[A-Z]/.test(attribute.name.name)
   }

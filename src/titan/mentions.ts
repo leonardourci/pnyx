@@ -140,6 +140,9 @@ export function taggedParagraphs({ text }: { text: string }): (TaskMention & { t
     })
 }
 
+export const CHIP_CHARACTER = '\uFFFC'
+const MENTION = new RegExp(`(?:^|[\\s${CHIP_CHARACTER}])@([^@\\n\\r[\\]()${CHIP_CHARACTER}]*)$`)
+
 export function mentionQuery({
   text,
   cursor,
@@ -150,7 +153,7 @@ export function mentionQuery({
   start: number
   query: string
 } | null {
-  const match = /(?:^|\s)@([^@\n\r[\]()]*)$/.exec(text.slice(
+  const match = MENTION.exec(text.slice(
     0,
     cursor,
   ))

@@ -74,3 +74,16 @@ export function chrome({
 afterAll(async () => {
   await chrome({ args: ['stop'] })
 })
+
+export const fillComposer = ({
+  selector,
+  text,
+}: {
+  selector: string
+  text: string
+}) => `await page.eval(() => {
+  const field = document.querySelector(${JSON.stringify(selector)});
+  field.focus();
+  getSelection().selectAllChildren(field);
+  document.execCommand(${JSON.stringify(text ? 'insertText' : 'delete')}, false, ${JSON.stringify(text)});
+});`

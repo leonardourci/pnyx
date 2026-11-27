@@ -17,6 +17,7 @@ import { composing } from '#web-shared/ime.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#titan/attachments.ts'
 import { draftView, hasPendingImage } from './draft.ts'
+import { selectionRange } from './composer-editable.ts'
 
 export function Composer({
   titanId,
@@ -283,7 +284,7 @@ export function Composer({
     [],
   )
 
-  const draftKey = ({ event: e }: { event: KeyboardEvent<HTMLTextAreaElement> }) => {
+  const draftKey = ({ event: e }: { event: KeyboardEvent<HTMLDivElement> }) => {
     if (composing({ event: e.nativeEvent })) {
       return
     }
@@ -299,7 +300,7 @@ export function Composer({
     }
 
     const plainUp = e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey
-      && e.currentTarget.selectionEnd === 0
+      && selectionRange({ field: e.currentTarget }).end === 0
 
     if (plainUp && focusAbove?.()) {
       e.preventDefault(); e.stopPropagation()

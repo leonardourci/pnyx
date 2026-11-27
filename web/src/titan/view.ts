@@ -1,30 +1,24 @@
+import { CHIP_CHARACTER } from '#titan/mentions.ts'
+
+const COMMAND = new RegExp(
+  `(?:^|[\\s${CHIP_CHARACTER}])(?=(\\/[^@\\r\\n${CHIP_CHARACTER}]*$))`,
+  'gu',
+)
+
 export function slashPrefix({
   text,
   cursor,
-  chips = [],
 }: {
   text: string
   cursor: number
-  chips?: {
-    from: number
-    to: number
-  }[]
 }): string | null {
   const before = text.slice(
     0,
     cursor,
   )
-  const matches = [...before.matchAll(/(?:^|\s)(?=(\/[^@\r\n\u2060]*$))/gu)]
-  const query = matches.at(-1)?.[1]
+  const matches = [...before.matchAll(COMMAND)]
 
-  if (query === undefined) {
-    return null
-  }
-
-  const start = cursor - query.length
-  const insideChip = chips.some(chip => chip.from <= start && start < chip.to)
-
-  return insideChip ? null : query
+  return matches.at(-1)?.[1] ?? null
 }
 
 export interface SlashState {
@@ -35,21 +29,15 @@ export interface SlashState {
 export function slashState({
   text,
   cursor,
-  chips,
   dismissed = null,
 }: {
   text: string
   cursor: number
-  chips?: {
-    from: number
-    to: number
-  }[]
   dismissed?: number | null
 }): SlashState {
   const prefix = slashPrefix({
     text,
     cursor,
-    chips,
   })
   const start = prefix === null ? null : cursor - prefix.length
 

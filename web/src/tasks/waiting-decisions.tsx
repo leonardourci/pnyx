@@ -85,7 +85,7 @@ export function WaitingDecisions({
               trigger.click()
             }
 
-            event.currentTarget.closest('.titan-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
+            event.currentTarget.closest('.titan-chat')?.querySelector<HTMLElement>('.composer .composer-text')
               ?.focus()
           } else if (event.key === ' ' && event.target === trigger) {
             event.preventDefault()
@@ -126,7 +126,7 @@ export function WaitingDecisions({
                   close()
                 } else if (next >= focusable.length) {
                   close()
-                  event.currentTarget.closest('.titan-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
+                  event.currentTarget.closest('.titan-chat')?.querySelector<HTMLElement>('.composer .composer-text')
                     ?.focus()
                 } else {
                   focusable[next].focus()

@@ -1,6 +1,7 @@
 import type { ChatDrafts } from './chat-drafts.ts'
 import { imageLine } from '#titan/images.ts'
-import { focusAtEnd, isEditing } from '#web-shared/ui/focus.ts'
+import { isEditing } from '#web-shared/ui/focus.ts'
+import { focusAtEnd } from './composer-editable.ts'
 import {
   type ClipboardEvent as PasteEvent,
 } from 'react'
@@ -72,8 +73,8 @@ export function useCommentDrafts({
       }); clearSelection()
     })
     window.getSelection()?.removeAllRanges()
-    const note = root.current?.querySelector<HTMLTextAreaElement>(
-      `[data-comment-id="${comment.id}"] textarea`,
+    const note = root.current?.querySelector<HTMLElement>(
+      `[data-comment-id="${comment.id}"] .composer-text`,
     )
 
     if (note) {

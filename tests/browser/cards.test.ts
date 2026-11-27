@@ -2,7 +2,7 @@ import { loadTitan } from '#app/store.ts'
 import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { openTitan } from './page.ts'
-import { chrome } from './chrome.ts'
+import { chrome, fillComposer } from './chrome.ts'
 import { startOthrys, until, type Titan, type Othrys } from '../setup/othrys.ts'
 
 const COLUMN_TASKS = 61
@@ -1243,16 +1243,22 @@ test(
     const renameFits = await page.eval(() => { const field = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Titan name"]'); return field.scrollWidth <= field.clientWidth + 1 && field.scrollHeight <= field.clientHeight + 1; });
     await page.press('Enter');
     await page.wait('[data-titan-workspace="${titan.id}"] .titan-title[aria-label="Edit ${name}"]');
-    await page.fill('[data-titan-workspace="${titan.id}"] [aria-label="Reply to Titan"]', ${JSON.stringify(prose)});
+    ${fillComposer({
+      selector: `[data-titan-workspace="${titan.id}"] [aria-label="Reply to Titan"]`,
+      text: prose,
+    })}
     await page.press('Shift+Enter');
     const chatDraft = await page.eval(() => {
       const field = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Reply to Titan"]');
       return {
         bounded: field.scrollHeight > field.clientHeight && ['auto', 'scroll'].includes(getComputedStyle(field).overflowY) && field.getBoundingClientRect().height <= Math.min(innerHeight / 2, 480),
-        text: field.value,
+        text: field.textContent,
       };
     });
-    await page.fill('[data-titan-workspace="${titan.id}"] [aria-label="Reply to Titan"]', '');
+    ${fillComposer({
+      selector: `[data-titan-workspace="${titan.id}"] [aria-label="Reply to Titan"]`,
+      text: '',
+    })}
     console.log(JSON.stringify({ renameAtEmojiBoundary, renameFits, chatDraft }));
   `,
     }))
@@ -1262,7 +1268,7 @@ test(
     })
     expect(result.chatDraft).toEqual({
       bounded: true,
-      text: `${prose}\n`,
+      text: `${prose}\n\n`,
     })
   },
 )
@@ -1301,19 +1307,25 @@ test(
       field.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
     });
     await page.press('Shift+Enter');
-    await page.fill('[data-titan-workspace="${titan.id}"] [aria-label="Description"]', ${JSON.stringify('A'.repeat(MAX_BRIEF_LENGTH + 1))});
+    ${fillComposer({
+      selector: `[data-titan-workspace="${titan.id}"] [aria-label="Description"]`,
+      text: 'A'.repeat(MAX_BRIEF_LENGTH + 1),
+    })}
     await page.wait('[data-titan-workspace="${titan.id}"] .task-create button:disabled');
     const canSaveOversizedDescription = await page.eval(() => {
       const form = document.querySelector('[data-titan-workspace="${titan.id}"] .task-create');
       return Array.from(form.querySelectorAll('button')).some(button => button.textContent.trim() === 'Save task' && !button.disabled);
     });
     if (canSaveOversizedDescription) throw new Error('Save task accepts an oversized description');
-    await page.fill('[data-titan-workspace="${titan.id}"] [aria-label="Description"]', ${JSON.stringify(prose)});
+    ${fillComposer({
+      selector: `[data-titan-workspace="${titan.id}"] [aria-label="Description"]`,
+      text: prose,
+    })}
     await page.press('Shift+Enter');
     const fields = await page.eval(() => {
       const title = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Task title"]');
       const description = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Description"]');
-      return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, pasteCaret: title.selectionStart, askGrows: description.scrollHeight <= description.clientHeight + 1 && description.getBoundingClientRect().height > innerHeight / 2, multiLine: description.value.endsWith('\\n') };
+      return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, pasteCaret: title.selectionStart, askGrows: description.scrollHeight <= description.clientHeight + 1 && description.getBoundingClientRect().height > innerHeight / 2, multiLine: description.textContent.endsWith('\\n') };
     });
     const reachability = await page.eval(async () => {
       const form = document.querySelector('[data-titan-workspace="${titan.id}"] .task-create');
@@ -1383,16 +1395,22 @@ test(
     await page.wait('dialog.task-modal [aria-label="Edit task"]');
     await page.click('dialog.task-modal [aria-label="Edit task"]');
     await page.wait('.task-editor [aria-label="Description"]');
-    console.log(await page.eval(() => JSON.stringify(document.querySelector('.task-editor [aria-label="Description"]').value)));
+    console.log(await page.eval(() => JSON.stringify(document.querySelector('.task-editor [aria-label="Description"]').textContent)));
   `,
     })
-    expect(JSON.parse(initialDescription)).toBe(`${prose}\n`)
+    expect(JSON.parse(initialDescription)).toBe(`${prose}\n\n`)
     const editedDescription = `${prose}\nExplain the empty state and its next action.\n`
     await chrome({
       script: `
-    await page.fill('.task-editor [aria-label="Description"]', ${JSON.stringify('A'.repeat(MAX_BRIEF_LENGTH + 1))});
+    ${fillComposer({
+      selector: '.task-editor [aria-label="Description"]',
+      text: 'A'.repeat(MAX_BRIEF_LENGTH + 1),
+    })}
     await page.wait('.task-editor button[type="submit"]:disabled');
-    await page.fill('.task-editor [aria-label="Description"]', ${JSON.stringify(editedDescription)});
+    ${fillComposer({
+      selector: '.task-editor [aria-label="Description"]',
+      text: editedDescription,
+    })}
     const reachable = await page.eval(async () => {
       const form = document.querySelector('.task-editor');
       const panel = form.closest('.card-panel');

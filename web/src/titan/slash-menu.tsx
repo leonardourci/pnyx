@@ -9,6 +9,7 @@ import { useEffect,useMemo,type Dispatch,type RefObject,type SetStateAction } fr
 import { draftView,replaceDisplay } from './draft.ts'
 import { slashIcons } from './skill-icons.ts'
 import { slashPrefix } from './view.ts'
+import { selectionEnds } from './composer-editable.ts'
 
 export interface SlashItem extends PickerItem {
   suggestion: Suggestion
@@ -63,7 +64,7 @@ export function useSlashMenu({
   prefix: string | null
   shownPrefix: string
   onCatalogOpen({ open }: { open: boolean }): void
-  input: RefObject<HTMLTextAreaElement | null>
+  input: RefObject<HTMLDivElement | null>
   read(): string
   projectRequests: boolean
   dismissSlash(): void
@@ -120,11 +121,11 @@ export function useSlashMenu({
 
     const draft = read()
     const view = draftView({ text: draft })
-    const cursor = input.current?.selectionStart ?? view.display.length
+    const field = input.current
+    const cursor = field ? selectionEnds({ field }).focus : view.display.length
     const query = slashPrefix({
       text: view.display,
       cursor,
-      chips: view.chips,
     })
 
     if (query === null || query !== prefix) {
