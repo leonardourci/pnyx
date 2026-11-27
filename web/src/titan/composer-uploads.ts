@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { imageLine, imagePaths } from '#titan/images.ts'
 import { checkImages, uploadImage } from './image-upload.ts'
 import { isPendingImage, pendingImage, placeImages, settleImage, withoutPendingImages } from './draft.ts'
-import { selectionEnds, selectionRange } from './composer-editable.ts'
+import { selectionRange } from './composer-editable.ts'
 import { rewriteSteps, type Snapshot, type UndoHistory } from './composer-history.ts'
 
 // Placeholders whose upload still runs; a field that mounts on the same text keeps them.
@@ -25,6 +25,7 @@ export function useComposerUploads({
   composingText,
   latestChange,
   history,
+  snapshotNow,
   write,
   writeWithoutUndoStep,
   notify,
@@ -35,6 +36,7 @@ export function useComposerUploads({
   composingText: RefObject<boolean>
   latestChange: RefObject<({ text }: { text: string }) => void>
   history: RefObject<UndoHistory>
+  snapshotNow(): Snapshot
   write: Write
   writeWithoutUndoStep: Write
   notify({ text }: { text: string }): void
@@ -56,7 +58,7 @@ export function useComposerUploads({
       if (orphaned) {
         writeWithoutUndoStep({
           text: withoutPendingImages({ text: restored }),
-          caret: input.current ? selectionEnds({ field: input.current }).focus : 0,
+          caret: snapshotNow().focus,
         })
       }
 
@@ -106,16 +108,7 @@ export function useComposerUploads({
       history: history.current,
       rewrite: settleIn,
     })
-    const ends = input.current ? selectionEnds({ field: input.current }) : {
-      anchor: 0,
-      focus: 0,
-    }
-    const settled = settleIn({
-      snapshot: {
-        text: current.current,
-        ...ends,
-      },
-    })
+    const settled = settleIn({ snapshot: snapshotNow() })
 
     // Written before the next keystroke or upload reads the draft and caret.
     if (settled) {

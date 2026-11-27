@@ -25,6 +25,8 @@ import { attachmentRows,folderRows,mentionMatches,taskLook } from './mention-can
 import { CLONE_URL,folderSuggestions } from './mention-folders.ts'
 import { useSlashMenu } from './slash-menu.tsx'
 
+const SCRIPT_EDIT = 'script'
+
 const GOAL_ROWS = filterRows({
   rows: GOALS.map(text => prepareRow({
     item: {
@@ -498,6 +500,27 @@ export function ComposerField({
     latestChange.current({ text })
   }
 
+  const recordStep = ({
+    text,
+    kind,
+    before,
+  }: {
+    text: string
+    kind: string
+    before: Snapshot
+  }) => {
+    if (text === current.current) {
+      return
+    }
+
+    record({
+      history: history.current,
+      before,
+      kind,
+      at: Date.now(),
+    })
+  }
+
   const write = ({
     text,
     caret,
@@ -507,18 +530,11 @@ export function ComposerField({
     caret: number
     anchor?: number
   }) => {
-    const editByBrowser = browserEdit.current
-    browserEdit.current = null
-
-    if (text !== current.current) {
-      record({
-        history: history.current,
-        before: editByBrowser?.before ?? snapshotNow(),
-        kind: editByBrowser?.kind ?? 'script',
-        at: Date.now(),
-      })
-    }
-
+    recordStep({
+      text,
+      kind: SCRIPT_EDIT,
+      before: snapshotNow(),
+    })
     writeWithoutUndoStep({
       text,
       caret,
@@ -625,7 +641,14 @@ export function ComposerField({
     }
 
     const edit = readField({ field: element })
-    write({
+    const announced = browserEdit.current
+    browserEdit.current = null
+    recordStep({
+      text: edit.text,
+      kind: announced?.kind ?? SCRIPT_EDIT,
+      before: announced?.before ?? snapshotNow(),
+    })
+    writeWithoutUndoStep({
       text: edit.text,
       caret: edit.focus,
       anchor: edit.anchor,
@@ -647,19 +670,25 @@ export function ComposerField({
       start,
       end,
     } = selectionRange({ field: element })
-    const at = forward ? start : start - 1
-    const text = current.current
-    const chips = start === end ? draftView({ text }).chips : []
-    const chip = chips.find(placed => placed.from === at)
 
-    if (chip) {
-      write(removeChip({
-        text,
-        chip,
-      }))
+    if (start !== end) {
+      return false
     }
 
-    return !!chip
+    const text = current.current
+    const at = forward ? start : start - 1
+    const chip = draftView({ text }).chips.find(placed => placed.from === at)
+
+    if (!chip) {
+      return false
+    }
+
+    write(removeChip({
+      text,
+      chip,
+    }))
+
+    return true
   }
 
   const stepHistory = ({ back }: { back: boolean }) => {
@@ -892,6 +921,7 @@ export function ComposerField({
     composingText,
     latestChange,
     history,
+    snapshotNow,
     write,
     writeWithoutUndoStep,
     notify,

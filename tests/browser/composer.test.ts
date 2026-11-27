@@ -333,7 +333,7 @@ test(
 )
 
 test(
-  'what the composer sends keeps every chip as its Markdown through copy, paste, cut, Undo, Redo and new lines; Undo reselects a cut, closes the @ picker and takes back a whole uploaded image; a word still in composition, as phone keyboards keep it, enables Send',
+  'what the composer sends keeps every chip as its Markdown through copy, paste, cut, Undo, Redo and new lines; Undo reselects a cut, closes the @ picker, takes back a whole uploaded image and takes back only a mention added from the menu even after an edit the browser announced but never made; a word still in composition, as phone keyboards keep it, enables Send',
   async () => {
     const titan = await othrys.titan()
     othrys.claude.plan({
@@ -371,6 +371,39 @@ test(
     await page.keyboard.press('Shift+Enter')
     await page.keyboard.press('ControlOrMeta+z')
     expect(await composer.textContent()).toBe('hello\n\n')
+
+    await composer.evaluate(field => field.dispatchEvent(new InputEvent(
+      'beforeinput',
+      {
+        inputType: 'formatBold',
+        bubbles: true,
+        cancelable: true,
+      },
+    )))
+    await page.keyboard.press('ControlOrMeta+z')
+    await page.locator('[data-titan-workspace][data-active=true] .titan-chat').getByRole(
+      'button',
+      {
+        name: 'Add to message',
+        exact: true,
+      },
+    ).click()
+    await page.getByRole(
+      'dialog',
+      {
+        name: 'Add to message',
+        exact: true,
+      },
+    ).getByRole(
+      'button',
+      {
+        name: 'Mention',
+        exact: true,
+      },
+    ).click()
+    await mentions.waitFor()
+    await page.keyboard.press('ControlOrMeta+z')
+    expect(await composer.textContent()).toBe('hello')
 
     await composer.evaluate(field => {
       const pasted = new DataTransfer()

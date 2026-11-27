@@ -433,7 +433,7 @@ kbd {
     scrollbar-width: auto; scrollbar-color: auto;
   }
   &[data-empty]::before {
-    @apply pointer-events-none absolute text-muted;
+    @apply pointer-events-none absolute text-muted opacity-85;
     content: attr(data-placeholder);
   }
 }
