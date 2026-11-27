@@ -92,7 +92,6 @@ function chipHosts({
 
     if (!host) {
       host = document.createElement('span')
-      host.className = 'draft-token'
       host.contentEditable = 'false'
       hosts.set(
         key,
@@ -377,7 +376,6 @@ export function ComposerField({
     })
   }
 
-  // A chip's own @ never starts a new mention.
   const trackMention = ({
     text,
     cursor,

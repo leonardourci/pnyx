@@ -427,7 +427,6 @@ kbd {
 
 @keyframes titan-spin { to { transform: rotate(360deg); } }
 
-/* The overlay and editable text need identical metrics to keep chips on their text. */
 .composer-text {
   @apply m-0 border-0 px-2 py-1 font-chat text-chat leading-(--chat-line) tracking-normal whitespace-pre-wrap wrap-break-word scrollbar-stable group-data-[standalone=true]/composer-field:py-1.25 group-data-[standalone=true]/composer-field:font-inherit;
   @supports selector(::-webkit-scrollbar) {
