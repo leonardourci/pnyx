@@ -1,17 +1,17 @@
 # Tests
 
-The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Othrys server the way its users do: the owner and the agents through the built `othrys`, the page through its resumed WebSocket. A few small browser checks open the real page in Chrome.
+The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Othrys server the way its users do: the owner and the agents through the built `othrys`, the page through its resumed WebSocket. A few small browser checks open the real page in Chrome, and the touch checks also in Playwright's Chromium and WebKit.
 
 ```text
 tests/
 ├── <area>.test.ts      one file per area: its integration tests and its tricky edge cases
-├── browser/            targeted checks in isolated headless Chrome
+├── browser/            targeted checks in isolated headless browsers
 └── setup/              the shared setup: scratch files, the server, fake agents, fixtures
 ```
 
 ## Running
 
-The targeted browser checks require an installed Chrome; they launch their own headless session with a scratch profile and never attach to an existing browser. The harnesses use pinned `playwright-core` and `chrome-devtools-axi` development dependencies.
+The targeted browser checks require an installed Chrome and Playwright's Chromium and WebKit (`pnpm exec playwright-core install chromium webkit`); they launch their own headless session with a scratch profile and never attach to an existing browser. The harnesses use pinned `playwright-core` and `chrome-devtools-axi` development dependencies.
 
 Run:
 

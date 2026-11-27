@@ -1,4 +1,4 @@
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
+import { chromium, webkit, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import { afterAll, afterEach } from 'vitest'
 
 const NO_KEYCHAIN_PROMPT = [
@@ -15,7 +15,18 @@ const VIEWPORT = {
   height: 900,
 }
 
-let browser: Browser | undefined
+// Google Chrome, or one of the browsers Playwright downloads.
+export type Engine = 'chrome' | 'chromium' | 'webkit'
+
+const launch = ({ engine }: { engine: Engine }) => engine === 'webkit'
+  ? webkit.launch({ headless: true })
+  : chromium.launch({
+    channel: engine === 'chrome' ? 'chrome' : undefined,
+    headless: true,
+    args: CHROME_FLAGS,
+  })
+
+const browsers = new Map<Engine, Promise<Browser>>()
 const contexts = new Set<BrowserContext>()
 
 afterEach(async () => {
@@ -24,12 +35,13 @@ afterEach(async () => {
 })
 
 afterAll(async () => {
-  await browser?.close()
+  await Promise.all([...browsers.values()].map(async browser => (await browser).close()))
 })
 
 export async function openTitan({
   port,
   titanId,
+  engine = 'chrome',
   reducedMotion = false,
   viewport = VIEWPORT,
   touch = false,
@@ -37,20 +49,20 @@ export async function openTitan({
 }: {
   port: number
   titanId: string
+  engine?: Engine
   reducedMotion?: boolean
   viewport?: typeof VIEWPORT
   touch?: boolean
   beforeLoad?({ page }: { page: Page }): Promise<void>
 }): Promise<Page> {
-  if (!browser) {
-    browser = await chromium.launch({
-      channel: 'chrome',
-      headless: true,
-      args: CHROME_FLAGS,
-    })
+  if (!browsers.has(engine)) {
+    browsers.set(
+      engine,
+      launch({ engine }),
+    )
   }
 
-  const context = await browser.newContext({
+  const context = await (await browsers.get(engine)!).newContext({
     viewport,
     hasTouch: touch,
     isMobile: touch,

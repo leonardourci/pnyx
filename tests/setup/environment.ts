@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterAll } from 'vitest'
 import { keepFiles } from './keep.ts'
@@ -41,6 +42,12 @@ for (const command of GUARDED) {
   )
 }
 
+// Playwright keeps its downloaded browsers under the real home, which the scratch HOME below hides.
+const playwrightBrowsers = process.env.PLAYWRIGHT_BROWSERS_PATH ?? join(
+  homedir(),
+  process.platform === 'darwin' ? 'Library/Caches/ms-playwright' : '.cache/ms-playwright',
+)
+
 for (const key of Object.keys(process.env)) {
   if (!KEEP.test(key)) {
     delete process.env[key]
@@ -78,6 +85,7 @@ Object.assign(
       'gitconfig',
     ),
     LANG: 'en_US.UTF-8',
+    PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsers,
     NODE_OPTIONS: `--max-old-space-size=${CHILD_HEAP_MB}`,
   },
 )
