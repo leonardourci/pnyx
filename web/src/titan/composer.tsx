@@ -18,6 +18,7 @@ import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#titan/attachments.ts'
 import { draftView, hasPendingImage } from './draft.ts'
 import { selectionRange } from './composer-editable.ts'
+import { touchFirst } from '#web-shared/touch.ts'
 
 export function Composer({
   titanId,
@@ -289,7 +290,8 @@ export function Composer({
       return
     }
 
-    if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
+    // The on-screen keyboard's Enter starts a new line, and only Send sends.
+    if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !touchFirst()) {
       e.preventDefault()
 
       if (!e.repeat) {
