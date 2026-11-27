@@ -103,23 +103,25 @@ function ContextIndex({
 const CHAT_ONLY_LAYOUT = 'grid-cols-1 grid-rows-1 [&>.task-chat]:border-l-0'
 const DETAILS_AND_CHAT_LAYOUT = 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-2 @task-details/task:grid-rows-1'
 const DETAILS_ONLY_LAYOUT = 'grid-cols-1 grid-rows-1 [&>.task-chat]:hidden'
+const CONTEXT_TAB = {
+  id: 'context',
+  label: 'Context',
+}
+const ACTIVITY_TAB = {
+  id: 'activity',
+  label: 'Activity',
+}
 const CARD_TABS = [
-  {
-    id: 'context',
-    label: 'Context',
-  },
-  {
-    id: 'activity',
-    label: 'Activity',
-  },
+  CONTEXT_TAB,
+  ACTIVITY_TAB,
 ]
 const PHONE_CARD_TABS = [
-  CARD_TABS[0]!,
+  CONTEXT_TAB,
   {
     id: 'chat',
     label: 'Chat',
   },
-  CARD_TABS[1]!,
+  ACTIVITY_TAB,
 ]
 
 const cardTab = ({ id }: { id: string }) => id === 'activity' || id === 'chat' ? id : 'context'
@@ -307,7 +309,7 @@ export const TitanCard = memo(function TitanCard({
   )
   const tabsId = useId()
   const [
-    tab,
+    savedTab,
     setTab,
   ] = useSessionView<'context' | 'activity' | 'chat'>({
     key: taskViewKey({
@@ -339,10 +341,11 @@ export const TitanCard = memo(function TitanCard({
       id: card.id,
       field: 'activityScroll',
     }),
-    active: selected && tab === 'activity',
+    active: selected && savedTab === 'activity',
   })
+  const tab = !phoneTabs && savedTab === 'chat' ? 'context' : savedTab
   const chatTab = phoneTabs && tab === 'chat'
-  const chatOnly = phoneTabs ? chatTab : prefersChatOnly && !editing
+  const chatOnly = !editing && (phoneTabs ? chatTab : prefersChatOnly)
   const openLayout = cardLayout({
     chatOnly,
     phoneTabs,

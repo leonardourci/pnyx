@@ -27,13 +27,12 @@ export function BottomSheet({
       variant="sheet"
       aria-label={label}
       className="animate-sheet-rise"
-      // eslint-disable-next-line othrys/object-params -- React owns the dialog event signature.
-      onCancel={event => {
-        event.preventDefault(); close()
+      onCancel={({ nativeEvent }) => {
+        nativeEvent.preventDefault()
+        close()
       }}
-      // eslint-disable-next-line othrys/object-params -- React owns the dialog event signature.
-      onClick={event => {
-        if (event.target === event.currentTarget) {
+      onClick={({ target, currentTarget }) => {
+        if (target === currentTarget) {
           close()
         }
       }}

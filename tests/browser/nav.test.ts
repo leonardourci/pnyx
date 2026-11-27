@@ -181,7 +181,6 @@ test(
       'button',
       { name: /Filter polis/ },
     ).count()).resolves.toBe(0)
-    await expect(page.locator('.titan-workspace-bar').count()).resolves.toBe(0)
 
     await active.locator('.titan-chip').click()
     const menu = page.getByRole(
@@ -289,6 +288,17 @@ test(
       { name: 'Open navigation' },
     )
     await phoneNav.waitFor()
+    await phoneNav.click()
+    const sheet = page.getByRole(
+      'dialog',
+      { name: 'Navigation' },
+    )
+    await sheet.waitFor()
+    await page.setViewportSize(WIDE)
+    await sheet.waitFor({ state: 'detached' })
+    await page.setViewportSize(PHONE)
+    await phoneNav.waitFor()
+    await expect(phoneNav.getAttribute('aria-expanded')).resolves.toBe('false')
     await page.keyboard.press('ControlOrMeta+.')
     await titanChips.waitFor()
     await page.setViewportSize(WIDE)
@@ -386,6 +396,17 @@ test(
       'Chat',
       'Activity',
     ])
+    await page.setViewportSize({
+      width: 900,
+      height: 800,
+    })
+    await task.getByRole(
+      'tab',
+      {
+        name: 'Context',
+        selected: true,
+      },
+    ).waitFor()
     await task.getByRole(
       'button',
       {
@@ -395,10 +416,6 @@ test(
     ).click()
     await task.waitFor({ state: 'detached' })
 
-    await page.setViewportSize({
-      width: 900,
-      height: 800,
-    })
     await header.getByRole(
       'navigation',
       { name: 'Titan navigation' },

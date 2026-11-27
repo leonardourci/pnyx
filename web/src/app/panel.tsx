@@ -12,8 +12,7 @@ import { WaitingCount } from '#web-shared/ui/waiting-count.tsx'
 import { TitanLabel } from '#web-titan/titan-title.tsx'
 import { UpgradeHint } from '#web-upgrade/upgrade-hint.tsx'
 
-// How close to the top edge the pointer must come to bring a hidden wide nav back for a look.
-const TOP_EDGE = 4
+const NAV_REVEAL_EDGE = 4
 const BAR = 'topbar visible fixed inset-x-0 top-0 z-70 flex h-topbar-height items-center gap-3 border-b border-line bg-background px-3.5 pt-safe-top max-phone:gap-1.5 max-phone:px-2'
 
 function useTopEdgePeek({ enabled }: { enabled: boolean }) {
@@ -34,9 +33,8 @@ function useTopEdgePeek({ enabled }: { enabled: boolean }) {
           return
         }
 
-        // The bar's own menus are inside it, so moving into one keeps the bar shown.
         const overBar = event.target instanceof Element && !!event.target.closest('.topbar')
-        setPeeking(event.clientY <= TOP_EDGE || overBar)
+        setPeeking(event.clientY <= NAV_REVEAL_EDGE || overBar)
       }
 
       window.addEventListener(
@@ -110,7 +108,16 @@ export function Panel({
     sheetOpen,
     setSheetOpen,
   ] = useState(false)
-  const compact = hidden && !peeking
+  const compact = hidden && (phone || !peeking)
+  const phoneHeader = shown && phone && compact
+  useEffect(
+    () => {
+      if (!phoneHeader) {
+        setSheetOpen(false)
+      }
+    },
+    [phoneHeader],
+  )
   useLayoutEffect(
     () => {
       if (!shown) {

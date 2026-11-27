@@ -127,7 +127,6 @@ export function HoverActions({
       }
 
       const show = (event: Event) => {
-        // A tap is not a hover: touch screens open the actions from the card's own button instead.
         const touched = event instanceof PointerEvent && event.pointerType === 'touch'
         const focusedByPointer = event.type === 'focusin' && !keyboardFocus()
         const onTooltip = event.target instanceof Element && !!event.target.closest('.tooltip-anchor')

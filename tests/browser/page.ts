@@ -39,7 +39,6 @@ export async function openTitan({
   titanId: string
   reducedMotion?: boolean
   viewport?: typeof VIEWPORT
-  // A phone's touch screen: taps, a coarse pointer and no hover.
   touch?: boolean
   beforeLoad?({ page }: { page: Page }): Promise<void>
 }): Promise<Page> {

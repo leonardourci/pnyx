@@ -907,7 +907,7 @@ export function TitanView({
 
   const nav = useNavHidden({
     phone,
-    shortcut: active,
+    active,
   })
   const titanAsks = columns.reduce(
     (
@@ -1005,7 +1005,10 @@ export function TitanView({
               key={item.id}
               variant="titan"
               aria-current={item.id === navigation.titanId ? 'page' : undefined}
-              onClick={() => choose({ action: () => void navigate({ url: `/titan/${encodeURIComponent(item.id)}/` }) })}
+              onClick={() => choose({
+                action: () => navigate({ url: `/titan/${encodeURIComponent(item.id)}/` })
+                  .catch((error: Error) => notify({ text: error.message })),
+              })}
             >
               <TitanLabel name={item.name} icon={item.icon} size={ICON_SIZE.control} />
               <WaitingCount count={titanWaiting({ titan: item })} />
@@ -1235,17 +1238,29 @@ export function TitanView({
             navigate={navigate}
             menu={titanMenu}
             projects={projectChips}
-            openProject={({
+            openProject={async ({
               titan,
               path,
-            }) => oracleTarget({
-              titan,
-              path,
-            })}
-            addProject={({ titan }) => oracleTarget({
-              titan,
-              addProject: true,
-            })}
+            }) => {
+              try {
+                await oracleTarget({
+                  titan,
+                  path,
+                })
+              } catch (error) {
+                notify({ text: error instanceof Error ? error.message : String(error) })
+              }
+            }}
+            addProject={async ({ titan }) => {
+              try {
+                await oracleTarget({
+                  titan,
+                  addProject: true,
+                })
+              } catch (error) {
+                notify({ text: error instanceof Error ? error.message : String(error) })
+              }
+            }}
             createTitan={async () => {
               try {
                 await titan.createTitan(pickName({

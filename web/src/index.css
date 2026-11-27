@@ -1,5 +1,4 @@
 @import "tailwindcss";
-/* A touch-first device: a coarse pointer and no hover, whatever the window width. */
 @custom-variant touch (@media (pointer: coarse) and (hover: none));
 /* Bundled fonts use the SIL Open Font License (see each folder's OFL.txt). */
 @font-face { font-family: "GFS Neohellenic"; src: url("/fonts/gfs-neohellenic/GFSNeohellenic.ttf") format("truetype"); font-weight: 400; font-display: swap; }
@@ -285,7 +284,6 @@
 }
 
 @theme static {
-  /* The one switch point between the wide and the phone layout; card-sizing.ts reads it. */
   --breakpoint-phone: 900px;
   --transition-duration-highlight: 1200ms;
   --ease-task-highlight: ease-out;
@@ -305,8 +303,8 @@
   --block-gap: .75em;
 }
 
-/* The global switch and OS preference also cover third-party and inline animations. */
 :root[data-nav-hidden] { --spacing-topbar-height: calc(var(--spacing) * 11 + var(--spacing-safe-top)); }
+/* The global switch and OS preference also cover third-party and inline animations. */
 :root[data-motion="off"] { --transition-duration-fast: var(--transition-duration-instant); --transition-duration-base: var(--transition-duration-instant); --transition-duration-slow: var(--transition-duration-instant); --transition-duration-ambient: var(--transition-duration-instant); --transition-duration-highlight: var(--transition-duration-instant); }
 :root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation-duration: var(--transition-duration-instant)!important; animation-delay: var(--transition-duration-instant)!important; animation-iteration-count: 1!important; transition-duration: var(--transition-duration-instant)!important; transition-delay: var(--transition-duration-instant)!important; scroll-behavior: auto!important; }
 @media (prefers-reduced-motion: reduce) {

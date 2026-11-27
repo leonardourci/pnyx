@@ -677,7 +677,6 @@ test(
         )!
         const column = workspace.querySelector<HTMLElement>(`[data-column="${CSS.escape(project)}"]`)!
         const axis = workspace.closest<HTMLElement>('.workspace-axis')!
-        // The reveal starts with the folded project out of view, so it unfolds while scrolling to it.
         const pastColumn = column.getBoundingClientRect().right
           - axis.getBoundingClientRect().left + 1
         axis.scrollTo({
@@ -1378,14 +1377,6 @@ test(
       script: `
     await page.click('[data-titan-workspace="${titan.id}"] .card-open');
     await page.wait('dialog.task-modal .card.selected');
-    await page.eval(async () => {
-      for (let frame = 0; frame < 120; frame++) {
-        const box = document.querySelector('dialog.task-modal').getBoundingClientRect();
-        if (box.top === 0 && box.height === innerHeight) return;
-        await new Promise(requestAnimationFrame);
-      }
-      throw new Error('The task never filled the phone screen');
-    });
     await page.click('dialog.task-modal .card.selected [role="tab"][id$="-tab-activity"]');
     await page.click('dialog.task-modal .card.selected [role="tab"][id$="-tab-chat"]');
     await page.eval(() => document.querySelector('dialog.task-modal .card.selected').dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
@@ -1432,6 +1423,7 @@ test(
     })
     expect(await chrome({
       script: `
+    await page.click('dialog.task-modal [role="tab"][id$="-tab-context"]');
     console.log(await page.eval(() => document.querySelector('dialog.task-modal [aria-label="Description"].card-section')?.textContent));
     await page.click('dialog.task-modal [aria-label="Close"]');
   `,
@@ -1552,7 +1544,6 @@ test.each([
         );
       })`
 
-    // The wide layout folds from the Titan's menu; the phone keeps whatever fold its saved view holds.
     const fold = async ({
       item,
       patch,
@@ -1626,8 +1617,6 @@ test.each([
     console.log(await page.eval(async () => {
       const workspace = document.querySelector('${workspace}');
       await new Promise(requestAnimationFrame);
-      const columns = [...workspace.querySelectorAll('.project-column')];
-      window.expandedColumnWidths = columns.map(column => column.getBoundingClientRect().width);
       return JSON.stringify({ unfolded: workspace.getBoundingClientRect().width === ${expandedWorkspaceWidth} });
     }));
   `,

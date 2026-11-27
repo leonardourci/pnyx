@@ -22,14 +22,12 @@ export const WORKSPACE_SIZING = {
   foldedColumn: unit * 12,
   createColumn: unit * 57.5,
   foldedChat: unit * 10,
-  phone: Number.isFinite(phoneBreakpoint) ? phoneBreakpoint : 900,
   phoneChatInset: unit * 9.5,
   frameMargin: unit * 6,
   phoneFrameMargin: unit * 3,
 } as const
 
-// Matches the `max-phone:` variant: any window narrower than the switch point gets the phone layout.
-export const phoneLayout = ({ width }: { width: number }) => width < WORKSPACE_SIZING.phone
+export const phoneLayout = ({ width }: { width: number }) => width < phoneBreakpoint
 
 export const CARD_SIZING = {
   closed: {
