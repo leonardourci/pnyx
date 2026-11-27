@@ -44,8 +44,9 @@ export function agentActivity({
     child.agent?.agentId && child.agent.provider === agent.provider
     && child.agent.sessionId === agent.sessionId
     && agentActivity({ card: child }) === 'working')
+  const parent = rootSessionId({ agent })
   const observedChildWorking = sessions
-    ? (sessionsWithWorkingChild ?? findSessionsWithWorkingChild({ sessions })).has(rootSessionId({ agent }))
+    ? (sessionsWithWorkingChild ?? findSessionsWithWorkingChild({ sessions })).has(parent)
     : card.facts?.childWorking ?? childSeen()
   const childWorking = !agent.agentId && observedChildWorking
 
