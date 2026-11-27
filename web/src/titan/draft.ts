@@ -1,13 +1,10 @@
 import { readSkillReference } from '#titan/transcripts-skill-reference.ts'
 import { IMAGE, imageNames, imagePaths } from '#titan/images.ts'
 import { FILE_BLOCK } from '#titan/attachments.ts'
-import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '#titan/mentions.ts'
+import { CHIP, decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '#titan/mentions.ts'
 
 // The draft stays the Markdown Titan receives; the field shows each chip as one inline element.
 export type ChipKind = ReferenceKind
-
-// In the display, a chip is this one character, so offsets count it as a single step.
-export const CHIP = '\uFFFC'
 
 // An image still uploading holds its place in the draft as an image token for a path no file has.
 const PENDING_IMAGE = '/pending-image/'

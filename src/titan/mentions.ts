@@ -140,7 +140,10 @@ export function taggedParagraphs({ text }: { text: string }): (TaskMention & { t
     })
 }
 
-// The composer shows each chip as U+FFFC, which ends a mention and may come right before one.
+// In the composer's display a chip is this one character; it ends a mention and may come right before one.
+export const CHIP = '\uFFFC'
+const MENTION = new RegExp(`(?:^|[\\s${CHIP}])@([^@\\n\\r[\\]()${CHIP}]*)$`)
+
 export function mentionQuery({
   text,
   cursor,
@@ -151,7 +154,7 @@ export function mentionQuery({
   start: number
   query: string
 } | null {
-  const match = /(?:^|[\s\uFFFC])@([^@\n\r[\]()\uFFFC]*)$/.exec(text.slice(
+  const match = MENTION.exec(text.slice(
     0,
     cursor,
   ))

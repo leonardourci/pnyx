@@ -1,4 +1,11 @@
-// A chip, which the composer's text shows as U+FFFC, ends a command as a space does.
+import { CHIP } from '#titan/mentions.ts'
+
+// A chip ends a command as a space does.
+const COMMAND = new RegExp(
+  `(?:^|[\\s${CHIP}])(?=(\\/[^@\\r\\n${CHIP}]*$))`,
+  'gu',
+)
+
 export function slashPrefix({
   text,
   cursor,
@@ -10,7 +17,7 @@ export function slashPrefix({
     0,
     cursor,
   )
-  const matches = [...before.matchAll(/(?:^|[\s\uFFFC])(?=(\/[^@\r\n\uFFFC]*$))/gu)]
+  const matches = [...before.matchAll(COMMAND)]
 
   return matches.at(-1)?.[1] ?? null
 }
