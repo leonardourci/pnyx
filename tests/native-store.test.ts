@@ -7,6 +7,8 @@ import { readEvents } from '#app/event-log.ts'
 import { loadTitan } from '#app/store.ts'
 import { nativeHome } from '#app/native-home.ts'
 import { readNativeTitan } from '#app/native-read.ts'
+import { nativeReferences } from '#app/native-state.ts'
+import { NativePositions } from '#app/native-positions.ts'
 import { withWriter } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
 import { operationEvent } from '#titan/operations.ts'
@@ -1605,5 +1607,51 @@ test(
       }),
     })).toMatchObject({ applied: true })
     expect((await target.task({ key: 'destination-receipt' })).title).toBe('Independent destination intent')
+  },
+)
+
+test(
+  'a saved sequence number names the newest id recorded at its position',
+  () => {
+    const ids = new NativePositions({
+      entries: [
+        [
+          'first',
+          1,
+        ],
+        [
+          'second',
+          2,
+        ],
+      ],
+    })
+    const saved = () => nativeReferences({
+      kind: 'event',
+      value: {
+        seq: 2,
+        createdSeq: 1,
+      },
+      ids,
+    })
+
+    expect(saved()).toEqual({
+      seq: { native: 'second' },
+      createdSeq: { native: 'first' },
+    })
+
+    ids.set(
+      'first',
+      2,
+    )
+    expect(saved()).toEqual({
+      seq: { native: 'second' },
+      createdSeq: 0,
+    })
+
+    ids.delete('second')
+    expect(saved()).toEqual({
+      seq: { native: 'first' },
+      createdSeq: 0,
+    })
   },
 )

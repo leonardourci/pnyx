@@ -5,6 +5,7 @@ import { COMPONENT, titanFiles, taskFiles } from '#store/file-home.ts'
 import { readLog, type LogEntry } from '#store/log.ts'
 import { othrysHome } from '#store/paths.ts'
 import { assembleNative, nativeId, nativeReferences, reduceNative, type NativeState } from './native-state.ts'
+import { NativePositions } from './native-positions.ts'
 import type { TitanState } from './model.ts'
 
 function directories({ path }: { path: string }): string[] {
@@ -77,7 +78,7 @@ export function readNativeTitan({ titanId }: { titanId: string }): {
     scope.path,
     { throwIfNoEntry: false },
   )?.isFile())
-  const positions = new Map<string, number>()
+  const positions = new NativePositions()
   const projections = new Map<string, NativeState>()
   const entries: {
     scope: string
