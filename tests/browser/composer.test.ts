@@ -329,6 +329,15 @@ test(
         exact: true,
       },
     ).waitFor()
+
+    await composer.fill('ab [image: /tmp/shot.png] cd @')
+    await mentions.waitFor()
+    await composer.getByRole(
+      'button',
+      { name: 'Remove Image 1' },
+    ).click()
+    await mentions.waitFor({ state: 'detached' })
+    expect(await composer.textContent()).toBe('ab cd @')
   },
 )
 

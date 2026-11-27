@@ -641,6 +641,10 @@ export function ComposerField({
     }
 
     const edit = readField({ field: element })
+    const ends = edit.inside ? edit : selectionEnds({ field: element })
+    const lastOffset = Math.max(edit.focus, edit.anchor)
+    const caret = Math.min(ends.focus, lastOffset)
+    const anchor = Math.min(ends.anchor, lastOffset)
     const announced = browserEdit.current
     browserEdit.current = null
     recordStep({
@@ -650,12 +654,12 @@ export function ComposerField({
     })
     writeWithoutUndoStep({
       text: edit.text,
-      caret: edit.focus,
-      anchor: edit.anchor,
+      caret,
+      anchor,
     })
     updatePickers({
       text: edit.text,
-      cursor: edit.focus,
+      cursor: caret,
     })
   }
 
@@ -683,10 +687,15 @@ export function ComposerField({
       return false
     }
 
-    write(removeChip({
+    const edit = removeChip({
       text,
       chip,
-    }))
+    })
+    write(edit)
+    updatePickers({
+      text: edit.text,
+      cursor: edit.caret,
+    })
 
     return true
   }
@@ -981,10 +990,15 @@ export function ComposerField({
       return
     }
 
-    write(removeChip({
+    const edit = removeChip({
       text: draft,
       chip,
-    }))
+    })
+    write(edit)
+    updatePickers({
+      text: edit.text,
+      cursor: edit.caret,
+    })
     input.current?.focus()
   }
 

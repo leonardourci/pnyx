@@ -69,7 +69,7 @@ function readSource({
         point,
         index,
       ) => {
-        if (point.node === node) {
+        if (point.node === node && point.offset <= node.length) {
           offsets[index] = source.length + point.offset
         }
       })
