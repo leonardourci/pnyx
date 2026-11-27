@@ -15,8 +15,7 @@ const VIEWPORT = {
   height: 900,
 }
 
-// Google Chrome, or one of the browsers Playwright downloads.
-export type Engine = 'chrome' | 'chromium' | 'webkit'
+type Engine = 'chrome' | 'chromium' | 'webkit'
 
 const launch = ({ engine }: { engine: Engine }) => engine === 'webkit'
   ? webkit.launch({ headless: true })
@@ -55,14 +54,17 @@ export async function openTitan({
   touch?: boolean
   beforeLoad?({ page }: { page: Page }): Promise<void>
 }): Promise<Page> {
-  if (!browsers.has(engine)) {
+  let browser = browsers.get(engine)
+
+  if (!browser) {
+    browser = launch({ engine })
     browsers.set(
       engine,
-      launch({ engine }),
+      browser,
     )
   }
 
-  const context = await (await browsers.get(engine)!).newContext({
+  const context = await (await browser).newContext({
     viewport,
     hasTouch: touch,
     isMobile: touch,

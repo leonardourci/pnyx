@@ -73,8 +73,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # The touch checks run in Playwright's Chromium and WebKit as well as the runner's Chrome.
-      - run: pnpm exec playwright-core install --with-deps chromium webkit
+      - name: Install Playwright browsers
+        run: pnpm exec playwright-core install --with-deps chromium webkit
 
       - name: Lint and build
         run: |

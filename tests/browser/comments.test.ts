@@ -4,8 +4,7 @@ import { startOthrys, type Othrys } from '../setup/othrys.ts'
 import { openTitan } from './page.ts'
 
 const REPLY = 'I will merge the PR once CI and deslop pass. After that the one-time cleanup runs: it marks 233 old instructions as read where there is proof they were read.'
-// iOS draws its selection handle under the last line, about this far down.
-const HANDLE_REACH = 24
+const MINIMUM_TOUCH_GAP = 24
 const LAYOUTS = [
   {
     name: 'wide',
@@ -67,8 +66,7 @@ for (const engine of [
         const press = ({ target }: { target: Locator }) =>
           layout.touch ? target.tap() : target.click()
 
-        const select = async ({ words }: { words: string }) => {
-          // A drag or a long press starts with a press on the text.
+        const selectPassage = async ({ words }: { words: string }) => {
           await press({ target: reply })
 
           await reply.evaluate(
@@ -76,9 +74,15 @@ for (const engine of [
               element,
               chosen,
             ) => {
-              const text = [...element.childNodes].find(node => node.textContent?.includes(chosen))!
-              const start = text.textContent!.indexOf(chosen)
-              getSelection()!.setBaseAndExtent(
+              const text = [...element.childNodes].find(node => node.textContent?.includes(chosen))
+              const selection = getSelection()
+
+              if (!text?.textContent || !selection) {
+                throw new Error(`Cannot select ${chosen}`)
+              }
+
+              const start = text.textContent.indexOf(chosen)
+              selection.setBaseAndExtent(
                 text,
                 start,
                 text,
@@ -88,29 +92,37 @@ for (const engine of [
             words,
           )
           await expect.poll(() => bar.textContent()).toContain(words)
-          const gap = await pill.evaluate(element => element.getBoundingClientRect().top
-            - getSelection()!.getRangeAt(0).getBoundingClientRect().bottom)
-
-          // iOS can clear the selection before the tap on an offer arrives.
-          if (layout.touch) {
-            await page.evaluate(() => getSelection()!.removeAllRanges())
-          }
-
-          return gap
         }
 
-        const gap = await select({ words: 'the one-time cleanup runs' })
+        const dropTouchSelection = async () => {
+          if (layout.touch) {
+            await page.evaluate(() => getSelection()?.removeAllRanges())
+          }
+        }
+
+        await selectPassage({ words: 'the one-time cleanup runs' })
 
         if (layout.touch) {
-          expect(gap).toBeGreaterThanOrEqual(HANDLE_REACH)
+          await expect.poll(() => pill.evaluate(element => {
+            const selection = getSelection()
+
+            if (!selection?.rangeCount) {
+              throw new Error('The reply selection disappeared')
+            }
+
+            return element.getBoundingClientRect().top - selection.getRangeAt(0).getBoundingClientRect().bottom
+          })).toBeGreaterThanOrEqual(MINIMUM_TOUCH_GAP)
         }
 
-        await press({
-          target: bar.getByRole(
-            'button',
-            { name: 'Comment' },
-          ),
-        })
+        await dropTouchSelection()
+        const comment = bar.getByRole('button', { name: 'Comment' })
+
+        if (layout.touch) {
+          await comment.tap()
+        } else {
+          await comment.hover()
+          await page.mouse.down()
+        }
         const note = workspace.getByRole(
           'textbox',
           {
@@ -120,6 +132,11 @@ for (const engine of [
         )
         await expect.poll(() => note.evaluate(field => field.contains(document.activeElement)
           || field === document.activeElement)).toBe(true)
+
+        if (!layout.touch) {
+          await page.mouse.up()
+        }
+
         await page.keyboard.type('which four stay unread')
         expect(await note.textContent()).toBe('which four stay unread')
         expect(await workspace.getByRole(
@@ -128,13 +145,19 @@ for (const engine of [
         ).textContent()).toContain('the one-time cleanup runs')
         await bar.waitFor({ state: 'detached' })
 
-        await select({ words: '233 old instructions' })
-        await press({
-          target: pill.getByRole(
-            'button',
-            { name: 'Quote selection' },
-          ),
-        })
+        await selectPassage({ words: '233 old instructions' })
+        await dropTouchSelection()
+        const quote = pill.getByRole(
+          'button',
+          { name: 'Quote selection' },
+        )
+
+        if (layout.touch) {
+          await quote.tap()
+        } else {
+          await quote.press('Space')
+        }
+
         const composer = workspace.getByRole(
           'textbox',
           {
@@ -145,7 +168,13 @@ for (const engine of [
         await expect.poll(() => composer.textContent()).toContain('233 old instructions')
         await bar.waitFor({ state: 'detached' })
 
-        await select({ words: 'proof they were read' })
+        await selectPassage({ words: 'proof they were read' })
+        await dropTouchSelection()
+        await bar.getByRole('button', { name: 'Comment' }).press('Escape')
+        await pill.waitFor({ state: 'detached' })
+
+        await selectPassage({ words: 'proof they were read' })
+        await dropTouchSelection()
         await press({
           target: workspace.getByText(
             'Say something',

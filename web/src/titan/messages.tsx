@@ -40,8 +40,7 @@ import type { AnswerLead } from './answer-leads.ts'
 import { roleLabel } from './trace-row.tsx'
 import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
 
-// The offers to comment on or quote the selected text: the pill by the selection and the bar above the composer.
-const SELECTION_OFFERS = '.comment-pill, .comment-dock'
+const SELECTION_ACTIONS_SELECTOR = '.comment-pill, .comment-dock'
 let highlights = 0
 
 // A message the owner just sent shows at once, faded until the server records it.
@@ -356,8 +355,7 @@ const MessageRow = memo(function MessageRow({
   )
 })
 
-// A tap acts on pointerdown, before iOS can drop the selection and the offer with it.
-function OfferButton({
+function SelectionActionButton({
   act,
   ...props
 }: ComponentProps<typeof Button> & { act(): void }) {
@@ -366,12 +364,12 @@ function OfferButton({
       {...props}
       onPointerDown={event => {
         if (event.button === 0) {
+          event.preventDefault()
           act()
         }
       }}
-      // Enter or Space on the focused button; a pointer has already acted.
       onClick={event => {
-        if (!event.detail) {
+        if (event.detail === 0) {
           act()
         }
       }}
@@ -528,7 +526,8 @@ export function Messages({
 
       if (event.defaultPrevented || event.isComposing ||
         event.ctrlKey || event.metaKey || event.altKey ||
-        event.key.length !== 1 || (target && isEditing({ target })) ||
+        event.key.length !== 1 || target?.closest(SELECTION_ACTIONS_SELECTOR) ||
+        (target && isEditing({ target })) ||
         !selected?.toString().trim() || !root.current?.contains(selected.anchorNode) ||
         !root.current.contains(selected.focusNode)) {
         return
@@ -554,29 +553,30 @@ export function Messages({
     )
   })
 
-  // Mouse selections count on mouseup so the comment offer never moves text under the pointer. A touch selection
-  // that drops keeps its passage until a tap lands elsewhere, since iOS can clear it before a tap on an offer arrives.
   useEffect(
     () => {
-      let touched = false
+      let retainCollapsedSelection = false
 
-      const track = ({ buttons }: { buttons: number }) => {
-        if (buttons) {
+      const trackSelection = ({ mouseButtons }: { mouseButtons: number }) => {
+        if (mouseButtons) {
           return
         }
 
-        const focusNode = window.getSelection()?.focusNode ?? null
+        const browserSelection = window.getSelection()
+        const focusNode = browserSelection?.focusNode ?? null
         const block = root.current?.contains(focusNode) ? messageBlock({ node: focusNode }) : null
         const next = selectedPassage({ messages: root.current })
+        const keepPassage = retainCollapsedSelection && (browserSelection?.isCollapsed ?? true)
 
-        if (block && !document.activeElement?.closest('.comment-card')) {
-          setActive(block.dataset.messageBlock!)
+        const blockKey = block?.dataset.messageBlock
+
+        if (blockKey && !document.activeElement?.closest('.comment-card')) {
+          setActive(blockKey)
         }
 
         setSelection(prior => {
-          // A selection made somewhere else, such as the other chat, takes the offer away.
           if (!next) {
-            return touched && (window.getSelection()?.isCollapsed ?? true) ? prior : null
+            return keepPassage ? prior : null
           }
 
           return samePassage({
@@ -586,41 +586,42 @@ export function Messages({
         })
       }
 
-      const point = (event: PointerEvent) => {
-        touched = event.pointerType !== 'mouse'
+      const rememberPointerType = (event: PointerEvent) => {
+        retainCollapsedSelection = event.pointerType === 'touch' || event.pointerType === 'pen'
       }
 
       const tapElsewhere = (event: MouseEvent) => {
         const target = event.target instanceof Element ? event.target : null
 
-        if (!target?.closest(SELECTION_OFFERS) && !selectedPassage({ messages: root.current })) {
+        if (!target?.closest(SELECTION_ACTIONS_SELECTOR) && !selectedPassage({ messages: root.current })) {
           setSelection(null)
         }
       }
 
-      let buttons = 0
+      let mouseButtons = 0
 
       const press = (event: MouseEvent) => {
-        buttons = event.buttons
+        mouseButtons = event.buttons
       }
 
       const release = (event: MouseEvent) => {
-        buttons = event.buttons; track({ buttons })
+        mouseButtons = event.buttons
+        trackSelection({ mouseButtons })
       }
 
       // A drag that ends outside the window never sends its mouseup here.
       const reset = () => {
-        buttons = 0
+        mouseButtons = 0
       }
 
-      const change = () => track({ buttons })
+      const change = () => trackSelection({ mouseButtons })
       document.addEventListener(
         'selectionchange',
         change,
       )
       document.addEventListener(
         'pointerdown',
-        point,
+        rememberPointerType,
         true,
       )
       document.addEventListener(
@@ -647,7 +648,7 @@ export function Messages({
         )
         document.removeEventListener(
           'pointerdown',
-          point,
+          rememberPointerType,
           true,
         )
         document.removeEventListener(
@@ -708,10 +709,9 @@ export function Messages({
   )
   useLayoutEffect(
     () => {
-      const place = () => {
+      const placePillBesideLiveSelection = () => {
         const element = pill.current, host = root.current, selected = window.getSelection()
 
-        // A dropped selection, or one moved into a field, leaves the pill where it was.
         if (!element || !host || !selected?.rangeCount || selected.isCollapsed
           || !host.contains(selected.getRangeAt(0).commonAncestorContainer)) {
           return
@@ -730,8 +730,8 @@ export function Messages({
         ) - half}px`
       }
 
-      place()
-      const observer = new ResizeObserver(place)
+      placePillBesideLiveSelection()
+      const observer = new ResizeObserver(placePillBesideLiveSelection)
 
       if (root.current) {
         observer.observe(root.current)
@@ -745,13 +745,12 @@ export function Messages({
     ],
   )
 
-  // The bar sits over the foot of the conversation, just above the composer.
   const [
-    dock,
-    setDock,
+    chatViewport,
+    setChatViewport,
   ] = useState<Element | null>(null)
   useLayoutEffect(
-    () => setDock(root.current?.closest('.chat-viewport') ?? null),
+    () => setChatViewport(root.current?.closest('.chat-viewport') ?? null),
     [],
   )
 
@@ -778,21 +777,29 @@ export function Messages({
 
     const modified = altKey || ctrlKey || metaKey
 
-    if (event.target !== event.currentTarget || event.nativeEvent.isComposing || modified) {
+    if (event.nativeEvent.isComposing || modified) {
       return
     }
 
-    if (key === 'Escape' && !shiftKey) {
-      event.preventDefault(); setSelection(null)
+    const fromMessages = event.target === event.currentTarget
+    const fromSelectionAction = event.target instanceof Element && event.target.closest(SELECTION_ACTIONS_SELECTOR)
+
+    if (key === 'Escape' && !shiftKey && (fromMessages || fromSelectionAction)) {
+      event.preventDefault()
+      setSelection(null)
       window.getSelection()?.removeAllRanges()
       event.currentTarget.closest<HTMLElement>('.thread')?.focus({ preventScroll: true })
 
       return
     }
 
+    if (!fromMessages || key !== 'Enter') {
+      return
+    }
+
     const selected = selectedPassage({ messages: root.current })
 
-    if (key === 'Enter' && selected) {
+    if (selected) {
       event.preventDefault()
 
       if (shiftKey) {
@@ -884,10 +891,8 @@ export function Messages({
           <div
             className="comment-pill absolute z-5 mt-1.5 flex items-center gap-0.5 p-0.75 border border-gold-line rounded-lg bg-surface shadow-comment-pill whitespace-nowrap touch:mt-7 [&_.button]:min-h-6.5 [&_.button]:py-0.5 [&_.button]:px-2 [&_.button]:gap-1.25 [&_.button]:text-meta [&_.button:first-child]:text-gold [&_kbd]:py-0 [&_kbd]:px-1 touch:[&_kbd]:hidden"
             ref={pill}
-            // A press on an offer keeps the selection and the focus, which the action then moves.
-            onPointerDown={event => event.preventDefault()}
           >
-            <OfferButton
+            <SelectionActionButton
               aria-label="Comment on selection"
               title="Enter, or start typing"
               act={commentSelected}
@@ -895,9 +900,9 @@ export function Messages({
               <Icon name="comment" size={ICON_SIZE.inline} />
               Comment
               <kbd>↵</kbd>
-            </OfferButton>
+            </SelectionActionButton>
             <span className="comment-pill-divider w-px self-stretch my-1 mx-px bg-line" />
-            <OfferButton
+            <SelectionActionButton
               aria-label="Quote selection"
               title="Shift+Enter"
               act={quoteSelected}
@@ -905,27 +910,26 @@ export function Messages({
               <Icon name="quote" size={ICON_SIZE.inline} />
               Quote
               <kbd>⇧↵</kbd>
-            </OfferButton>
+            </SelectionActionButton>
           </div>
         )}
-        {selection && dock && createPortal(
+        {selection && chatViewport && createPortal(
           <div
             className="comment-dock absolute inset-x-(--chat-inset) bottom-2 z-4 flex items-center gap-1.5 p-1.5 border border-gold-line rounded-xl bg-gold-wash [&_.button]:min-h-9 [&_.button]:shrink-0 [&_.button]:border-gold-line [&_.button]:bg-surface [&_.button]:px-3 [&_.button]:font-semibold [&_.button]:text-gold"
             role="group"
             aria-label="Selected text"
-            onPointerDown={event => event.preventDefault()}
           >
             <span className="comment-dock-quote min-w-0 flex-1 truncate pl-1.5 text-meta text-muted">“{selection.quote}”</span>
-            <OfferButton act={commentSelected}>
+            <SelectionActionButton act={commentSelected}>
               <Icon name="comment" size={ICON_SIZE.inline} />
               Comment
-            </OfferButton>
-            <OfferButton act={quoteSelected}>
+            </SelectionActionButton>
+            <SelectionActionButton act={quoteSelected}>
               <Icon name="quote" size={ICON_SIZE.inline} />
               Quote
-            </OfferButton>
+            </SelectionActionButton>
           </div>,
-          dock,
+          chatViewport,
         )}
       </div>
     </TaskReferencesProvider>

@@ -290,7 +290,6 @@ export function Composer({
       return
     }
 
-    // The on-screen keyboard's Enter starts a new line, and only Send sends.
     if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !touchFirst()) {
       e.preventDefault()
 

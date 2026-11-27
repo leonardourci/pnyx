@@ -1,6 +1,6 @@
 # Tests
 
-The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Othrys server the way its users do: the owner and the agents through the built `othrys`, the page through its resumed WebSocket. A few small browser checks open the real page in Chrome, and the touch checks also in Playwright's Chromium and WebKit.
+The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Othrys server the way its users do: the owner and the agents through the built `othrys`, the page through its resumed WebSocket. The browser checks open the real page in Chrome or in Playwright's Chromium and WebKit. Touch emulation covers pointer events and media queries. It does not show the native iOS selection menu or handles.
 
 ```text
 tests/
