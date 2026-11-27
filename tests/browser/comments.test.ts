@@ -115,7 +115,10 @@ for (const engine of [
         }
 
         await dropTouchSelection()
-        const comment = bar.getByRole('button', { name: 'Comment' })
+        const comment = bar.getByRole(
+          'button',
+          { name: 'Comment' },
+        )
 
         if (layout.touch) {
           await comment.tap()
@@ -123,6 +126,7 @@ for (const engine of [
           await comment.hover()
           await page.mouse.down()
         }
+
         const note = workspace.getByRole(
           'textbox',
           {
@@ -170,7 +174,10 @@ for (const engine of [
 
         await selectPassage({ words: 'proof they were read' })
         await dropTouchSelection()
-        await bar.getByRole('button', { name: 'Comment' }).press('Escape')
+        await bar.getByRole(
+          'button',
+          { name: 'Comment' },
+        ).press('Escape')
         await pill.waitFor({ state: 'detached' })
 
         await selectPassage({ words: 'proof they were read' })
