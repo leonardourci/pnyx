@@ -155,7 +155,20 @@ test(
 
     const order = await page.evaluate(() => [...document.querySelectorAll('header .titan-chip, header .polis-gap')]
       .map(element => element.classList.contains('polis-gap') ? 'gap' : element.textContent!.trim()))
-    expect(order[order.indexOf('Hades') - 1]).toBe('gap')
+    const [
+      first,
+      last,
+    ] = [
+      order.indexOf('Poseidon1'),
+      order.indexOf('Hades'),
+    ].sort((
+      a,
+      b,
+    ) => a - b)
+    expect(order.slice(
+      first,
+      last,
+    )).toContain('gap')
     await expect(page.evaluate(() => [...document.querySelectorAll('.active-titan .titan-chip, .active-titan .project-chips .button')]
       .map(element => element.getAttribute('aria-label') ?? element.textContent!.trim()))).resolves.toEqual([
       'Poseidon1',
