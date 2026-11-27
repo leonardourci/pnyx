@@ -7,9 +7,10 @@ import { titanFiles, taskFiles } from '#store/file-home.ts'
 import { canonical, othrysHome, taskRuntimeDir } from '#store/paths.ts'
 import { privateDir, writeDurably } from '#store/storage.ts'
 import { TitanError } from '#store/errors.ts'
+import { generatedSeq } from '#store/ids.ts'
 import type { TitanEvent, TitanState } from './model.ts'
 import type { Card } from '#tasks/model.ts'
-import { assembleNative, reduceNative, nativeReferences, nativeId, type NativeState } from './native-state.ts'
+import { assembleNative, reduceNative, nativeReferences, nativeId, nativeEventId, type NativeState } from './native-state.ts'
 import { log } from './diagnostics.ts'
 import type { Output } from './cli-support.ts'
 
@@ -29,6 +30,19 @@ type NativeFiles = ReturnType<typeof openFileStore<NativeState, NativeState>>
 type NativeView = NonNullable<ReturnType<NativeFiles['read']>>
 
 const homes = new Map<string, NativeHome>()
+
+function nextPosition({
+  after,
+  id,
+}: {
+  after: number
+  id: string
+}): number {
+  return Math.max(
+    after + 1,
+    generatedSeq({ id }),
+  )
+}
 
 function errorCard({
   id,
@@ -424,7 +438,10 @@ export class NativeHome {
     })
     const known = positions.get(key)
     const clock = this.clocks.get(titan) ?? 0
-    const position = seq ?? known ?? clock + 1
+    const position = seq ?? known ?? nextPosition({
+      after: clock,
+      id,
+    })
     this.clocks.set(
       titan,
       Math.max(
@@ -461,9 +478,13 @@ export class NativeHome {
 
     for (const [key] of source) {
       if (!destination.has(key)) {
+        through = nextPosition({
+          after: through,
+          id: nativeEventId({ key }),
+        })
         destination.set(
           key,
-          ++through,
+          through,
         )
       }
 
