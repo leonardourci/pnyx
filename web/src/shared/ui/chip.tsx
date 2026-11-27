@@ -9,12 +9,10 @@ const VARIANTS = {
 
 export function Chip({
   variant = 'project',
-  vertical = false,
   className = '',
   ...props
 }: Omit<ComponentProps<typeof Button>, 'variant'> & {
   variant?: keyof typeof VARIANTS
-  vertical?: boolean
 }) {
-  return <Button {...props} className={`flex-none rounded-full whitespace-nowrap ${VARIANTS[variant]} ${vertical ? 'w-full writing-vertical focus-visible:-outline-offset-2' : 'w-max'} ${className}`} />
+  return <Button {...props} className={`flex-none rounded-full whitespace-nowrap ${VARIANTS[variant]} w-max ${className}`} />
 }
