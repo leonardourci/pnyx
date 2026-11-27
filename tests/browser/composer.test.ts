@@ -56,7 +56,6 @@ test(
     ].join(' '))
     await page.keyboard.type(' something you know')
 
-    // The caret's box against the box of the last letter the owner sees.
     const caretAfterLastLetter = () => composer.evaluate(field => {
       const caret = getSelection()!.getRangeAt(0).getBoundingClientRect()
       const text = [...field.childNodes].filter(node => node instanceof Text).at(-1)!
