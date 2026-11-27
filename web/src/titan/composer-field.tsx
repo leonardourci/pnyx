@@ -17,6 +17,7 @@ import { useDeferredValue,useEffect,useLayoutEffect,useImperativeHandle,useMemo,
 import { createPortal } from 'react-dom'
 import { ComposerChip } from './composer-chip.tsx'
 import { paintField,readField,restoreSelection,select,selectionEnds,selectionRange } from './composer-editable.ts'
+import { emptyHistory,record,step,type Snapshot } from './composer-history.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { useComposerUploads } from './composer-uploads.ts'
 import { attachmentRows,folderRows,mentionMatches,taskLook } from './mention-candidates.ts'
@@ -217,6 +218,13 @@ export function ComposerField({
     anchor: number
     focus: number
   } | null>(null)
+  const history = useRef(emptyHistory())
+  // The draft and selection just before the browser's own edit, so Undo returns to them.
+  const nativeEdit = useRef<{
+    kind: string
+    before: Snapshot
+  } | null>(null)
+  const restoringHistory = useRef(false)
   const composingText = useRef(false)
   const focusingByPointer = useRef(false)
   // An upload settles after later renders, so it writes through the newest change, never a stale one.
@@ -444,6 +452,24 @@ export function ComposerField({
     caret: number
     anchor?: number
   }) => {
+    const edit = nativeEdit.current
+    nativeEdit.current = null
+
+    if (text !== current.current && !restoringHistory.current) {
+      record({
+        history: history.current,
+        before: edit?.before ?? {
+          text: current.current,
+          ...input.current ? selectionEnds({ field: input.current }) : {
+            anchor: 0,
+            focus: 0,
+          },
+        },
+        kind: edit?.kind ?? 'script',
+        at: Date.now(),
+      })
+    }
+
     const next = draftView({ text })
     const chipsChanged = view.chips.length !== next.chips.length
       || view.chips.some((
@@ -602,11 +628,44 @@ export function ComposerField({
     return !!chip
   }
 
+  const stepHistory = ({ back }: { back: boolean }) => {
+    const element = input.current
+
+    if (!element) {
+      return
+    }
+
+    const target = step({
+      history: history.current,
+      now: {
+        text: current.current,
+        ...selectionEnds({ field: element }),
+      },
+      back,
+    })
+
+    if (target) {
+      restoringHistory.current = true
+      write({
+        text: target.text,
+        caret: target.focus,
+        anchor: target.anchor,
+      })
+      restoringHistory.current = false
+    }
+  }
+
   const latestDeleteChipBeside = useRef(deleteChipBeside)
   latestDeleteChipBeside.current = deleteChipBeside
+  const latestStepHistory = useRef(stepHistory)
+  latestStepHistory.current = stepHistory
   useEffect(
     () => {
       const field = input.current
+
+      if (!field) {
+        return
+      }
 
       const beforeInput = (event: InputEvent) => {
         const forward = event.inputType === 'deleteContentForward'
@@ -614,15 +673,32 @@ export function ComposerField({
 
         if (deletes && latestDeleteChipBeside.current({ forward })) {
           event.preventDefault()
+
+          return
+        }
+
+        if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
+          event.preventDefault()
+          latestStepHistory.current({ back: event.inputType === 'historyUndo' })
+
+          return
+        }
+
+        nativeEdit.current = {
+          kind: event.inputType,
+          before: {
+            text: current.current,
+            ...selectionEnds({ field }),
+          },
         }
       }
 
-      field?.addEventListener(
+      field.addEventListener(
         'beforeinput',
         beforeInput,
       )
 
-      return () => field?.removeEventListener(
+      return () => field.removeEventListener(
         'beforeinput',
         beforeInput,
       )
@@ -1036,6 +1112,17 @@ export function ComposerField({
           onInput={readInput}
           onKeyDown={e => {
             if (e.nativeEvent.isComposing || e.key === 'Process') {
+              return
+            }
+
+            const key = e.key.toLowerCase()
+            const undoKey = (e.metaKey || e.ctrlKey) && !e.altKey && key === 'z'
+            const redoKey = e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && key === 'y'
+
+            if (undoKey || redoKey) {
+              e.preventDefault()
+              stepHistory({ back: undoKey && !e.shiftKey })
+
               return
             }
 
