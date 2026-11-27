@@ -958,13 +958,14 @@ export const TitanCard = memo(function TitanCard({
           />
         )}
       </CardContent>
-      <IconButton
-        className="card-actions-trigger absolute top-1.5 right-1.5 z-2 hidden bg-card-fill touch:inline-flex"
-        label="Card actions"
-        icon="more"
-        size="compact"
-        {...{ [ACTIONS_TRIGGER]: '' }}
-      />
+      <span className="card-actions-trigger absolute top-1.5 right-1.5 z-2 hidden bg-card-fill touch:flex">
+        <IconButton
+          label="Card actions"
+          icon="more"
+          size="compact"
+          {...{ [ACTIONS_TRIGGER]: '' }}
+        />
+      </span>
       {hoverActions}
     </TaskCardDrag>
   )
