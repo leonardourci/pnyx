@@ -2567,6 +2567,24 @@ test(
         missing,
       ],
     })
+    writeFileSync(
+      join(
+        missing,
+        '.git',
+      ),
+      'invalid git metadata\n',
+    )
+    const unreadable = await titan.owner({
+      args: [
+        'task',
+        'project',
+        'idea',
+        '--project',
+        'missing-project',
+      ],
+    })
+    expect(unreadable.worker).toContain('could not inspect the project repository')
+
     rmSync(
       missing,
       { recursive: true },
@@ -2581,6 +2599,39 @@ test(
       ],
     })
     expect(unavailable.worker).toContain('the project folder is unavailable')
+
+    const notes = titan.folder({ name: 'idea-notes' })
+    await titan.owner({
+      args: [
+        'project',
+        'add',
+        notes,
+      ],
+    })
+    const plain = await titan.owner({
+      args: [
+        'task',
+        'project',
+        'idea',
+        '--project',
+        notes,
+      ],
+    })
+    const destination = realpathSync(notes)
+    expect(plain.worker).toBe(`asked to continue in ${destination}`)
+    const saved = await titan.owner({
+      args: [
+        'task',
+        'show',
+        'idea',
+        '--full',
+      ],
+    })
+    expect(saved.task.folder).toBe(destination)
+    await until({
+      what: 'the worker to receive the plain project folder',
+      check: () => worker.received.some(text => text.includes(`Continue the work in ${JSON.stringify(destination)}`)),
+    })
 
     const project = await createProject({
       titan,

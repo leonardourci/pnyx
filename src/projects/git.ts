@@ -269,6 +269,7 @@ export async function git({
     timeout,
     env: {
       ...process.env,
+      LC_ALL: 'C',
       GIT_TERMINAL_PROMPT: '0',
       GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o BatchMode=yes',
     },
@@ -294,13 +295,28 @@ async function originHead({ cwd }: { cwd: string }): Promise<string | undefined>
   return head.ok && head.out.startsWith(ORIGIN_REFS) ? head.out : undefined
 }
 
-export const isGitFolder = async ({ path }: { path: string }) => (await git({
-  cwd: path,
-  args: [
-    'rev-parse',
-    '--show-toplevel',
-  ],
-})).ok
+export async function isGitFolder({ path }: { path: string }): Promise<boolean> {
+  const result = await git({
+    cwd: path,
+    args: [
+      'rev-parse',
+      '--show-toplevel',
+    ],
+  })
+
+  if (result.ok) {
+    return true
+  }
+
+  if (result.err.startsWith('fatal: not a git repository')) {
+    return false
+  }
+
+  throw new TitanError({
+    code: 'COPY_FAILED',
+    message: `could not inspect the project repository at ${path}: ${result.err}`,
+  })
+}
 
 export async function branchStart({ project }: { project: TitanProject }): Promise<{
   base?: string

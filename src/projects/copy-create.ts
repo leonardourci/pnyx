@@ -587,6 +587,13 @@ export async function taskFolder({
   }
 
   if (!project) {
+    if (continuingSession) {
+      throw new TitanError({
+        code: 'CONFLICT',
+        message: 'the task no longer has an attached project',
+      })
+    }
+
     if (inPlace) {
       throw new TitanError({
         message: '--in-place needs a task with an attached project',
@@ -653,18 +660,20 @@ export async function taskFolder({
       command: project.copy,
     }) : undefined)
 
-  if (!ready && !await isGitFolder({ path: project.path })) {
-    if (!isFolder({ path: project.path })) {
-      throw new TitanError({
-        code: 'COPY_FAILED',
-        message: `the project folder is unavailable: ${project.path}`,
-      })
-    }
+  if (!ready && !isFolder({ path: project.path })) {
+    throw new TitanError({
+      code: 'COPY_FAILED',
+      message: `the project folder is unavailable: ${project.path}`,
+    })
+  }
 
+  const plainFolder = !ready && !await isGitFolder({ path: project.path })
+
+  if (plainFolder && !continuingSession) {
     return project.path
   }
 
-  const copy = ready ?? await worktreeCopy({
+  const copy = plainFolder ? undefined : ready ?? await worktreeCopy({
     titanId,
     card,
     project,
@@ -686,7 +695,7 @@ export async function taskFolder({
 
         if (!sameProjectPath({
           left: selectedProject?.path,
-          right: copy.project,
+          right: project.path,
         })) {
           throw new TitanError({
             message: `the project of task ${card.id} changed while its copy was being prepared; start it again`,
@@ -698,7 +707,7 @@ export async function taskFolder({
           ? now.sessionIds?.[0] !== continuingSession
           : Boolean(now.sessionIds?.length)
         const copiedMeanwhile = now.copy?.state === 'active' && now.copy.path !== card.copy?.path
-          && now.copy.path !== copy.path
+          && now.copy.path !== copy?.path
 
         if (sessionChanged || copiedMeanwhile) {
           throw new TitanError({
@@ -712,6 +721,17 @@ export async function taskFolder({
           ...meta,
           id,
           ifRevision: undefined,
+        }
+
+        if (!copy) {
+          pushFolder({
+            writer,
+            card: now,
+            folder: project.path,
+            meta: recorded,
+          })
+
+          return project.path
         }
 
         const previousCopy = now.copy
@@ -752,7 +772,7 @@ export async function taskFolder({
       },
     })
   } finally {
-    if (!ready && copy.via === 'worktree') {
+    if (!ready && copy?.via === 'worktree') {
       unclaim({ path: copy.path })
     }
   }
