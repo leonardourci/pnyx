@@ -1,9 +1,8 @@
 import { readSkillReference } from '#titan/transcripts-skill-reference.ts'
 import { IMAGE, imageNames, imagePaths } from '#titan/images.ts'
 import { FILE_BLOCK } from '#titan/attachments.ts'
-import { CHIP, decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '#titan/mentions.ts'
+import { CHIP_CHARACTER, decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '#titan/mentions.ts'
 
-// The draft stays the Markdown Titan receives; the field shows each chip as one inline element.
 export type ChipKind = ReferenceKind
 
 // An image still uploading holds its place in the draft as an image token for a path no file has.
@@ -16,15 +15,13 @@ export const isPendingImage = ({ path }: { path: string }) => path.startsWith(PE
 export const hasPendingImage = ({ text }: { text: string }) =>
   imagePaths({ text }).some(path => isPendingImage({ path }))
 
-// An em space holds an icon's room in a chip (a task chip has two); the chip draws its icon over it.
 export const ICON_SPACE = '\u2003'
 export const QUARTER_SPACE = '\u2005'
 export const CHIP_SPACE = QUARTER_SPACE + QUARTER_SPACE
 const NO_BREAK_SPACE = '\u00A0'
 export const WORD_JOINER = '\u2060'
 export const CHIP_JOIN = WORD_JOINER + NO_BREAK_SPACE + WORD_JOINER
-// These read as their bare name; any other reference shows an @ before it.
-const BARE_REFERENCES = new Set<ChipKind>([
+const NAMED_WITHOUT_AT = new Set<ChipKind>([
   'column',
   'task',
   'slot',
@@ -49,14 +46,13 @@ export const cardChip = ({ chip }: { chip: Pick<DraftChip, 'kind' | 'attached'> 
   chip.kind === 'image' || (chip.kind === 'file' && chip.attached)
 
 export const chipText = ({ chip }: { chip: Pick<DraftChip, 'kind' | 'name'> }) =>
-  BARE_REFERENCES.has(chip.kind) ? chip.name : `@${chip.name}`
+  NAMED_WITHOUT_AT.has(chip.kind) ? chip.name : `@${chip.name}`
 
 interface DraftChip {
   kind: ChipKind
   // An attachment carries the image or file itself; a reference only points at something.
   attached: boolean
   value: string
-  // What the chip is called.
   name: string
   start: number
   end: number
@@ -142,7 +138,7 @@ export function draftView({ text }: { text: string }): DraftView {
       chip.start,
     )
     const from = display.length
-    display += CHIP
+    display += CHIP_CHARACTER
     cursor = chip.end
 
     return {

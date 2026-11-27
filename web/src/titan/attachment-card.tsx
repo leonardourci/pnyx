@@ -23,7 +23,6 @@ export function AttachmentCard({
   removeLabel?: string
   removeText?: ReactNode
   leaveRemove?(): void
-  // Inside the composer's field, the card answers the mouse but leaves focus and Tab to the field.
   keepsInputFocus?: boolean
 }) {
   const tabIndex = keepsInputFocus ? -1 : undefined

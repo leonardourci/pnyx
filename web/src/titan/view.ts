@@ -1,8 +1,7 @@
-import { CHIP } from '#titan/mentions.ts'
+import { CHIP_CHARACTER } from '#titan/mentions.ts'
 
-// A chip ends a command as a space does.
 const COMMAND = new RegExp(
-  `(?:^|[\\s${CHIP}])(?=(\\/[^@\\r\\n${CHIP}]*$))`,
+  `(?:^|[\\s${CHIP_CHARACTER}])(?=(\\/[^@\\r\\n${CHIP_CHARACTER}]*$))`,
   'gu',
 )
 

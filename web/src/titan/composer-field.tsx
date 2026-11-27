@@ -1,4 +1,4 @@
-import { CHIP,mentionQuery,reference } from '#titan/mentions.ts'
+import { CHIP_CHARACTER,mentionQuery,reference } from '#titan/mentions.ts'
 import { skillReference } from '#titan/transcripts-skill-reference.ts'
 import { ImageViewer } from './attached-image.tsx'
 import { embedImages,imagesHtml } from './clipboard.ts'
@@ -61,15 +61,14 @@ const sameChip = ({
   && before.name === after.name
   && before.attached === after.attached
 
-// Each chip keeps its host element while it stays in the draft, so its badge and thumbnail never remount.
 function chipHosts({
   view,
   text,
-  hosts,
+  hostsByKey,
 }: {
   view: ReturnType<typeof draftView>
   text: string
-  hosts: Map<string, HTMLElement>
+  hostsByKey: Map<string, HTMLElement>
 }) {
   const occurrences = new Map<string, number>()
 
@@ -88,12 +87,12 @@ function chipHosts({
       identity,
       occurrence,
     ])
-    let host = hosts.get(key)
+    let host = hostsByKey.get(key)
 
     if (!host) {
       host = document.createElement('span')
       host.contentEditable = 'false'
-      hosts.set(
+      hostsByKey.set(
         key,
         host,
       )
@@ -105,6 +104,7 @@ function chipHosts({
     )
 
     return {
+      chip,
       key,
       host,
     }
@@ -211,17 +211,14 @@ export function ComposerField({
   let hosts = chipHosts({
     view,
     text: draft,
-    hosts: hostsByKey.current,
+    hostsByKey: hostsByKey.current,
   })
-  // Where the selection goes after a write: at once for plain text, after the chips render when they changed.
-  const caretNext = useRef<{
+  const pendingSelection = useRef<{
     anchor: number
     focus: number
   } | null>(null)
-  // While an input method composes, the browser owns the text, so nothing repaints it.
   const composingText = useRef(false)
-  // A click places its own caret, so focusing by pointer keeps it instead of the remembered one.
-  const pointerFocus = useRef(false)
+  const focusingByPointer = useRef(false)
   // An upload settles after later renders, so it writes through the newest change, never a stale one.
   const latestChange = useRef(change)
   latestChange.current = change
@@ -464,9 +461,9 @@ export function ComposerField({
     hosts = chipHosts({
       view,
       text,
-      hosts: hostsByKey.current,
+      hostsByKey: hostsByKey.current,
     })
-    caretNext.current = {
+    pendingSelection.current = {
       anchor,
       focus: caret,
     }
@@ -508,20 +505,20 @@ export function ComposerField({
     if (input.current && !composingText.current) {
       paintField({
         field: input.current,
-        view,
-        hosts: hosts.map(({ host }) => host),
+        display,
+        chips: hosts,
         paths,
       })
     }
   }
 
   const syncCaret = () => {
-    if (input.current && caretNext.current !== null && !composingText.current) {
+    if (input.current && pendingSelection.current !== null && !composingText.current) {
       select({
         field: input.current,
-        ...caretNext.current,
+        ...pendingSelection.current,
       })
-      caretNext.current = null
+      pendingSelection.current = null
     }
   }
 
@@ -530,10 +527,9 @@ export function ComposerField({
     syncCaret()
   })
 
-  // A blurred field still knows its selection, so an insert from the menu goes where the caret was.
   useEffect(
     () => {
-      const remember = () => {
+      const rememberSelection = () => {
         if (input.current?.contains(getSelection()?.anchorNode ?? null)) {
           selectionEnds({ field: input.current })
         }
@@ -541,18 +537,17 @@ export function ComposerField({
 
       document.addEventListener(
         'selectionchange',
-        remember,
+        rememberSelection,
       )
 
       return () => document.removeEventListener(
         'selectionchange',
-        remember,
+        rememberSelection,
       )
     },
     [],
   )
 
-  // What the browser changed becomes the draft; a chip it moved or put back keeps its Markdown.
   const readInput = () => {
     const element = input.current
 
@@ -581,8 +576,7 @@ export function ComposerField({
     })
   }
 
-  // Backspace or Delete beside a chip takes the whole chip, with the space it no longer needs.
-  const deleteChip = ({ forward }: { forward: boolean }) => {
+  const deleteChipBeside = ({ forward }: { forward: boolean }) => {
     const element = input.current
 
     if (!element) {
@@ -608,9 +602,8 @@ export function ComposerField({
     return !!chip
   }
 
-  // React has no beforeinput for deletions, so the field listens itself; it reads the latest draft through the ref.
-  const latestDeleteChip = useRef(deleteChip)
-  latestDeleteChip.current = deleteChip
+  const latestDeleteChipBeside = useRef(deleteChipBeside)
+  latestDeleteChipBeside.current = deleteChipBeside
   useEffect(
     () => {
       const field = input.current
@@ -619,7 +612,7 @@ export function ComposerField({
         const forward = event.inputType === 'deleteContentForward'
         const deletes = forward || event.inputType === 'deleteContentBackward'
 
-        if (deletes && latestDeleteChip.current({ forward })) {
+        if (deletes && latestDeleteChipBeside.current({ forward })) {
           event.preventDefault()
         }
       }
@@ -774,7 +767,10 @@ export function ComposerField({
     return edit.text
   }
 
-  const attach = useComposerUploads({
+  const {
+    attach,
+    settleAfterComposition,
+  } = useComposerUploads({
     current,
     input,
     composing: composingText,
@@ -854,7 +850,9 @@ export function ComposerField({
       start: cursor,
       end,
     } = selectionRange({ field: element })
-    const boundary = cursor > 0 && !/\s/.test(display[cursor - 1]!) && display[cursor - 1] !== CHIP ? ' ' : ''
+    const previous = display.charAt(cursor - 1)
+    const separated = previous === '' || /\s/.test(previous) || previous === CHIP_CHARACTER
+    const boundary = separated ? '' : ' '
     const edit = replaceDisplay({
       text: draft,
       from: cursor,
@@ -970,14 +968,14 @@ export function ComposerField({
               suggestions.length - 1,
             )}` : undefined}
           onPointerDown={event => {
-            pointerFocus.current = document.activeElement !== event.currentTarget
+            focusingByPointer.current = document.activeElement !== event.currentTarget
           }}
           onFocus={event => {
-            if (!pointerFocus.current) {
+            if (!focusingByPointer.current) {
               restoreSelection({ field: event.currentTarget })
             }
 
-            pointerFocus.current = false
+            focusingByPointer.current = false
           }}
           onClick={event => trackMention({
             text: draft,
@@ -998,9 +996,9 @@ export function ComposerField({
               data: event.clipboardData,
             })) {
               event.preventDefault()
+              const deletedByBrowser = document.execCommand('delete')
 
-              // The browser's own delete lands on Undo; where a script's execCommand can't run, write directly.
-              if (!document.execCommand('delete')) {
+              if (!deletedByBrowser) {
                 const {
                   start,
                   end,
@@ -1028,18 +1026,14 @@ export function ComposerField({
           }}
           onCompositionStart={event => {
             composingText.current = true
-            // The text being composed is not painted yet, so the placeholder goes now.
             event.currentTarget.removeAttribute('data-empty')
           }}
           onCompositionEnd={() => {
             composingText.current = false
             readInput()
+            settleAfterComposition()
           }}
-          onInput={event => {
-            if (!(event.nativeEvent as InputEvent).isComposing) {
-              readInput()
-            }
-          }}
+          onInput={readInput}
           onKeyDown={e => {
             if (e.nativeEvent.isComposing || e.key === 'Process') {
               return
@@ -1204,10 +1198,11 @@ export function ComposerField({
             onKeyDown?.({ event: e })
           }}
         />
-        {view.chips.map((
+        {hosts.map(({
           chip,
-          index,
-        ) => createPortal(
+          key,
+          host,
+        }) => createPortal(
           <ComposerChip
             chip={chip}
             progress={uploads[chip.value]}
@@ -1216,8 +1211,8 @@ export function ComposerField({
             open={() => openChip({ chip })}
             remove={() => removeCard({ chip })}
           />,
-          hosts[index]!.host,
-          hosts[index]!.key,
+          host,
+          key,
         ))}
       </div>
       {viewing && (

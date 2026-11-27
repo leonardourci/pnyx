@@ -75,8 +75,7 @@ afterAll(async () => {
   await chrome({ args: ['stop'] })
 })
 
-// page.fill writes only inputs, so a composer, an editable element, gets its text as a paste would put it there.
-export const fillField = ({
+export const fillComposer = ({
   selector,
   text,
 }: {

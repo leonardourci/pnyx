@@ -48,7 +48,6 @@ function DraftCard({
   )
 }
 
-// One chip as the composer shows it, with the space a chip keeps on each side in a sent message too.
 export function ComposerChip({
   chip,
   progress,

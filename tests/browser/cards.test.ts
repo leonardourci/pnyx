@@ -2,7 +2,7 @@ import { loadTitan } from '#app/store.ts'
 import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { openTitan } from './page.ts'
-import { chrome, fillField } from './chrome.ts'
+import { chrome, fillComposer } from './chrome.ts'
 import { startOthrys, until, type Titan, type Othrys } from '../setup/othrys.ts'
 
 const COLUMN_TASKS = 61
@@ -1230,7 +1230,7 @@ test(
     const renameFits = await page.eval(() => { const field = document.querySelector('[data-titan-workspace="${titan.id}"] [aria-label="Titan name"]'); return field.scrollWidth <= field.clientWidth + 1 && field.scrollHeight <= field.clientHeight + 1; });
     await page.press('Enter');
     await page.wait('[data-titan-workspace="${titan.id}"] .titan-title[aria-label="Edit ${name}"]');
-    ${fillField({
+    ${fillComposer({
       selector: `[data-titan-workspace="${titan.id}"] [aria-label="Reply to Titan"]`,
       text: prose,
     })}
@@ -1242,7 +1242,7 @@ test(
         text: field.textContent,
       };
     });
-    ${fillField({
+    ${fillComposer({
       selector: `[data-titan-workspace="${titan.id}"] [aria-label="Reply to Titan"]`,
       text: '',
     })}
@@ -1253,7 +1253,6 @@ test(
       renameAtEmojiBoundary: name.slice(1),
       renameFits: true,
     })
-    // A trailing newline shows as the browser's own: one more newline after it.
     expect(result.chatDraft).toEqual({
       bounded: true,
       text: `${prose}\n\n`,
@@ -1295,7 +1294,7 @@ test(
       field.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
     });
     await page.press('Shift+Enter');
-    ${fillField({
+    ${fillComposer({
       selector: `[data-titan-workspace="${titan.id}"] [aria-label="Description"]`,
       text: 'A'.repeat(MAX_BRIEF_LENGTH + 1),
     })}
@@ -1305,7 +1304,7 @@ test(
       return Array.from(form.querySelectorAll('button')).some(button => button.textContent.trim() === 'Save task' && !button.disabled);
     });
     if (canSaveOversizedDescription) throw new Error('Save task accepts an oversized description');
-    ${fillField({
+    ${fillComposer({
       selector: `[data-titan-workspace="${titan.id}"] [aria-label="Description"]`,
       text: prose,
     })}
@@ -1391,12 +1390,12 @@ test(
     const editedDescription = `${prose}\nExplain the empty state and its next action.\n`
     await chrome({
       script: `
-    ${fillField({
+    ${fillComposer({
       selector: '.task-editor [aria-label="Description"]',
       text: 'A'.repeat(MAX_BRIEF_LENGTH + 1),
     })}
     await page.wait('.task-editor button[type="submit"]:disabled');
-    ${fillField({
+    ${fillComposer({
       selector: '.task-editor [aria-label="Description"]',
       text: editedDescription,
     })}

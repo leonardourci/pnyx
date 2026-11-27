@@ -98,7 +98,7 @@ test(
 )
 
 test(
-  'arrows step over a chip in one press each way, Shift+arrow selects it whole, and Backspace or Delete beside it removes it',
+  'arrows step over a chip in one press each way, Shift+arrow selects it whole, Backspace or Delete beside it removes it, and an @ right after a chip starts a mention that the next chip ends',
   async () => {
     const titan = await othrys.titan()
     const page = await openTitan({
@@ -107,8 +107,7 @@ test(
     })
     const composer = composerOf({ page })
 
-    // The text around the caret, with | at the caret, [ ] around a selection and # for each chip.
-    const caret = () => composer.evaluate(field => {
+    const textAroundCaret = () => composer.evaluate(field => {
       const selection = getSelection()!
 
       const shown = ({
@@ -165,7 +164,7 @@ test(
       await composer.press(key)
       steps.push([
         key,
-        await caret(),
+        await textAroundCaret(),
       ])
     }
 
@@ -287,6 +286,20 @@ test(
         '## x|#',
       ],
     ])
+
+    const mentions = page.getByRole(
+      'listbox',
+      {
+        name: 'Mention',
+        exact: true,
+      },
+    )
+    await composer.press('Home')
+    await composer.press('ArrowRight')
+    await page.keyboard.type('@')
+    await mentions.waitFor()
+    await composer.press('ArrowRight')
+    await mentions.waitFor({ state: 'detached' })
   },
 )
 

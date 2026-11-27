@@ -1,6 +1,6 @@
 import { readEvents } from '#app/event-log.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { chrome, fillField } from './chrome.ts'
+import { chrome, fillComposer } from './chrome.ts'
 import { workerLine } from '../setup/worker-log.ts'
 import { startOthrys, until, type Othrys } from '../setup/othrys.ts'
 
@@ -219,7 +219,7 @@ test(
         const started = await chrome({
           script: `
           await page.eval(() => { window.badgeFrames = []; });
-          ${fillField({
+          ${fillComposer({
             selector: `${titanChat} [aria-label="Reply to Titan"]`,
             text,
           })}
@@ -320,7 +320,7 @@ test(
       const text = 'Continue in the destination Titan'
       await chrome({
         script: `
-        ${fillField({
+        ${fillComposer({
           selector: `${selector} [aria-label="Message worker"]`,
           text,
         })}
@@ -395,7 +395,7 @@ test(
 
     const firstSend = await chrome({
       script: `
-      ${fillField({
+      ${fillComposer({
         selector: `${selector} [aria-label="Message worker"]`,
         text: 'Start the never-attached worker',
       })}
@@ -446,7 +446,7 @@ test(
         const started = await chrome({
           script: `
           await page.eval(() => { window.badgeFrames = []; });
-          ${fillField({
+          ${fillComposer({
             selector: `${selector} [aria-label="Message worker"]`,
             text,
           })}
@@ -536,7 +536,7 @@ test(
     })
     await chrome({
       script: `
-      ${fillField({
+      ${fillComposer({
         selector: `${titanChat} [aria-label="Reply to Titan"]`,
         text: 'Refuse Titan badge turn',
       })}
@@ -545,7 +545,7 @@ test(
     })
     const result = await chrome({
       script: `
-      ${fillField({
+      ${fillComposer({
         selector: `${selector} [aria-label="Message worker"]`,
         text: 'Refuse worker badge turn',
       })}
@@ -595,7 +595,7 @@ test(
     try {
       await chrome({
         script: `
-        ${fillField({
+        ${fillComposer({
           selector: `${titanChat} [aria-label="Reply to Titan"]`,
           text: 'Recover Titan badge turn',
         })}
@@ -665,7 +665,7 @@ test(
     })
     const outsideFailure = await chrome({
       script: `
-      ${fillField({
+      ${fillComposer({
         selector: `${outsideSelector} [aria-label="Message worker"]`,
         text: 'Try the outside route',
       })}

@@ -1,10 +1,13 @@
-import { displayAt, draftView } from './draft.ts'
+import { displayAt, draftView, type PlacedChip } from './draft.ts'
 
-// A chip host keeps its Markdown, so one the browser puts back, as on Undo, reads as its chip again.
+const PATH_MARK = 'path'
+
 const chipSource = ({ node }: { node: Node }) =>
   node instanceof HTMLElement ? node.dataset.source : undefined
 
-// A break at the very end draws no line, so it is the browser's placeholder, not a newline.
+const isPathMark = ({ node }: { node: Node }) =>
+  node instanceof HTMLElement && node.dataset.composer === PATH_MARK
+
 const endsField = ({
   field,
   node,
@@ -26,16 +29,15 @@ interface Point {
   offset: number
 }
 
-// Each point becomes its offset into the draft's Markdown; a point outside the field stays undefined.
-function measure({
+function readSource({
   field,
   points,
 }: {
   field: HTMLElement
   points: Point[]
 }) {
-  let source = '', endBreak = false
-  const found: (number | undefined)[] = points.map(() => undefined)
+  let source = '', placeholderBreak = false
+  const offsets: (number | undefined)[] = points.map(() => undefined)
 
   const mark = ({
     node,
@@ -48,7 +50,16 @@ function measure({
     index,
   ) => {
     if (point.node === node && point.offset === offset) {
-      found[index] = source.length
+      offsets[index] = source.length
+    }
+  })
+
+  const markAfterChip = ({ chip }: { chip: Node }) => points.forEach((
+    point,
+    index,
+  ) => {
+    if (chip.contains(point.node)) {
+      offsets[index] = source.length
     }
   })
 
@@ -59,7 +70,7 @@ function measure({
         index,
       ) => {
         if (point.node === node) {
-          found[index] = source.length + point.offset
+          offsets[index] = source.length + point.offset
         }
       })
       source += node.data
@@ -67,40 +78,31 @@ function measure({
       return
     }
 
-    const chip = chipSource({ node })
+    const chipMarkdown = chipSource({ node })
 
-    if (chip !== undefined) {
-      source += chip
-      // A point inside a chip, as when its text is selected, counts as just after it.
-      points.forEach((
-        point,
-        index,
-      ) => {
-        if (node.contains(point.node)) {
-          found[index] = source.length
-        }
-      })
+    if (chipMarkdown !== undefined) {
+      source += chipMarkdown
+      markAfterChip({ chip: node })
 
       return
     }
 
     if (node instanceof HTMLBRElement) {
-      endBreak = endsField({
+      placeholderBreak = endsField({
         field,
         node,
       })
 
-      if (!endBreak) {
+      if (!placeholderBreak) {
         source += '\n'
       }
 
       return
     }
 
-    // A block the browser wrapped a new line in starts its own line.
-    const block = node !== field && node instanceof HTMLElement && /^(DIV|P)$/.test(node.tagName)
+    const wrappedLine = node !== field && node instanceof HTMLElement && /^(DIV|P)$/.test(node.tagName)
 
-    if (block && source && !source.endsWith('\n')) {
+    if (wrappedLine && source && !source.endsWith('\n')) {
       source += '\n'
     }
 
@@ -121,9 +123,9 @@ function measure({
   }
 
   visit({ node: field })
+  const extraEndNewline = !placeholderBreak && source.endsWith('\n')
 
-  // A trailing newline draws no line, so the browser ends such text with one more newline.
-  if (!endBreak && source.endsWith('\n')) {
+  if (extraEndNewline) {
     source = source.slice(
       0,
       -1,
@@ -132,36 +134,49 @@ function measure({
 
   return {
     text: source,
-    found: found.map(at => at === undefined ? undefined : Math.min(
+    offsets: offsets.map(at => at === undefined ? undefined : Math.min(
       at,
       source.length,
     )),
   }
 }
 
-// The field's draft, and its selection as display offsets when the selection is inside it.
-export function readField({ field }: { field: HTMLElement }) {
+function selectedPoints({ field }: { field: HTMLElement }): Point[] {
   const selection = getSelection()
-  const inside = !!selection?.anchorNode && !!selection.focusNode
-    && field.contains(selection.anchorNode) && field.contains(selection.focusNode)
+  const anchor = selection?.anchorNode
+  const focus = selection?.focusNode
+
+  if (!selection || !anchor || !focus) {
+    return []
+  }
+
+  if (!field.contains(anchor) || !field.contains(focus)) {
+    return []
+  }
+
+  return [
+    {
+      node: anchor,
+      offset: selection.anchorOffset,
+    },
+    {
+      node: focus,
+      offset: selection.focusOffset,
+    },
+  ]
+}
+
+export function readField({ field }: { field: HTMLElement }) {
+  const points = selectedPoints({ field })
   const {
     text,
-    found: [
+    offsets: [
       anchor,
       focus,
     ],
-  } = measure({
+  } = readSource({
     field,
-    points: inside ? [
-      {
-        node: selection.anchorNode!,
-        offset: selection.anchorOffset,
-      },
-      {
-        node: selection.focusNode!,
-        offset: selection.focusOffset,
-      },
-    ] : [],
+    points,
   })
   const shown = ({ at }: { at?: number }) => displayAt({
     text,
@@ -170,14 +185,13 @@ export function readField({ field }: { field: HTMLElement }) {
 
   return {
     text,
-    inside,
+    inside: points.length > 0,
     anchor: shown({ at: anchor }),
     focus: shown({ at: focus }),
   }
 }
 
-// A blurred field keeps where its selection was, as a textarea does, so an insert after a click elsewhere lands there.
-const remembered = new WeakMap<HTMLElement, {
+const rememberedSelections = new WeakMap<HTMLElement, {
   anchor: number
   focus: number
 }>()
@@ -195,13 +209,13 @@ export function selectionEnds({ field }: { field: HTMLElement }) {
   const live = liveEnds({ field })
 
   if (live) {
-    remembered.set(
+    rememberedSelections.set(
       field,
       live,
     )
   }
 
-  return live ?? remembered.get(field) ?? {
+  return live ?? rememberedSelections.get(field) ?? {
     anchor: 0,
     focus: 0,
   }
@@ -225,8 +239,15 @@ export function selectionRange({ field }: { field: HTMLElement }) {
   }
 }
 
-// A point inside text where there is text, so typing there joins it rather than starting a node.
-function pointAt({
+const textOf = ({ node }: { node: ChildNode }) => {
+  if (node instanceof Text) {
+    return node
+  }
+
+  return isPathMark({ node }) && node.firstChild instanceof Text ? node.firstChild : undefined
+}
+
+function textPointAt({
   field,
   offset,
 }: {
@@ -239,9 +260,7 @@ function pointAt({
     index,
     node,
   ] of [...field.childNodes].entries()) {
-    // A marked path holds its text in one child.
-    const marked = node.firstChild instanceof Text && chipSource({ node }) === undefined
-    const text = node instanceof Text ? node : marked ? node.firstChild as Text : undefined
+    const text = textOf({ node })
 
     if (text) {
       if (left <= text.data.length) {
@@ -270,7 +289,6 @@ function pointAt({
   }
 }
 
-// Selects between display offsets; a blurred field only remembers it, so nothing steals focus.
 export function select({
   field,
   anchor,
@@ -280,7 +298,7 @@ export function select({
   anchor: number
   focus: number
 }) {
-  remembered.set(
+  rememberedSelections.set(
     field,
     {
       anchor,
@@ -288,16 +306,18 @@ export function select({
     },
   )
   const live = liveEnds({ field })
+  const focused = document.activeElement === field
+  const alreadySelected = live?.anchor === anchor && live.focus === focus
 
-  if (document.activeElement !== field || (live?.anchor === anchor && live.focus === focus)) {
+  if (!focused || alreadySelected) {
     return
   }
 
-  const from = pointAt({
+  const from = textPointAt({
     field,
     offset: anchor,
   })
-  const to = pointAt({
+  const to = textPointAt({
     field,
     offset: focus,
   })
@@ -325,9 +345,8 @@ export function focusAtEnd({
   })
 }
 
-// Puts back the selection the field last had, as focusing a textarea does.
 export function restoreSelection({ field }: { field: HTMLElement }) {
-  const ends = remembered.get(field)
+  const ends = rememberedSelections.get(field)
 
   if (ends) {
     select({
@@ -342,8 +361,7 @@ type Part = {
   path: boolean
 } | HTMLElement
 
-// The browser may split text across several nodes, as Chrome does for each new line; they read as one run.
-const shownRuns = ({ field }: { field: HTMLElement }) => {
+const joinedRuns = ({ field }: { field: HTMLElement }) => {
   const runs: (string | ChildNode)[] = []
 
   for (const node of field.childNodes) {
@@ -375,12 +393,13 @@ const paintedAs = ({
   }
 
   if (part.path) {
-    return run instanceof HTMLElement && run.dataset.composer === 'path' && run.childNodes.length === 1
+    return run instanceof HTMLElement && isPathMark({ node: run }) && run.childNodes.length === 1
       && run.textContent === part.text
   }
 
-  // Typing after a trailing newline leaves the browser's own newline behind, which reads the same.
-  return run === part.text || (last && run === `${part.text}\n`)
+  const keepsBrowserEndNewline = last && run === `${part.text}\n`
+
+  return run === part.text || keepsBrowserEndNewline
 }
 
 const partNode = ({ part }: { part: Part }) => {
@@ -393,23 +412,25 @@ const partNode = ({ part }: { part: Part }) => {
   }
 
   const marked = document.createElement('span')
-  marked.dataset.composer = 'path'
+  marked.dataset.composer = PATH_MARK
   marked.className = 'draft-path rounded bg-gold-wash shadow-draft-path text-gold'
   marked.textContent = part.text
 
   return marked
 }
 
-// Writes the draft into the field, leaving it untouched when it already shows it, so typing keeps its Undo.
 export function paintField({
   field,
-  view,
-  hosts,
+  display,
+  chips,
   paths,
 }: {
   field: HTMLElement
-  view: ReturnType<typeof draftView>
-  hosts: HTMLElement[]
+  display: string
+  chips: {
+    chip: PlacedChip
+    host: HTMLElement
+  }[]
   paths: {
     from: number
     to: number
@@ -438,7 +459,7 @@ export function paintField({
 
       if (start > at) {
         parts.push({
-          text: view.display.slice(
+          text: display.slice(
             at,
             start,
           ),
@@ -447,7 +468,7 @@ export function paintField({
       }
 
       parts.push({
-        text: view.display.slice(
+        text: display.slice(
           start,
           end,
         ),
@@ -458,7 +479,7 @@ export function paintField({
 
     if (to > at) {
       parts.push({
-        text: view.display.slice(
+        text: display.slice(
           at,
           to,
         ),
@@ -467,28 +488,31 @@ export function paintField({
     }
   }
 
-  view.chips.forEach((
-    chip,
+  chips.forEach((
+    {
+      chip,
+      host,
+    },
     index,
   ) => {
     gap({
-      from: view.chips[index - 1]?.to ?? 0,
+      from: chips[index - 1]?.chip.to ?? 0,
       to: chip.from,
     })
-    parts.push(hosts[index]!)
+    parts.push(host)
   })
   gap({
-    from: view.chips.at(-1)?.to ?? 0,
-    to: view.display.length,
+    from: chips.at(-1)?.chip.to ?? 0,
+    to: display.length,
   })
 
   const last = parts.at(-1)
 
-  if (view.display.endsWith('\n') && last && !(last instanceof HTMLElement)) {
+  if (display.endsWith('\n') && last && !(last instanceof HTMLElement)) {
     last.text += '\n'
   }
 
-  const runs = shownRuns({ field })
+  const runs = joinedRuns({ field })
   const painted = runs.length === parts.length && parts.every((
     part,
     index,
@@ -500,7 +524,7 @@ export function paintField({
 
   field.toggleAttribute(
     'data-empty',
-    view.display === '',
+    display === '',
   )
 
   if (painted) {

@@ -36,6 +36,7 @@ export function useComposerUploads({
   // A placeholder lives only while this field's upload runs, so a restored one goes and leaving stops them.
   const uploading = useRef(new AbortController())
   const ownUploads = useRef(new Set<string>())
+  const waitingForComposition = useRef<(() => void)[]>([])
   useEffect(
     () => {
       const controller = new AbortController()
@@ -80,16 +81,11 @@ export function useComposerUploads({
       return
     }
 
-    // The field reads its composed text back when the composition ends, so the image settles after that read.
-    if (composing.current && input.current) {
-      input.current.addEventListener(
-        'compositionend',
-        () => setTimeout(() => settle({
-          path,
-          line,
-        })),
-        { once: true },
-      )
+    if (composing.current) {
+      waitingForComposition.current.push(() => settle({
+        path,
+        line,
+      }))
 
       return
     }
@@ -190,5 +186,17 @@ export function useComposerUploads({
     }
   }
 
-  return attach
+  const settleAfterComposition = () => {
+    const waiting = waitingForComposition.current
+    waitingForComposition.current = []
+
+    for (const settleWaiting of waiting) {
+      settleWaiting()
+    }
+  }
+
+  return {
+    attach,
+    settleAfterComposition,
+  }
 }
