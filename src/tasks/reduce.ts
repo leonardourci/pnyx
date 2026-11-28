@@ -60,6 +60,21 @@ export function applyTask({
         latest,
         status: changesStatus ? latest : card.workerLog?.status,
       }
+
+      // A worker's needs-you line is its question to Titan, answered and closed by `othrys answer`.
+      if (latest.code === 'needs-you' && !card.asks?.some(ask => ask.id === event.id)) {
+        card.asks = [
+          ...(card.asks ?? []),
+          {
+            id: event.id,
+            at: event.at,
+            actor: event.actor,
+            audience: 'titan',
+            question: latest.text,
+          },
+        ]
+      }
+
       touch({
         card,
         event,
@@ -277,6 +292,7 @@ export function applyTask({
     if (event.type === 'task.kind') {
       if (event.data.before === 'investigation' && event.data.after === 'build') {
         delete card.outcome
+        delete card.doneAt
 
         if (card.workerLog?.status?.code === 'done') {
           delete card.workerLog.status
