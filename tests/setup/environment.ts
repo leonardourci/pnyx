@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { afterAll } from 'vitest'
 import { keepFiles } from './keep.ts'
 
@@ -51,10 +51,21 @@ const realHomeBrowserCache = process.platform === 'darwin'
     homedir(),
     '.cache',
   )
-const playwrightBrowsers = process.env.PLAYWRIGHT_BROWSERS_PATH || join(
+const installedBrowserCache = join(
   realHomeBrowserCache,
   'ms-playwright',
 )
+const configuredBrowserCache = process.env.PLAYWRIGHT_BROWSERS_PATH
+let playwrightBrowsers = installedBrowserCache
+
+if (configuredBrowserCache === '0') {
+  playwrightBrowsers = configuredBrowserCache
+} else if (configuredBrowserCache) {
+  playwrightBrowsers = resolve(
+    process.env.INIT_CWD || process.cwd(),
+    configuredBrowserCache,
+  )
+}
 
 for (const key of Object.keys(process.env)) {
   if (!KEEP.test(key)) {

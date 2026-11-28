@@ -43,6 +43,14 @@ import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
 const SELECTION_ACTIONS_SELECTOR = '.comment-pill, .comment-dock'
 let highlights = 0
 
+function selectionBelongsToMessages({ selection, messages }: {
+  selection: Selection | null
+  messages: HTMLElement | null
+}) {
+  return Boolean(selection && messages?.contains(selection.anchorNode)
+    && messages.contains(selection.focusNode))
+}
+
 // A message the owner just sent shows at once, faded until the server records it.
 export type ChatEntry = ThreadEntry & {
   sending?: boolean
@@ -435,6 +443,14 @@ export function Messages({
     selection,
     setSelection,
   ] = useState<CommentPassage | null>(null)
+  const [
+    chatViewport,
+    setChatViewport,
+  ] = useState<Element | null>(null)
+  useLayoutEffect(
+    () => setChatViewport(root.current?.closest('.chat-viewport') ?? null),
+    [],
+  )
   const ordered = useMemo(
     () => orderedComments({ comments }),
     [comments],
@@ -523,22 +539,30 @@ export function Messages({
     const selectionShortcut = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null
       const selected = window.getSelection()
+      const action = target?.closest(SELECTION_ACTIONS_SELECTOR)
+      const actionInThisChat = action && action.closest('.chat-viewport') === chatViewport
+      const selectionInThisChat = selectionBelongsToMessages({
+        selection: selected,
+        messages: root.current,
+      })
 
       if (event.key === 'Escape' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey
         && !event.defaultPrevented && !event.isComposing
-        && target !== root.current && !target?.closest(SELECTION_ACTIONS_SELECTOR)) {
+        && target !== root.current && !actionInThisChat) {
         setSelection(null)
-        selected?.removeAllRanges()
+
+        if (selected && !selected.isCollapsed && selectionInThisChat) {
+          selected.removeAllRanges()
+        }
 
         return
       }
 
       if (event.defaultPrevented || event.isComposing ||
         event.ctrlKey || event.metaKey || event.altKey ||
-        event.key.length !== 1 || target?.closest(SELECTION_ACTIONS_SELECTOR) ||
+        event.key.length !== 1 || action ||
         (target && isEditing({ target })) ||
-        !selected?.toString().trim() || !root.current?.contains(selected.anchorNode) ||
-        !root.current.contains(selected.focusNode)) {
+        !selected?.toString().trim() || !selectionInThisChat) {
         return
       }
 
@@ -626,8 +650,7 @@ export function Messages({
         trackSelection({ mouseButtons })
       }
 
-      // A drag that ends outside the window never sends its mouseup here.
-      const reset = () => {
+      const resetMouseButtonsOnBlur = () => {
         mouseButtons = 0
       }
 
@@ -655,7 +678,7 @@ export function Messages({
       )
       window.addEventListener(
         'blur',
-        reset,
+        resetMouseButtonsOnBlur,
       )
 
       return () => {
@@ -682,7 +705,7 @@ export function Messages({
         )
         window.removeEventListener(
           'blur',
-          reset,
+          resetMouseButtonsOnBlur,
         )
       }
     },
@@ -761,15 +784,6 @@ export function Messages({
     ],
   )
 
-  const [
-    chatViewport,
-    setChatViewport,
-  ] = useState<Element | null>(null)
-  useLayoutEffect(
-    () => setChatViewport(root.current?.closest('.chat-viewport') ?? null),
-    [],
-  )
-
   const commentSelected = () => {
     if (selection) {
       addComment({ quote: selection })
@@ -804,7 +818,15 @@ export function Messages({
     if (key === 'Escape' && !shiftKey && (fromMessages || fromSelectionAction)) {
       event.preventDefault()
       setSelection(null)
-      window.getSelection()?.removeAllRanges()
+      const selected = window.getSelection()
+
+      if (selectionBelongsToMessages({
+        selection: selected,
+        messages: root.current,
+      })) {
+        selected?.removeAllRanges()
+      }
+
       event.currentTarget.closest<HTMLElement>('.thread')?.focus({ preventScroll: true })
 
       return

@@ -167,6 +167,7 @@ for (const engine of [
         if (layout.touch) {
           await quote.tap()
         } else {
+          await quote.press('a')
           await quote.press('Space')
         }
 
@@ -178,6 +179,10 @@ for (const engine of [
           },
         )
         await expect.poll(() => composer.textContent()).toContain('233 old instructions')
+        expect(await workspace.getByRole(
+          'group',
+          { name: 'Comment 2', exact: true },
+        ).count()).toBe(0)
         await bar.waitFor({ state: 'detached' })
 
         await selectPassage({ words: 'proof they were read' })
@@ -193,6 +198,26 @@ for (const engine of [
         if (layout.touch) {
           await dropTouchSelection()
           await page.keyboard.press('Escape')
+          await pill.waitFor({ state: 'detached' })
+
+          await selectPassage({ words: 'proof they were read' })
+          await dropTouchSelection()
+          const selectionAfterEscape = await composer.evaluate(field => {
+            const selection = getSelection()
+            const range = document.createRange()
+            range.selectNodeContents(field)
+            selection?.addRange(range)
+            document.body.dispatchEvent(new KeyboardEvent(
+              'keydown',
+              {
+                key: 'Escape',
+                bubbles: true,
+              },
+            ))
+
+            return selection?.toString()
+          })
+          expect(selectionAfterEscape).toContain('233 old instructions')
           await pill.waitFor({ state: 'detached' })
 
           await selectPassage({ words: 'proof they were read' })

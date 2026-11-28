@@ -308,6 +308,8 @@ export function Composer({
     }
   }
 
+  const sendHint = touchFirst() ? 'Send' : 'Send · Enter'
+
   return (
     <>
       {checking && <p className="save-checking muted small" role="status">Checking whether your message was saved. Retrying automatically.</p>}
@@ -474,7 +476,7 @@ export function Composer({
             type="submit"
             variant="primary"
             aria-label={sendLabel}
-            title={sending ? 'Sending…' : `Send · Enter${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
+            title={sending ? 'Sending…' : `${sendHint}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
             disabled={unavailable || sending || disabled}
           >
             <Icon name="send" size={ICON_SIZE.toolbar} />
