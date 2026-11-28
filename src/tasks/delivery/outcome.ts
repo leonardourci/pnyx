@@ -1,40 +1,51 @@
-import { inform } from '#app/command-notices.ts'
 import type { TitanState, Decision } from '#app/model.ts'
-import type { Outcome } from './model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { decided } from '#app/decision.ts'
+import { ownerActor, TITAN_ACTOR } from '#app/actors.ts'
+import { TitanError } from '#store/errors.ts'
+import { openAsks } from '#tasks/ask-state.ts'
+import { isManagedTask } from '#tasks/select.ts'
+import type { Outcome } from './model.ts'
 
-// source: the adapter observing this outcome. An observed outcome changes or
-// clears only through the same source; a person may replace one hooks observed.
+export function refuseOutcomeFrom({ actor }: { actor: string }): void {
+  const decider = actor === TITAN_ACTOR || ownerActor({ actor })
+
+  if (!decider) {
+    throw new TitanError({
+      message: 'only Titan or the owner sets a task outcome; report it in worker.log instead',
+      code: 'FORBIDDEN',
+    })
+  }
+}
+
 export function decideOutcome(
   {
     state,
     ref,
     outcome,
     meta,
-    source,
   }: {
     state: TitanState
     ref: string
     outcome: Outcome | null
     meta: Meta
-    source?: string
   },
 ): Decision {
+  refuseOutcomeFrom({ actor: meta.actor })
   const card = findCard({
     state,
     ref,
   })
-  const observed = card.outcome?.source
 
-  if (observed && source !== observed && !(source === undefined && observed === 'hooks')) {
-    inform({
-      task: card.id,
-      reason: `Outcome from ${observed} replaced; a later observation can update it`,
-      clear: `Review the outcome override on task ${card.id} in the UI.`,
+  if (isManagedTask({ card })) {
+    throw new TitanError({
+      message: 'Choose a work task for the outcome',
+      code: 'VALIDATION_ERROR',
     })
   }
+
+  const closes = outcome ? openAsks({ card }).map(ask => ask.id) : undefined
 
   return decided({
     state,
@@ -48,10 +59,8 @@ export function decideOutcome(
       type: 'card.outcome',
       data: {
         before: card.outcome ?? null,
-        after: outcome && source ? {
-          ...outcome,
-          source,
-        } : outcome,
+        after: outcome,
+        closes,
         card: {
           title: card.title,
           workspace: card.workspace,

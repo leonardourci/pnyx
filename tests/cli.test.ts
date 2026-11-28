@@ -53,6 +53,66 @@ describe(
     )
 
     it(
+      'sets and clears a task outcome and closes its owner question',
+      async () => {
+        const managedOutcome = await run({
+          args: [
+            'outcome',
+            '$titan',
+            'done',
+          ],
+        })
+        expect(managedOutcome.status).toBe(2)
+        expect(managedOutcome.stderr).toContain('Choose a work task for the outcome')
+        await titan.owner({
+          args: [
+            'task',
+            'create',
+            '--no-start',
+            '--key',
+            'plain-outcome',
+            '--title',
+            'Plain outcome',
+          ],
+        })
+        expect((await run({
+          args: [
+            'task',
+            'ask',
+            'plain-outcome',
+            '--to',
+            'owner',
+            '--question',
+            'Publish the result?',
+            '--context',
+            'The result is ready.',
+            '--actor',
+            'titan',
+          ],
+        })).status).toBe(0)
+        expect((await titan.task({ key: 'plain-outcome' })).status).toBe('needs you')
+        expect((await run({
+          args: [
+            'outcome',
+            'plain-outcome',
+            'done',
+            '--note',
+            'Shipped',
+          ],
+        })).status).toBe(0)
+        expect((await titan.task({ key: 'plain-outcome' })).status).toBe('done')
+        expect((await run({
+          args: [
+            'outcome',
+            'plain-outcome',
+            '--clear',
+          ],
+        })).status).toBe(0)
+        expect((await titan.task({ key: 'plain-outcome' })).status).toBe('not started, no reason given')
+      },
+    )
+
+    it(
       'creates and starts a task once, messages its worker and prints a plain Titan',
       async () => {
         const folder = titan.folder({ name: 'plain-cli-worker' })

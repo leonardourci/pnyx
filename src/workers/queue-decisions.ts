@@ -3,7 +3,7 @@ import { inform } from '#app/command-notices.ts'
 import type { Decision, TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { completedOutcome } from '#tasks/dependencies.ts'
+import { completedOutcome } from '#tasks/delivery/model.ts'
 import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { TitanError } from '#store/errors.ts'
@@ -20,7 +20,7 @@ function startedGap({ card }: { card: Card }): Blocker | undefined {
     }
   }
 
-  if (card.workerLog?.status?.code === 'done' || completedOutcome({ outcome: card.outcome })) {
+  if (completedOutcome({ outcome: card.outcome })) {
     return {
       reason: `${card.id} is finished`,
       clear: 'File a follow-up with `othrys task create`',

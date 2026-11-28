@@ -1490,10 +1490,7 @@ export function createHost({
       ])
 
       for (const card of Object.values(state.cards)) {
-        if (card.id === TITAN_CARD || !closedTask({
-          state,
-          card,
-        })) {
+        if (card.id === TITAN_CARD || !closedTask({ card })) {
           reaped.delete(card.id)
           continue
         }

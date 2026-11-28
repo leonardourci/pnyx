@@ -22,6 +22,14 @@ const settingsOf = async () => (await titan.owner({
 })).settings
 
 const statusOfOther = async () => (await titan.task({ key: 'other' })).status as string
+const holdOfOther = async () => (await titan.owner({
+  args: [
+    'task',
+    'show',
+    'other',
+    '--full',
+  ],
+})).task.hold?.reason as string | undefined
 
 beforeAll(async () => {
   othrys = await startOthrys()
@@ -117,11 +125,6 @@ test(
         '--key',
         'follow-up',
       ],
-      [
-        'outcome',
-        'target',
-        'done',
-      ],
     ]) {
       const output = await asWorker.run({ args })
       expect(
@@ -159,7 +162,6 @@ test(
       types: ['task.brief'],
     }).filter(event => event.type === 'task.brief' && event.data.after === 'Retried guidance')).toHaveLength(1)
 
-    expect((await titan.task({ key: 'target' })).status).toBe('done')
     expect((await titan.task({ key: 'target' })).notices).toBeDefined()
     expect((await settingsOf()).fontSize).toBe(19)
     expect((await titan.task({ key: 'follow-up' })).title).toBe('Follow up')
@@ -559,6 +561,60 @@ test(
 )
 
 test(
+  'only Titan and the owner set a task outcome: a worker cannot set, clear or undo one, on its own task or another',
+  async () => {
+    for (const args of [
+      [
+        'outcome',
+        'mine',
+        'done',
+      ],
+      [
+        'outcome',
+        'other',
+        'cancelled',
+      ],
+      [
+        'outcome',
+        'mine',
+        '--clear',
+      ],
+    ]) {
+      expect(
+        (await asWorker.refused({ args })).code,
+        args.join(' '),
+      ).toBe('FORBIDDEN')
+    }
+
+    const titanDone = await titan.owner({
+      args: [
+        'outcome',
+        'other',
+        'done',
+        '--actor',
+        'titan',
+      ],
+    })
+    expect(await statusOfOther()).toBe('done')
+    expect((await asWorker.refused({
+      args: [
+        'undo',
+        titanDone.event.id,
+      ],
+    })).code).toBe('FORBIDDEN')
+    expect(await statusOfOther()).toBe('done')
+    await titan.owner({
+      args: [
+        'outcome',
+        'other',
+        '--clear',
+      ],
+    })
+    expect(await statusOfOther()).not.toBe('done')
+  },
+)
+
+test(
   'workers retain malformed-input and missing-target validation',
   async () => {
     expect((await asWorker.refused({
@@ -775,7 +831,8 @@ test(
         'Titan paused it',
       ],
     })
-    expect(await statusOfOther()).toBe('on hold')
+    expect(await holdOfOther()).toBe('Titan paused it')
+    expect(await statusOfOther()).toBe('idle')
     await asTitan.run({
       args: [
         'settings',
@@ -796,7 +853,7 @@ test(
         'Owner paused it',
       ],
     })
-    expect(await statusOfOther()).toBe('on hold')
+    expect(await holdOfOther()).toBe('Owner paused it')
   },
 )
 

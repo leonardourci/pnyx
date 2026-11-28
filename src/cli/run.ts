@@ -2,6 +2,7 @@ import { acknowledgeInstruction } from '#workers/inbox-cli.ts'
 import { cliArguments } from './arguments.ts'
 import type { Writable } from 'node:stream'
 import { parse, meta, required, guard, WRITE, COMMON, type Options } from '#app/cli-support.ts'
+import { outcome } from '#tasks/delivery/cli.ts'
 import { TitanError } from '#store/errors.ts'
 import { createCommand } from '#workers/create.ts'
 import { sendReply } from '#workers/reply.ts'
@@ -22,8 +23,12 @@ const HELP = `usage: othrys <command> [--titan <id>] [--json]
 
 othrys task create --title <title> --brief <instructions> [--project <name|path>]
 othrys task ack <task> <instruction> --session <session> --generation <reference>
+othrys task ask <task> --to owner --question <question> [--context <why>] [--choice <label> ...]
 othrys send --text <message> [--task <id>] [--idempotency-key <key>]
-othrys answer <task> <question> --text <answer> [--from-message <id>]
+othrys answer <task> <question> --text <answer>
+othrys answer <task> <question> --from-message <id> [--choice <label>]
+othrys outcome <task> done|cancelled [--note <why>]
+othrys outcome <task> --clear
 othrys titan
 othrys serve [--port <n>]
 othrys setup [check|hooks|skills] [--preview]
@@ -37,6 +42,7 @@ Send addresses Titan unless --task names a worker. --file <path|-> reads message
 Read titan.log, tasks/<task>/task.log, worker.log and snapshot.json directly.
 Add --json when a script reads an action receipt or the Titan.
 Workers append needs-you, blocked, done, link or note lines to their worker.log.
+Only Titan and the owner set a task's outcome.
 `
 
 const CREATE_OPTIONS: Options = {
@@ -154,6 +160,22 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
         ...forwarded,
       ],
       run: () => acknowledgeInstruction({ args: forwarded }),
+    })
+  }
+
+  if (command === 'task' && subcommand?.kind === 'positional' && subcommand.value === 'ask') {
+    const forwarded = [
+      'ask',
+      ...args.filter((
+        _,
+        index,
+      ) => index + 1 !== subcommand.index),
+    ]
+
+    return runAction({
+      name: 'task',
+      args: forwarded,
+      run: () => taskCommand({ args: forwarded }),
     })
   }
 
@@ -285,6 +307,14 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
     })
 
     return home({ titanId })
+  }
+
+  if (command === 'outcome') {
+    return runAction({
+      name: 'outcome',
+      args,
+      run: () => outcome(args),
+    })
   }
 
   if (command === 'setup') {

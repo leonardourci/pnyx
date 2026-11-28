@@ -8,6 +8,7 @@ import { refreshTasks } from './refresh.ts'
 import { SESSION_TITLE } from './model.ts'
 import { isStaleSource, sameSource, offerTitle, wouldCycle } from './events.ts'
 import { isStaleLink } from '#tasks/delivery/events.ts'
+import { applyOutcome } from '#tasks/delivery/outcome-reducer.ts'
 
 export function applyCardEvent({
   state,
@@ -294,15 +295,10 @@ export function applyCardEvent({
         })
       }
     } else if (event.type === 'card.outcome') {
-      if (event.data.after) {
-        card.outcome = event.data.after
-
-        if (event.data.after.state === 'ended') {
-          card.stoppedAt ??= event.at
-        }
-      } else {
-        delete card.outcome
-      }
+      applyOutcome({
+        card,
+        event,
+      })
     }
   }
 

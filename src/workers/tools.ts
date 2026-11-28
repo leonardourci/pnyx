@@ -71,10 +71,7 @@ export function writeTools({
     ref: task,
   })
 
-  if (card.id !== TITAN_CARD && (card.hidden || taskDone({
-    state: writer.state,
-    card,
-  }))) {
+  if (card.id !== TITAN_CARD && (card.hidden || taskDone({ card }))) {
     inform({
       reason: 'Tools changed on a finished or hidden task',
       clear: 'Unhide the task or clear its outcome in the UI',

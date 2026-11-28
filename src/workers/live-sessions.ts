@@ -577,10 +577,7 @@ export function createLiveSessions({
         const state = loadTitan({ titanId: currentOwner().titanId }).state
         const current = state.cards[entry.task]
 
-        if (entry.task !== TITAN_CARD && current && closedTask({
-          state,
-          card: current,
-        })) {
+        if (entry.task !== TITAN_CARD && current && closedTask({ card: current })) {
           retire({
             key,
             entry,

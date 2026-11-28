@@ -43,7 +43,7 @@ link: https://example.com/result Result
 done: Implemented and verified the requested behavior
 ```
 
-A `note` updates the latest card line; running and idle come from the worker session. `needs-you` asks for a decision, `blocked` records an obstacle, `link` attaches a result, and `done` reports completion. Follow the task brief's landing rules before reporting done. Do not edit server-owned records.
+A `note` updates the latest card line; running and idle come from the worker session. `needs-you` saves a question for Titan, which answers it with `othrys answer`. `blocked` records an obstacle, `link` attaches a result, and `done` reports completion to Titan. Only Titan and the owner mark a task done or cancelled, with `othrys outcome`; a worker's line, a merged pull request or green checks never do. Follow the task brief's landing rules before reporting done. Do not edit server-owned records.
 
 The routine helper handles worker updates within the accepted instructions. Worker `done`, `needs-you` and `blocked` reports, finished findings, work ready for review, failures and owner questions go to Titan, which tells you in your main chat in one plain line per outcome with full supplied links. Only chores the accepted instructions already cover, such as rerunning checks or answering an in-scope worker question, and unchanged waits stay quiet. Owner outcomes remain pending until Titan finishes its turn.
 

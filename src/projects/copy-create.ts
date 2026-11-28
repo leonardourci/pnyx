@@ -28,6 +28,7 @@ import { loadTitan } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
 import { isFolder } from '#workers/folders.ts'
+import { doneSince } from '#tasks/delivery/model.ts'
 
 function taskProject({
   state,
@@ -75,7 +76,7 @@ function noteShared({
   path: string
 }): void {
   const working = ({ card }: { card: Card }) => liveTask({ card }) && card.sessionIds?.length
-    && !card.doneAt && (card.folder === path || card.agent?.cwd === path)
+    && !doneSince({ card }) && (card.folder === path || card.agent?.cwd === path)
   const busy = titanIds().filter(id => id !== titanId
     && Object.values(loadTitan({ titanId: id }).state.cards).some(card => working({ card })))
 

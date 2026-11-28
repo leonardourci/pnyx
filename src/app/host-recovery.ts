@@ -254,10 +254,7 @@ export function createHostRecovery({
               titanId,
               task: task.id,
             })
-            && !closedTask({
-              state: writer.state,
-              card: task,
-            })
+            && !closedTask({ card: task })
             && !steeringHeld({ card: task })
             && session.id !== writer.state.config?.titan.session) {
             resumeAttemptId = findWorkerTurnToResume({

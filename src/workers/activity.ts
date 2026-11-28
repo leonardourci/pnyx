@@ -2,7 +2,7 @@ import type { AgentSession } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { rootSessionId } from './session-attachments.ts'
 
-export function findSessionsWithWorkingChild({
+function findSessionsWithWorkingChild({
   sessions,
 }: {
   sessions: Record<string, AgentSession>
@@ -35,7 +35,7 @@ export function agentActivity({
   const observed = session?.sessionActivity ?? session?.activity
   const activity = observed ?? card.sessionActivity ?? card.activity
 
-  if (activity === 'ended' || activity === 'interrupted' || card.outcome?.state === 'ended') {
+  if (activity === 'ended' || activity === 'interrupted') {
     return 'stopped'
   }
 

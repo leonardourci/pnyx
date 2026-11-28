@@ -73,10 +73,7 @@ export function readyBacklog({ state }: { state: TitanState }): Card[] {
       return false
     }
 
-    if (card.workerLog?.status?.code === 'done' || taskDone({
-      state,
-      card,
-    })) {
+    if (taskDone({ card })) {
       return false
     }
 
@@ -357,6 +354,10 @@ function ordinaryReasons({
         text,
       } = event.data
 
+      const question = code === 'needs-you'
+        ? ` Answer with \`othrys answer ${card.id} ${event.id} --text "<answer>"\`.`
+        : ''
+
       return [
         'needs-you',
         'blocked',
@@ -365,7 +366,7 @@ function ordinaryReasons({
           {
             kind: 'declared',
             card: card.id,
-            detail: `${code}: ${text}`,
+            detail: `${code}: ${text}${question}`,
           },
         ] : []
     }
@@ -436,8 +437,8 @@ function changesReadiness({
       return Boolean(event.data.before) !== Boolean(event.data.after)
         || event.data.before?.state !== event.data.after?.state
     case 'card.outcome':
-      return Boolean(event.undoes) || event.data.before?.state !== event.data.after?.state
-        || event.data.before?.closed !== event.data.after?.closed
+      return Boolean(event.undoes || event.data.closes?.length)
+        || event.data.before?.state !== event.data.after?.state
     case 'task.edited': {
       if (!event.data.attention) {
         return false

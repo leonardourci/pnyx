@@ -375,4 +375,4 @@ function ownerContext({ text }: { text: string }): string {
   )
 }
 
-import { completedOutcome } from '#tasks/dependencies.ts'
+import { completedOutcome } from '#tasks/delivery/model.ts'

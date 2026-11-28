@@ -283,10 +283,7 @@ export function learningConditions({ states }: {
     state,
   ] of Object.entries(states)) {
     for (const card of Object.values(state.cards)) {
-      if (taskDone({
-        state,
-        card,
-      })) {
+      if (taskDone({ card })) {
         doneTasks.push(`task:${titan}/${card.id}`)
 
         if (card.key) {

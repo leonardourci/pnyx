@@ -2,6 +2,7 @@ import type { TitanEvent, TitanState } from '#app/model.ts'
 import { refreshTasks } from './refresh.ts'
 import { touch } from './touch.ts'
 import { applySteering } from '#workers/steering.ts'
+import { doneSince } from '#tasks/delivery/model.ts'
 
 export function applyTask({
   state,
@@ -60,6 +61,20 @@ export function applyTask({
         latest,
         status: changesStatus ? latest : card.workerLog?.status,
       }
+
+      if (latest.code === 'needs-you' && !card.asks?.some(ask => ask.id === event.id)) {
+        card.asks = [
+          ...(card.asks ?? []),
+          {
+            id: event.id,
+            at: event.at,
+            actor: event.actor,
+            audience: 'titan',
+            question: latest.text,
+          },
+        ]
+      }
+
       touch({
         card,
         event,
@@ -186,7 +201,7 @@ export function applyTask({
         } else {
           delete card.expired
 
-          if (!event.data.after && card.doneAt) {
+          if (!event.data.after && doneSince({ card })) {
             card.keepDone = true
           }
         }
@@ -276,8 +291,6 @@ export function applyTask({
 
     if (event.type === 'task.kind') {
       if (event.data.before === 'investigation' && event.data.after === 'build') {
-        delete card.outcome
-
         if (card.workerLog?.status?.code === 'done') {
           delete card.workerLog.status
         }

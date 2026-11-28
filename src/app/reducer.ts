@@ -15,7 +15,6 @@ import { applyReminder, stopReminders } from '#tasks/reminders.ts'
 import { applyPermission } from '#workers/permission-rules.ts'
 import { applyAsk } from '#tasks/ask-reducer.ts'
 import { applyHelper } from '#routine-helper/state.ts'
-import { refreshDone } from '#tasks/retention-rules.ts'
 import { applyTitan } from '#titan/reduce.ts'
 import { applyMemory } from '#memory/reduce.ts'
 import { applyProject } from '#projects/reduce.ts'
@@ -204,10 +203,6 @@ export function replayOwned({
       stopReminders({
         state,
         event,
-      })
-      refreshDone({
-        state,
-        at: event.at,
       })
     }
   }

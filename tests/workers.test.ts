@@ -3772,10 +3772,19 @@ test(
       path,
       'blocked: waiting for access\n',
     )
+    const full = async () => (await titan.owner({
+      args: [
+        'task',
+        'show',
+        'facts',
+        '--full',
+      ],
+    })).task
     await until({
       what: 'worker log block',
-      check: async () => (await titan.task({ key: 'facts' })).status === 'blocked',
+      check: async () => (await full()).workerLog?.status?.code === 'blocked',
     })
+    expect((await titan.task({ key: 'facts' })).status).toBe('idle')
     writeFileSync(
       path,
       'note: reviewed café\u2028failure\nneeds-you: choose an account',
@@ -3802,11 +3811,36 @@ test(
       '\n',
       { flag: 'a' },
     )
-    await until({
-      what: 'completed needs-you line',
-      check: async () => (await titan.task({ key: 'facts' })).status === 'needs you',
+    const question = await until({
+      what: 'completed needs-you line saved as a question to Titan',
+      check: async () => (await full()).asks?.find((ask: { question: string }) => ask.question === 'choose an account'),
     })
-    expect((await titan.task({ key: 'facts' })).latest).toBe('choose an account')
+    expect(question).toMatchObject({ audience: 'titan' })
+    expect(await titan.task({ key: 'facts' })).toMatchObject({
+      status: 'idle',
+      latest: 'choose an account',
+    })
+    await titan.owner({
+      args: [
+        'task',
+        'answer',
+        'facts',
+        question.id,
+        '--text',
+        'Use the shared account',
+        '--actor',
+        'titan',
+      ],
+    })
+    await until({
+      what: 'the worker to hear the answer to its question',
+      check: () => worker.received.some(text => text.includes('Use the shared account')),
+    })
+    await until({
+      what: 'the question to be recorded as answered',
+      check: async () => (await full()).asks
+        .find((ask: { id: string }) => ask.id === question.id).answered,
+    })
     writeFileSync(
       path,
       'link: https://example.com/preview Preview\ndone: implementation complete\n',
@@ -3841,6 +3875,8 @@ test(
       path,
       'utf8',
     )))
+    expect(done.task.doneAt).toBeUndefined()
+    expect((await titan.task({ key: 'facts' })).status).toBe('idle')
     await titan.owner({
       args: [
         'task',
@@ -4047,7 +4083,14 @@ test(
       key: 'completed-worker',
       line: 'done: outside work complete',
     })
-    expect((await titan.task({ key: 'completed-worker' })).status).toBe('done')
+    expect((await titan.task({ key: 'completed-worker' })).status).not.toBe('done')
+    await titan.owner({
+      args: [
+        'outcome',
+        'completed-worker',
+        'done',
+      ],
+    })
     await titan.owner({
       args: [
         'task',

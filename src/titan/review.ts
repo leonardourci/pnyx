@@ -269,10 +269,7 @@ export function titanReview({
         return false
       }
 
-      return !liveTask({ card }) || taskDone({
-        state,
-        card,
-      })
+      return !liveTask({ card }) || taskDone({ card })
     }
 
     const named = taskMentions({ text: leftOff.text })

@@ -2,8 +2,10 @@ import { withWriter } from '#app/writer.ts'
 import { loadTitan } from '#app/store.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
-import { refreshDone } from '#tasks/retention-rules.ts'
 import { emptyTitan, reduce, replay } from '#app/reducer.ts'
+import { cardDoneDeadline } from '#tasks/retention-rules.ts'
+import { settles } from '#projects/copies.ts'
+import type { Card } from '#tasks/model.ts'
 import { readEvents } from '#app/event-log.ts'
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -133,6 +135,7 @@ test(
         'Only the owner knows the accounting rule',
       ],
     })
+    expect((await titan.task({ key: 'build' })).status).toBe('needs you')
 
     await titan.owner({
       args: [
@@ -148,6 +151,7 @@ test(
       what: 'the answer to reach Titan, who asked',
       check: () => session.received.some(message => message.includes('No, only open ones')),
     })
+    expect((await titan.task({ key: 'build' })).status).not.toBe('needs you')
     expect(worker.received.some(message => message.includes('No, only open ones'))).toBe(false)
 
     await workerLine({
@@ -156,11 +160,8 @@ test(
       line: 'done: export written',
     })
     const dependent = await titan.task({ key: 'ship' })
-    await until({
-      what: 'Titan to hear that the dependent task is ready',
-      check: () => session.received.some(message => message.includes(`othrys-task:${dependent.id}`)
-        && message.includes('prerequisites cleared; ready for dispatch')),
-    })
+    expect(dependent.readiness.ready).toBe(false)
+    expect((await titan.task({ key: 'build' })).status).not.toBe('done')
 
     await titan.owner({
       args: [
@@ -169,7 +170,14 @@ test(
         'done',
         '--note',
         'Export written',
+        '--actor',
+        'titan',
       ],
+    })
+    await until({
+      what: 'Titan to hear that the dependent task is ready',
+      check: () => session.received.some(message => message.includes(`othrys-task:${dependent.id}`)
+        && message.includes('prerequisites cleared; ready for dispatch')),
     })
     expect(await titan.task({ key: 'build' })).toMatchObject({
       status: 'done',
@@ -1291,25 +1299,34 @@ test(
 )
 
 test(
-  'parent retention waits for every child and reopens when a child resumes',
+  'only Titan or the owner marks a task done: worker done lines, merged pull requests, turns and unfinished sub-tasks leave the state alone, and done closes open questions',
   async () => {
     const titan = await othrys.titan()
-
-    const retention = async () => {
-      const { task } = await titan.owner({
-        args: [
-          'task',
-          'show',
-          'family',
-          '--full',
-        ],
-      })
-
-      return {
-        doneAt: task.doneAt ?? null,
-        hidden: task.hidden ?? false,
-      }
-    }
+    const full = async () => (await titan.owner({
+      args: [
+        'task',
+        'show',
+        'release',
+        '--full',
+      ],
+    })).task
+    const status = async () => (await titan.task({ key: 'release' })).status
+    const activity = async ({ value }: { value: string }) => titan.owner({
+      args: [
+        'push',
+        '--key',
+        'release',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'release-worker',
+        },
+        activity: value,
+      }),
+    })
 
     await titan.owner({
       args: [
@@ -1317,7 +1334,7 @@ test(
         'create',
         '--no-start',
         '--key',
-        'family',
+        'release',
         '--title',
         'Release',
       ],
@@ -1328,178 +1345,139 @@ test(
         'create',
         '--no-start',
         '--key',
-        'part',
+        'release-part',
         '--title',
         'Export',
         '--parent',
-        'family',
+        'release',
       ],
     })
-    await titan.owner({
-      args: [
-        'task',
-        'create',
-        '--no-start',
-        '--key',
-        'second-part',
-        '--title',
-        'Validate',
-        '--parent',
-        'family',
-      ],
+    await activity({ value: 'finished' })
+    expect(await status()).toBe('idle')
+
+    const reported = await workerLine({
+      titan,
+      key: 'release',
+      line: 'done: release shipped',
     })
-    await titan.owner({
-      args: [
-        'outcome',
-        'family',
-        'done',
-        '--note',
-        'Parent work completed',
-      ],
-    })
-    expect(await retention()).toEqual({
-      doneAt: null,
-      hidden: false,
-    })
-    await titan.owner({
-      args: [
-        'outcome',
-        'part',
-        'done',
-        '--note',
-        'Child completed',
-      ],
-    })
-    expect(await retention()).toEqual({
-      doneAt: null,
-      hidden: false,
-    })
-    await titan.owner({
-      args: [
-        'outcome',
-        'second-part',
-        'done',
-        '--note',
-        'Validation completed',
-      ],
-    })
-    expect((await retention()).doneAt).toBeTypeOf('string')
-    await titan.owner({
-      args: [
-        'outcome',
-        'part',
-        '--clear',
-      ],
-    })
-    expect(await retention()).toEqual({
-      doneAt: null,
-      hidden: false,
-    })
-    await othrys.restart()
-    expect(await retention()).toEqual({
-      doneAt: null,
-      hidden: false,
-    })
+    expect(reported.doneAt).toBeUndefined()
+    expect(await status()).toBe('idle')
 
     await titan.owner({
       args: [
-        'task',
-        'create',
-        '--no-start',
-        '--key',
-        'earned',
-        '--title',
-        'Completed outside work',
+        'link',
+        'release',
+        '--url',
+        'https://github.com/o/release/pull/3',
+        '--state',
+        'merged',
       ],
     })
-    const earned = await workerLine({
-      titan,
-      key: 'earned',
-      line: 'done: outside work completed',
-    })
-    expect(earned.doneAt).toBeTypeOf('string')
-    const agent = {
-      provider: 'claude',
-      sessionId: 'retention-earned',
-    }
-    await titan.owner({
-      args: [
-        'push',
-        '--key',
-        'earned',
-        '--file',
-        '-',
-      ],
-      input: JSON.stringify({
-        agent,
-        activity: 'finished',
-      }),
-    })
-    const retained = await titan.owner({
-      args: [
-        'task',
-        'show',
-        'earned',
-        '--full',
-      ],
-    })
-    expect(retained.task.doneAt).toBe(earned.doneAt)
-    expect((await titan.task({ key: 'earned' })).status).toBe('done')
-    await titan.owner({
-      args: [
-        'push',
-        '--key',
-        'earned',
-        '--file',
-        '-',
-      ],
-      input: JSON.stringify({
-        agent,
-        activity: 'working',
-      }),
-    })
-    expect((await titan.owner({
-      args: [
-        'task',
-        'show',
-        'earned',
-        '--full',
-      ],
-    })).task.doneAt).toBeUndefined()
-    await titan.owner({
-      args: [
-        'push',
-        '--key',
-        'earned',
-        '--file',
-        '-',
-      ],
-      input: JSON.stringify({
-        agent,
-        activity: 'finished',
-      }),
-    })
-    expect((await titan.task({ key: 'earned' })).status).toBe('idle')
-    await titan.owner({
+    expect((await full()).doneAt).toBeUndefined()
+    expect(await status()).toBe('idle')
+
+    const asked = await titan.owner({
       args: [
         'task',
         'ask',
-        'earned',
+        'release',
         '--to',
         'owner',
         '--question',
-        'Approve the delivered export?',
+        'Publish the release notes?',
         '--context',
-        'The owner must review the exported totals.',
+        'The notes go to every customer.',
+        '--actor',
+        'titan',
       ],
     })
-    const awaitingOwner = await workerLine({
-      titan,
-      key: 'earned',
-      line: 'done: export ready for owner review',
+    expect(await status()).toBe('needs you')
+
+    const marked = await titan.owner({
+      args: [
+        'outcome',
+        'release',
+        'done',
+        '--note',
+        'Released',
+        '--actor',
+        'titan',
+      ],
     })
-    expect(awaitingOwner.doneAt).toBeUndefined()
-    expect((await titan.task({ key: 'earned' })).status).toBe('needs you')
+    const done = await full()
+    expect(done.doneAt).toBeTypeOf('string')
+    expect(done.asks.find((ask: { id: string }) => ask.id === asked.ask).closed).toMatchObject({
+      id: marked.event.id,
+      reason: 'task marked done',
+    })
+    expect(await status()).toBe('done')
+    expect((await titan.task({ key: 'release-part' })).status).not.toBe('done')
+
+    await activity({ value: 'working' })
+    expect(await status()).toBe('running')
+    await activity({ value: 'finished' })
+    expect(await status()).toBe('done')
+    expect((await full()).doneAt).toBe(done.doneAt)
+
+    await titan.owner({
+      args: [
+        'outcome',
+        'release',
+        'cancelled',
+      ],
+    })
+    expect(await status()).toBe('cancelled')
+    const markedDoneAgain = await titan.owner({
+      args: [
+        'outcome',
+        'release',
+        'done',
+      ],
+    })
+    const doneAgain = readEvents({
+      titanId: titan.id,
+      types: ['card.outcome'],
+    }).find(event => event.id === markedDoneAgain.event.id)
+    expect((await full()).doneAt).toBe(doneAgain?.at)
+
+    const cleared = await titan.owner({
+      args: [
+        'outcome',
+        'release',
+        '--clear',
+      ],
+    })
+    expect((await full()).doneAt).toBeUndefined()
+    await othrys.restart()
+    expect((await full()).doneAt).toBeUndefined()
+    expect(await status()).toBe('idle')
+
+    const reopenedQuestion = await titan.owner({
+      args: [
+        'task',
+        'ask',
+        'release',
+        '--to',
+        'owner',
+        '--question',
+        'Publish the revised notes?',
+        '--context',
+        'The notes changed after the task reopened.',
+        '--actor',
+        'titan',
+      ],
+    })
+    expect(await status()).toBe('needs you')
+    await titan.owner({
+      args: [
+        'undo',
+        cleared.event.id,
+      ],
+    })
+    expect(await status()).toBe('done')
+    const restored = await full()
+    const question = restored.asks.find((ask: { id: string }) => ask.id === reopenedQuestion.ask)
+    expect(question?.closed?.reason).toBe('task marked done')
   },
 )
 
@@ -1851,83 +1829,29 @@ test(
 )
 
 test(
-  'refreshing done states lists the sessions as often for many worker cards as for one',
+  'a done time saved by older homes without Titan\'s outcome starts no hide clock and settles no copy',
   () => {
-    const at = '2026-01-01T00:00:00.000Z'
+    const doneAt = '2026-11-01T00:00:00.000Z'
+    const legacy = {
+      doneAt,
+      copy: { state: 'active' },
+    } as unknown as Card
+    expect(cardDoneDeadline({ card: legacy })).toBeUndefined()
+    expect(settles({ card: legacy })).toBe(false)
 
-    const sessionListings = ({ keys }: { keys: string[] }) => {
-      const state = replay({
-        state: emptyTitan(),
-        events: keys.flatMap((
-          key,
-          index,
-        ) => [
-          {
-            v: 1 as const,
-            seq: 2 * index + 1,
-            id: `create:${key}`,
-            at,
-            actor: 'cli',
-            cardId: key,
-            type: 'task.edited' as const,
-            data: {
-              key,
-              title: key,
-            },
-          },
-          {
-            v: 1 as const,
-            seq: 2 * index + 2,
-            id: `observed:${key}`,
-            at,
-            actor: 'othrys',
-            cardId: key,
-            type: 'session.observed' as const,
-            data: {
-              task: key,
-              fields: {
-                agent: {
-                  provider: 'claude',
-                  sessionId: key,
-                },
-                activity: 'finished',
-              },
-            },
-          },
-        ]),
-      })
-      const recorded = { ...state.sessions }
-      let listed = 0
-      const sessions = new Proxy(
-        recorded,
-        {
-          ownKeys() {
-            listed++
-
-            return Reflect.ownKeys(recorded)
-          },
-        },
-      )
-
-      refreshDone({
-        state: {
-          ...state,
-          sessions,
-        },
-        at,
-      })
-      expect(keys.every(key => state.cards[key]?.agent)).toBe(true)
-
-      return listed
+    const marked = {
+      ...legacy,
+      outcome: { state: 'done' as const },
     }
-
-    expect(sessionListings({
-      keys: [
-        'first',
-        'second',
-        'third',
-      ],
-    })).toBe(sessionListings({ keys: ['first'] }))
+    expect(cardDoneDeadline({ card: marked })).toBe(Date.parse(doneAt) + 60 * 60 * 1000)
+    expect(settles({ card: marked })).toBe(true)
+    expect(settles({
+      card: {
+        ...marked,
+        activity: 'finished',
+        sessionActivity: 'working',
+      },
+    })).toBe(false)
   },
 )
 

@@ -18,15 +18,12 @@ export const LINK_STATES = [
 
 export type LinkState = (typeof LINK_STATES)[number]
 
-// The outcomes a person or agent records. "ended" is observed only: a harness
-// reporting its session closed.
 export const OUTCOME_STATES = [
   'done',
-  'failed',
   'cancelled',
 ] as const
 
-type OutcomeState = (typeof OUTCOME_STATES)[number] | 'ended'
+type OutcomeState = (typeof OUTCOME_STATES)[number]
 
 export interface Link {
   src?: 'branch' | 'worker' | 'owner'
@@ -57,14 +54,16 @@ export function readyForReview({ link }: { link: Link }): boolean {
   return link.kind === 'github_pr' && link.state === 'open' && link.draft === false
 }
 
-// closed: the source closed the task, so even a failure is final and needs no one.
-// source: the adapter that observed the outcome; only that source may change it.
 export interface Outcome {
   state: OutcomeState
   note?: string
-  closed?: boolean
-  source?: string
 }
+
+export const completedOutcome = ({ outcome }: { outcome?: Outcome | null }): boolean =>
+  outcome?.state === 'done' || outcome?.state === 'cancelled'
+
+export const doneSince = ({ card }: { card: Pick<Card, 'outcome' | 'doneAt'> }): string | undefined =>
+  completedOutcome({ outcome: card.outcome }) ? card.doneAt : undefined
 
 // How a project's work lands: a pull request, or a commit on the task's branch only.
 export const LANDINGS = [
@@ -174,6 +173,7 @@ export type OutcomeEvent = EventBase & {
   data: {
     before: Outcome | null
     after: Outcome | null
+    closes?: string[]
     card: {
       title: string
       workspace: string

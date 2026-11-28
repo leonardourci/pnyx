@@ -18,7 +18,6 @@ import { sessionId, withoutInterrupted } from './session-attachments.ts'
 import { decideSession } from './sessions.ts'
 import { freeTask } from './start.ts'
 import { titanEvent } from '#titan/titan.ts'
-import { decideOutcome } from '#tasks/delivery/outcome.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
@@ -711,22 +710,6 @@ export function createWorkerStarts({
           },
         }),
       })
-
-      if (card.outcome?.source === 'hooks') {
-        applyDecision({
-          writer,
-          decision: decideOutcome({
-            state: writer.state,
-            ref: card.id,
-            outcome: null,
-            source: 'hooks',
-            meta: {
-              ...meta,
-              id: `${id}:outcome`,
-            },
-          }),
-        })
-      }
 
       return {
         task: card.id,

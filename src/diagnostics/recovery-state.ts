@@ -141,10 +141,7 @@ export function recoveryCandidates({
       reason = 'delivery is not proven failed'
     } else if (!enabled) {
       reason = 'routine helper is unavailable'
-    } else if (!liveTask({ card }) || taskDone({
-      state,
-      card,
-    })
+    } else if (!liveTask({ card }) || taskDone({ card })
         || steeringHeld({ card })) {
       reason = 'task is held or no longer active'
     } else if (card.agent?.host !== 'othrys' || !session?.attached || !session.work) {

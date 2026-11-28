@@ -10,11 +10,9 @@ import type { ObservedStatus } from './observed-status.ts'
 
 const STATE_COLORS: Record<string, string> = {
   asks: 'text-gold',
-  'asks-titan': 'text-slate',
   working: 'text-green',
   done: 'text-green',
   stopped: 'text-red',
-  blocked: 'text-red',
   error: 'text-red',
   waiting: 'text-slate',
 }

@@ -11,6 +11,7 @@ import { applyDecision } from '#app/decision.ts'
 import { workingTask, IDLE_FOLLOW_MULTIPLIER } from './follow-schedule.ts'
 import type { TitanState } from '#app/model.ts'
 import { log } from '#app/diagnostics.ts'
+import { doneSince } from './model.ts'
 
 const DISCOVERY_LIMIT = 100
 
@@ -37,7 +38,7 @@ function discoveryFolder({ card }: { card: import('#tasks/model.ts').Card }): st
 }
 
 export function discoverableTasks({ state }: { state: TitanState }) {
-  return Object.values(state.cards).filter(card => liveTask({ card }) && !card.doneAt
+  return Object.values(state.cards).filter(card => liveTask({ card }) && !doneSince({ card })
     && Boolean(card.copy?.state === 'active' || card.agent || card.launch || card.branches?.length))
 }
 
@@ -133,7 +134,7 @@ export async function discoverPullRequests({
           fn: ({ writer }) => {
             const current = writer.state.cards[card.id]
 
-            if (!current || !liveTask({ card: current }) || current.doneAt) {
+            if (!current || !liveTask({ card: current }) || doneSince({ card: current })) {
               return false
             }
 
@@ -239,7 +240,7 @@ export async function discoverPullRequests({
           fn: ({ writer }) => {
             const current = writer.state.cards[card.id]
 
-            if (!current || !liveTask({ card: current }) || current.doneAt
+            if (!current || !liveTask({ card: current }) || doneSince({ card: current })
               || current.links.some(link => link.url === request.url)) {
               return
             }

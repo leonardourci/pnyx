@@ -138,11 +138,27 @@ const outcome = ({ data }: { data: Record<string, unknown> }): Row | undefined =
     return undefined
   }
 
+  const closes = (data.closes as string[] | undefined)?.length ?? 0
+  const noun = closes === 1 ? 'question' : 'questions'
+  const closed = closes ? `Closed ${closes} open ${noun}.` : ''
+  const note = [
+    after?.note,
+    closed,
+  ].filter(Boolean).join(' ')
+
   if (after?.state === 'done') {
     return {
       kind: 'done',
       state: 'Done',
-      note: after.note ?? '',
+      note,
+    }
+  }
+
+  if (after?.state === 'cancelled') {
+    return {
+      kind: 'plain',
+      state: 'Cancelled',
+      note,
     }
   }
 

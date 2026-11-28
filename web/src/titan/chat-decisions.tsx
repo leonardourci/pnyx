@@ -40,7 +40,6 @@ export function ChatDecisionCard({
 
   return (
     <div className="chat-decision grid gap-2 [&_.ask]:m-0 [&_.decided]:text-muted [&_.decided]:text-meta [&_.decided>summary]:text-[length:inherit] [&_blockquote]:m-0 [&_blockquote]:pl-2.5 [&_blockquote]:border-l-2 [&_blockquote]:border-line">
-      {decision.blocker && <strong className="eyebrow">Blocker</strong>}
       {card.id === TITAN_CARD ? <span className="eyebrow">Titan question</span> : <TaskReference id={decision.relatedTask?.id ?? card.id} />}
       {content}
     </div>

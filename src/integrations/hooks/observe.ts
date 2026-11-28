@@ -48,8 +48,6 @@ export interface Observation {
   ifChanged?: boolean
   // A pull request URL seen in a command's output: a refresh hint, not its state.
   link?: string
-  // "ended" when the session or subagent closed; null when new work reopens it.
-  outcome?: 'ended' | null
 }
 
 const PROVIDER: Record<Harness, string> = {
@@ -363,13 +361,6 @@ function signal({
   }
 }
 
-const REOPENS = [
-  'SessionStart',
-  'UserPromptSubmit',
-  'PreToolUse',
-  'PostToolUse',
-  'SubagentStart',
-]
 const TITLE_MAX = 100
 
 function promptTitle({ prompt }: { prompt: unknown }): string | undefined {
@@ -473,7 +464,9 @@ export function observe({ envelope }: { envelope: HookEnvelope }): Observation[]
     agent: agent({ extra: { transcriptPath: str({ value: p.transcript_path }) } }),
     ...(autoTitle ? { autoTitle } : {}),
   }
-  const activity = found.activity ? { activity: found.activity } : {}
+  const subagentEnded = envelope.event === 'SubagentStop' && agentId !== undefined
+  const observed = subagentEnded ? 'ended' : found.activity
+  const activity = observed ? { activity: observed } : {}
   const out: Observation[] = []
   let key = parentKey
   const recordedTerminal = TERMINAL_EVENTS.includes(envelope.event)
@@ -530,12 +523,6 @@ export function observe({ envelope }: { envelope: HookEnvelope }): Observation[]
     id: '',
     key,
     card,
-  }
-
-  if (envelope.event === 'SessionEnd' || (envelope.event === 'SubagentStop' && agentId)) {
-    observation.outcome = 'ended'
-  } else if (REOPENS.includes(envelope.event)) {
-    observation.outcome = null
   }
 
   if (found.attend) {
