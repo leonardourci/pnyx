@@ -31,7 +31,7 @@ othrys --version
 
 If pnpm's global bin directory is missing from PATH, run `pnpm setup`, reopen your terminal, and retry the global install. You can also run `./dist/cli/othrys.js` directly from the clone.
 
-The global install links this clone. If your installation uses Postgres, follow the [migration steps](docs/othrys.md#migrate-from-a-postgres-installation). For an installation already using native files, send `/upgrade` in Titan's chat to pull `main`, install dependencies, build and restart the server.
+The global install links this clone. If your installation uses Postgres, follow the [migration steps](docs/othrys.md#migrate-from-a-postgres-installation). For an installation already using native files, send `/upgrade` in Titan's chat to move to the newest release, install dependencies, build and restart the server; the development channel follows `main` instead (see [Releases](docs/development.md#releases)).
 
 GitHub integration needs [GitHub CLI](https://cli.github.com/), `gh auth login`, and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH.
 
