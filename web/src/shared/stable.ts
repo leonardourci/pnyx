@@ -41,3 +41,47 @@ export function useKept<Value>({ value }: { value: Value }): Value {
 
   return held.current
 }
+
+const plain = ({ value }: { value: unknown }) => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  const prototype = Object.getPrototypeOf(value)
+
+  return prototype === Object.prototype || prototype === Array.prototype
+}
+
+// The next value with every branch that holds the same leaves as before swapped for the previous one, so a view rebuilt
+// with nothing new keeps its identity and only the branches that changed are new.
+export function shared<Value>({
+  previous,
+  next,
+}: {
+  previous?: Value
+  next: Value
+}): Value {
+  const comparable = plain({ value: previous }) && plain({ value: next })
+    && Array.isArray(previous) === Array.isArray(next)
+
+  if (previous === next || !comparable) {
+    return next
+  }
+
+  const before = previous as Record<string, unknown>
+  const after = next as Record<string, unknown>
+  const keys = Object.keys(after)
+  const result = (Array.isArray(next) ? [] : {}) as Record<string, unknown>
+
+  for (const key of keys) {
+    result[key] = shared({
+      previous: before[key],
+      next: after[key],
+    })
+  }
+
+  const sameKeys = keys.length === Object.keys(before).length
+  const same = sameKeys && keys.every(key => result[key] === before[key])
+
+  return same ? previous as Value : result as Value
+}

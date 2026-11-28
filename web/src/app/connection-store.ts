@@ -24,6 +24,7 @@ import type { SocketCursor } from '#app/socket-history.ts'
 import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingTitan } from './pending-state.ts'
 import { shouldReload } from './view.ts'
+import { shared } from '#web-shared/stable.ts'
 
 const HEARTBEAT_INTERVAL_MS = 10_000
 const RECOVERY_TIMEOUT_MS = 25_000
@@ -451,6 +452,29 @@ export function createTitanConnection() {
   }
 
   let snapshot = visible()
+  let shownWorkspaces: ReturnType<typeof visible>[] = []
+
+  const workspaces = () => {
+    const ids = new Set([
+      selected,
+      ...titans.snapshot().view.map(titan => titan.id),
+    ])
+    const previous = new Map(shownWorkspaces.map(view => [
+      view.navigation.titanId,
+      view,
+    ]))
+    shownWorkspaces = shared({
+      previous: shownWorkspaces,
+      next: [...ids].map(id => shared({
+        previous: previous.get(id),
+        next: visible({ scope: scopeFor({ id }) }),
+      })),
+    })
+
+    return shownWorkspaces
+  }
+
+  workspaces()
 
   const metadata = () => {
     document.querySelector<HTMLMetaElement>('meta[name=othrys-titan]')?.setAttribute(
@@ -485,7 +509,19 @@ export function createTitanConnection() {
 
     releaseInactive()
     metadata()
-    snapshot = visible()
+    const shownBefore = shownWorkspaces
+    const workspacesChanged = workspaces() !== shownBefore
+    const next = shared({
+      previous: snapshot,
+      next: visible(),
+    })
+
+    // A receipt or message that changed nothing on screen keeps the same snapshot and redraws nothing.
+    if (next === snapshot && !workspacesChanged) {
+      return
+    }
+
+    snapshot = next
     listeners.forEach(listener => listener())
   }
 
@@ -1293,14 +1329,8 @@ export function createTitanConnection() {
 
   return {
     snapshot: () => snapshot,
-    workspaces: () => {
-      const ids = new Set([
-        selected,
-        ...titans.snapshot().view.map(titan => titan.id),
-      ])
-
-      return [...ids].map(id => visible({ scope: scopeFor({ id }) }))
-    },
+    shownWorkspaces: () => shownWorkspaces,
+    workspaces,
     // eslint-disable-next-line othrys/object-params -- React useSyncExternalStore subscription contract.
     subscribe: (listener: () => void) => {
       listeners.add(listener)

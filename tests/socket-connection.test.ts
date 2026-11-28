@@ -22,6 +22,95 @@ beforeAll(async () => {
   othrys = await startOthrys()
 })
 
+type Frame = {
+  socket: WebSocket
+  url: URL
+  frames: ServerMessage[]
+}
+
+// A page connection in this process, as the browser opens it on the primary Titan's address.
+function connectPage({ primary }: { primary: string }) {
+  const sockets: Frame[] = []
+
+  class ClientSocket extends WebSocket {
+    // eslint-disable-next-line othrys/object-params -- WebSocket owns its constructor signature.
+    constructor(url: URL) {
+      super(url)
+      const frames: ServerMessage[] = []
+      this.on(
+        'message',
+        text => frames.push(JSON.parse(String(text))),
+      )
+      sockets.push({
+        socket: this,
+        url,
+        frames,
+      })
+    }
+  }
+
+  const events = new EventTarget()
+  const document = Object.assign(
+    new EventTarget(),
+    {
+      visibilityState: 'visible',
+      // eslint-disable-next-line othrys/object-params -- Document owns the selector signature.
+      querySelector: (selector: string) => {
+        const content = {
+          'meta[name=othrys-installation]': titanIdentity({ titanId: '' }),
+          'meta[name=othrys-titan]': primary,
+          'meta[name=othrys-token]': localToken(),
+        }[selector]
+
+        return content ? {
+          content,
+          setAttribute: () => {},
+        } : null
+      },
+    },
+  )
+  vi.stubGlobal(
+    'document',
+    document,
+  )
+  vi.stubGlobal(
+    'window',
+    events,
+  )
+  vi.stubGlobal(
+    'addEventListener',
+    events.addEventListener.bind(events),
+  )
+  vi.stubGlobal(
+    'removeEventListener',
+    events.removeEventListener.bind(events),
+  )
+  vi.stubGlobal(
+    'location',
+    new URL(`http://127.0.0.1:${othrys.port()}/titan/${primary}/`),
+  )
+  vi.stubGlobal(
+    'WebSocket',
+    ClientSocket,
+  )
+  const client = createTitanConnection()
+  const stop = client.start()
+
+  return {
+    client,
+    sockets,
+    close: () => {
+      stop()
+
+      for (const { socket } of sockets) {
+        socket.terminate()
+      }
+
+      vi.unstubAllGlobals()
+    },
+  }
+}
+
 test(
   'a client resumes an unchanged home with only ready and retains every Titan state',
   async () => {
@@ -39,75 +128,11 @@ test(
       ],
     })
     const task = await background.task({ key: 'saved' })
-    const sockets: {
-      socket: WebSocket
-      url: URL
-      frames: ServerMessage[]
-    }[] = []
-
-    class ClientSocket extends WebSocket {
-      // eslint-disable-next-line othrys/object-params -- WebSocket owns its constructor signature.
-      constructor(url: URL) {
-        super(url)
-        const frames: ServerMessage[] = []
-        this.on(
-          'message',
-          text => frames.push(JSON.parse(String(text))),
-        )
-        sockets.push({
-          socket: this,
-          url,
-          frames,
-        })
-      }
-    }
-
-    const events = new EventTarget()
-    const document = Object.assign(
-      new EventTarget(),
-      {
-        visibilityState: 'visible',
-        // eslint-disable-next-line othrys/object-params -- Document owns the selector signature.
-        querySelector: (selector: string) => {
-          const content = {
-            'meta[name=othrys-installation]': titanIdentity({ titanId: '' }),
-            'meta[name=othrys-titan]': primary.id,
-            'meta[name=othrys-token]': localToken(),
-          }[selector]
-
-          return content ? {
-            content,
-            setAttribute: () => {},
-          } : null
-        },
-      },
-    )
-    vi.stubGlobal(
-      'document',
-      document,
-    )
-    vi.stubGlobal(
-      'window',
-      events,
-    )
-    vi.stubGlobal(
-      'addEventListener',
-      events.addEventListener.bind(events),
-    )
-    vi.stubGlobal(
-      'removeEventListener',
-      events.removeEventListener.bind(events),
-    )
-    vi.stubGlobal(
-      'location',
-      new URL(`http://127.0.0.1:${othrys.port()}/titan/${primary.id}/`),
-    )
-    vi.stubGlobal(
-      'WebSocket',
-      ClientSocket,
-    )
-    const client = createTitanConnection()
-    const stop = client.start()
+    const {
+      client,
+      sockets,
+      close,
+    } = connectPage({ primary: primary.id })
     const connected = () => [
       primary.id,
       background.id,
@@ -157,13 +182,58 @@ test(
       expect(taskCards()).toEqual(cards)
       expect(current.state.cards[task.id]?.title).toBe('Saved before disconnect')
     } finally {
-      stop()
+      close()
+    }
+  },
+)
 
-      for (const { socket } of sockets) {
-        socket.terminate()
-      }
+test(
+  'a read that changes nothing keeps the page snapshot, and another Titan\'s change still reaches the page',
+  async () => {
+    const primary = await othrys.titan()
+    const background = await othrys.titan()
+    const {
+      client,
+      close,
+    } = connectPage({ primary: primary.id })
+    const shown = ({ id }: { id: string }) => client.shownWorkspaces()
+      .find(workspace => workspace.navigation.titanId === id)
 
-      vi.unstubAllGlobals()
+    try {
+      await until({
+        what: 'both Titans to connect',
+        check: () => [
+          primary.id,
+          background.id,
+        ].every(id => !!shown({ id })?.connected),
+      })
+      const snapshot = client.snapshot()
+      const workspaces = client.shownWorkspaces()
+      await client.commandFor({ id: primary.id })({
+        name: 'rule',
+        args: ['list'],
+      })
+      expect(client.snapshot()).toBe(snapshot)
+      expect(client.shownWorkspaces()).toBe(workspaces)
+
+      await background.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--key',
+          'elsewhere',
+          '--title',
+          'Made in the other Titan',
+        ],
+      })
+      const task = await background.task({ key: 'elsewhere' })
+      await until({
+        what: 'the other Titan\'s new task to reach the page',
+        check: () => shown({ id: background.id })?.state.cards[task.id]?.title === 'Made in the other Titan',
+      })
+    } finally {
+      close()
     }
   },
 )
