@@ -63,6 +63,7 @@ describe(
           ],
         })
         expect(managedOutcome.status).toBe(2)
+        expect(managedOutcome.stderr).toContain('Choose a work task for the outcome')
         await titan.owner({
           args: [
             'task',

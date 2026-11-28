@@ -1845,6 +1845,13 @@ test(
     }
     expect(cardDoneDeadline({ card: marked })).toBe(Date.parse(doneAt) + 60 * 60 * 1000)
     expect(settles({ card: marked })).toBe(true)
+    expect(settles({
+      card: {
+        ...marked,
+        activity: 'finished',
+        sessionActivity: 'working',
+      },
+    })).toBe(false)
   },
 )
 

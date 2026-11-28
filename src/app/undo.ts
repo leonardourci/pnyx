@@ -88,7 +88,9 @@ export function decideUndo({
   if (target.type === 'card.outcome') {
     refuseOutcomeFrom({ actor: meta.actor })
 
-    if (target.data.after && !completedOutcome({ outcome: target.data.after })) {
+    const recorded = target.data.after ?? target.data.before
+
+    if (recorded && !completedOutcome({ outcome: recorded })) {
       throw notUndoable({ message: `${target.id} records a retired outcome` })
     }
   }

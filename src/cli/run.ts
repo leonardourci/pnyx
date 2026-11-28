@@ -23,7 +23,7 @@ const HELP = `usage: othrys <command> [--titan <id>] [--json]
 
 othrys task create --title <title> --brief <instructions> [--project <name|path>]
 othrys task ack <task> <instruction> --session <session> --generation <reference>
-othrys task ask <task> --to owner --question <question> [--context <why>]
+othrys task ask <task> --to owner --question <question> [--context <why>] [--choice <label> ...]
 othrys send --text <message> [--task <id>] [--idempotency-key <key>]
 othrys answer <task> <question> --text <answer>
 othrys answer <task> <question> --from-message <id> [--choice <label>]
