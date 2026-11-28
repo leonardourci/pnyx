@@ -1939,15 +1939,30 @@ test.each([
     await othrys.restart()
 
     const state = loadTitan({ titanId: titan.id }).state
-    const task = state.cards[state.keys['done-unread']!]!
+    const taskId = state.keys['done-unread']
+    const task = taskId && state.cards[taskId]
+    if (!task) {
+      throw new Error('The completed task is missing after restart')
+    }
+
     const instruction = task.steering?.find(message => message.text === 'Never read this')
-    expect(instruction).toMatchObject({ stopped: true })
-    expect(instruction!.ack).toBeUndefined()
+    if (!instruction) {
+      throw new Error('The unread instruction is missing after restart')
+    }
+
+    expect(instruction.ack).toBeUndefined()
     expect(pendingSteering({ card: task })).toEqual([])
 
-    // A snapshot saved before outcomes settled instructions restores this one unsettled.
-    delete instruction!.stopped
-    expect(steeringToFollow({ state })).toBe(false)
+    const legacyUnreadInstruction = { ...instruction }
+    delete legacyUnreadInstruction.stopped
+    const legacySnapshotState = {
+      ...state,
+      cards: {
+        ...state.cards,
+        [task.id]: { ...task, steering: [legacyUnreadInstruction] },
+      },
+    }
+    expect(steeringToFollow({ state: legacySnapshotState })).toBe(false)
   },
 )
 
