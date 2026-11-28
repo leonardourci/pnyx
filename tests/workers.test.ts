@@ -1902,7 +1902,10 @@ test(
   },
 )
 
-test.each(['done', 'cancelled'])(
+test.each([
+  'done',
+  'cancelled',
+])(
   'a task marked %s settles its unread instruction after a restart',
   async outcome => {
     const titan = await othrys.titan()
