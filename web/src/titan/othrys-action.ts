@@ -47,9 +47,15 @@ export function useOthrysLookup({ state }: { state: TitanState }): OthrysLookup 
   return useMemo<OthrysLookup>(
     () => ({
       task: ({ ref }) => {
-        const id = Object.hasOwn(tasks, ref) ? ref : keys[ref]
+        const id = Object.hasOwn(
+          tasks,
+          ref,
+        ) ? ref : keys[ref]
 
-        return id !== undefined && Object.hasOwn(tasks, id) ? tasks[id] : undefined
+        return id !== undefined && Object.hasOwn(
+          tasks,
+          id,
+        ) ? tasks[id] : undefined
       },
       column: ({ ref }) => columns.find(column => column.id === ref
         || column.title.toLowerCase() === ref.toLowerCase()),
