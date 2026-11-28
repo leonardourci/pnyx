@@ -23,7 +23,10 @@ test(
     )
     expect(othrys.home().settings.settings.upgradeChannel).toBe('stable')
 
-    const search = page.getByLabel('Search settings', { exact: true })
+    const search = page.getByLabel(
+      'Search settings',
+      { exact: true },
+    )
     await search.fill('release tag')
     await channel.getByRole(
       'radio',

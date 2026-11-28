@@ -416,9 +416,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     label: 'Upgrade channel',
     description: 'Stable follows the newest release tag. Development follows main.',
     values: UPGRADE_CHANNEL_OPTIONS.map(({ label }) => label),
-    related: [
-      'update',
-    ],
+    related: ['update'],
   },
 ]
 
