@@ -1,7 +1,6 @@
 import type { TitanState } from '#app/model.ts'
 import type { Ask, Card } from '#tasks/model.ts'
 import { activeAsks, openAsks } from '#tasks/ask-state.ts'
-import { hasBlockedWork } from '#tasks/card-status.ts'
 import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { taskMentions } from '#titan/mentions.ts'
@@ -12,7 +11,6 @@ export interface ChatDecision {
   at: string
   card: Card
   ask: Ask
-  blocker: boolean
   relatedTask?: Card
   review?: ReviewRequest
 }
@@ -51,17 +49,10 @@ export function chatDecisions({
         return []
       }
 
-      let relatedTask: Card | undefined
-
-      if (ask.kind === 'merge' && ask.url) {
-        const linked = cards.filter(task => task.links.some(link => link.url === ask.url))
-        relatedTask = linked.find(task => hasBlockedWork({ card: task }))
-          ?? linked.find(task => context.has(task.id))
-      }
-
-      const relatedBlocker = relatedTask !== undefined && hasBlockedWork({ card: relatedTask })
-      const blocker = hasBlockedWork({ card }) || relatedBlocker
-      const visible = card.id === TITAN_CARD || blocker || context.has(card.id) || !!relatedTask
+      const relatedTask = ask.kind === 'merge' && ask.url
+        ? cards.find(task => context.has(task.id) && task.links.some(link => link.url === ask.url))
+        : undefined
+      const visible = card.id === TITAN_CARD || context.has(card.id) || !!relatedTask
 
       if (!visible) {
         return []
@@ -78,7 +69,6 @@ export function chatDecisions({
           at: ask.reaskedAt ?? ask.escalated?.at ?? ask.at,
           card,
           ask,
-          blocker,
           relatedTask,
           review,
         },

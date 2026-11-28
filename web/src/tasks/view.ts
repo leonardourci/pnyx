@@ -84,7 +84,7 @@ export function cardState({
           1,
           Math.ceil(remaining / 60_000),
         )}m`}`
-        : `done · ${elapsedTime({
+        : `${status.text} · ${elapsedTime({
           at: card.doneAt,
           now,
         })}`,

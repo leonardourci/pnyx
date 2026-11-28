@@ -157,18 +157,12 @@ export function taskRollup({
     state,
     action: actions[card.id],
   })
-  const own = observed.kind === 'not-started'
-    ? {
-      ...observed,
-      kind: 'queued',
-      text: 'queued',
-    } : observed
   const children = cached.children.get(card.id) ?? []
 
   if (!children.length) {
     return save({
       result: {
-        status: own,
+        status: observed,
         children,
         done: 0,
       },
@@ -183,11 +177,11 @@ export function taskRollup({
   const done = parts.filter(part => part.kind === 'done').length
   let status: ObservedStatus
   const needsYou = [
-    own,
+    observed,
     ...parts,
   ].find(part => part.kind === 'asks')
   const running = [
-    own,
+    observed,
     ...parts,
   ].find(part => part.kind === 'working')
 
@@ -198,8 +192,8 @@ export function taskRollup({
     }
   } else if (running) {
     status = running
-  } else if (done === children.length) {
-    status = own
+  } else if (observed.kind === 'done' || done === children.length) {
+    status = observed
   } else {
     status = {
       kind: 'waiting',
