@@ -566,7 +566,7 @@ test(
 )
 
 test(
-  'a pull-request task is done only once GitHub reports its pull request merged',
+  'a merged pull request is information only: the task keeps its badge and stays open until Titan marks it done',
   async () => {
     const titan = await othrys.titan()
     await createProject({
@@ -642,7 +642,6 @@ test(
     })
     expect(checkedCart.links[0].state).toBe('open')
     expect(checkedCart.doneAt).toBeUndefined()
-    expect(checkedCart.outcome?.closed).not.toBe(true)
 
     pullRequest({
       number: 8,
@@ -663,38 +662,36 @@ test(
       number: 7,
       state: 'merged',
     })
-    const done = await until({
-      what: 'the cart merge to finish its task after the notes merge',
+    const merged = await until({
+      what: 'the cart pull request to be recorded merged',
       check: async () => {
         const { task } = await titan.owner({
           args: [
             'task',
             'show',
             'cart',
+            '--full',
           ],
         })
 
-        return task.status === 'PR merged' && task
+        return task.links[0]?.state === 'merged' && task
       },
     })
-    expect(done.status).toBe('PR merged')
+    expect(merged.doneAt).toBeUndefined()
+    expect((await titan.task({ key: 'cart' })).status).not.toBe('done')
+    expect((await titan.task({ key: 'notes' })).status).not.toBe('done')
     expect(merges({ number: 7 })).toBe(0)
 
-    const reviewed = await until({
-      what: 'the second merge to finish its task',
-      check: async () => {
-        const { task } = await titan.owner({
-          args: [
-            'task',
-            'show',
-            'notes',
-          ],
-        })
-
-        return task.status === 'PR merged' && task
-      },
+    await titan.owner({
+      args: [
+        'outcome',
+        'cart',
+        'done',
+        '--actor',
+        'titan',
+      ],
     })
-    expect(reviewed.status).toBe('PR merged')
+    expect((await titan.task({ key: 'cart' })).status).toBe('done')
   },
 )
 
@@ -3994,7 +3991,7 @@ test(
         'merged',
       ],
     })
-    expect((await titan.task({ key: 'discovered' })).status).toBe('PR open')
+    expect((await titan.task({ key: 'discovered' })).status).toBe('idle')
     const followup = `${branch}-followup`
     const malformed = join(
       github,

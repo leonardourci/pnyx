@@ -760,7 +760,7 @@ test(
 )
 
 test(
-  'Oracle preserves worker status with a retention deadline and failed outcomes keep owner questions visible in Titan chat',
+  'the open card shows the done Titan set over a worker blocked line, and the Oracle preview its retention deadline',
   async () => {
     const titan = await othrys.titan()
     await titan.startTask({ key: 'blocked-in-done' })
@@ -773,6 +773,7 @@ test(
       key: 'blocked-in-done',
       line: 'blocked: Waiting for a missing fixture',
     })
+    expect((await titan.task({ key: 'blocked-in-done' })).status).toBe('idle')
     const task = await titan.task({ key: 'blocked-in-done' })
     await titan.owner({
       args: [
@@ -783,75 +784,28 @@ test(
         'Owner closed the work',
       ],
     })
-    expect(await titan.task({ key: 'blocked-in-done' })).toMatchObject({
-      status: 'blocked',
-    })
+    expect((await titan.task({ key: 'blocked-in-done' })).status).toBe('done')
     const selector = await openChat({
       titanId: titan.id,
       taskId: task.id,
     })
-    await status({
-      selector,
-      label: 'Blocked',
-    })
-    const preview = await chrome({
+    const labels = await chrome({
       script: `
+      await page.wait(${JSON.stringify(`${selector} .agent-activity`)}, 5000);
+      const card = await page.eval(() => document.querySelector(${JSON.stringify(`${selector} .agent-activity`)})?.getAttribute('aria-label'));
       await page.click('.oracle-trigger');
       await page.wait('dialog[aria-label="Oracle"] [role="combobox"][aria-label="Oracle"]', 5000);
       await page.fill('dialog[aria-label="Oracle"] [role="combobox"][aria-label="Oracle"]', 'blocked-in-done');
       await page.wait('.oracle-card .agent-activity', 5000);
-      console.log(await page.eval(() => document.querySelector('.oracle-card .agent-activity')?.getAttribute('aria-label')));
+      const preview = await page.eval(() => document.querySelector('.oracle-card .agent-activity')?.getAttribute('aria-label'));
+      console.log(JSON.stringify({ card, preview }));
     `,
     })
-    expect(preview).toBe('Blocked')
-
-    await titan.owner({
-      args: [
-        'task',
-        'create',
-        '--no-start',
-        '--key',
-        'failed-question',
-        '--title',
-        'Recover the export',
-      ],
-    })
-    await titan.owner({
-      args: [
-        'outcome',
-        'failed-question',
-        'failed',
-      ],
-    })
-    const session = await titan.chat({ text: 'Watch for work that needs my answer' })
-    await titan.as({ session }).run({
-      args: [
-        'task',
-        'ask',
-        'failed-question',
-        '--to',
-        'owner',
-        '--question',
-        'Retry the failed export?',
-        '--choice',
-        'Retry',
-        '--choice',
-        'Stop',
-      ],
-    })
-    await chrome({
-      args: [
-        'open',
-        `http://127.0.0.1:${othrys.port()}/titan/${titan.id}/`,
-      ],
-    })
-    const question = await chrome({
-      script: `
-      await page.wait('.titan-chat .chat-decision .ask', 5000);
-      console.log(await page.eval(() => document.querySelector('.titan-chat .chat-decision')?.textContent));
-    `,
-    })
-    expect(question).toContain('Blocker')
-    expect(question).toContain('Retry the failed export?')
+    const {
+      card,
+      preview,
+    } = JSON.parse(labels)
+    expect(card).toBe('Done')
+    expect(preview).toMatch(/^Hidden in \d+m$/)
   },
 )

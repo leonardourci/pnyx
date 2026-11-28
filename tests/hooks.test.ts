@@ -789,7 +789,7 @@ test(
         '--key',
         'merged-checkout',
         '--title',
-        'Completed checkout',
+        'Merged checkout Titan has not closed',
         '--project',
         'checkout',
       ],
@@ -800,11 +800,6 @@ test(
         'https://github.com/example/checkout/pull/1',
         '--state',
         'merged',
-      ],
-      [
-        'outcome',
-        'merged-checkout',
-        'failed',
       ],
       [
         'task',
@@ -828,7 +823,7 @@ test(
       [
         'outcome',
         'finished-checkout',
-        'done',
+        'cancelled',
       ],
     ]) {
       expect((await operation({
@@ -869,7 +864,7 @@ test(
     })
     expect(inProject.status).toBe(0)
     expect(inProject.stdout).toContain('Speed up checkout')
-    expect(inProject.stdout).not.toContain('Completed checkout')
+    expect(inProject.stdout).toContain('Merged checkout Titan has not closed')
     expect(inProject.stdout).not.toContain('Finished checkout with a PR still open')
 
     const elsewhere = await hook({
