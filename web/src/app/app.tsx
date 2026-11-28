@@ -16,6 +16,7 @@ import { placements } from './titan-order.ts'
 import { ProfileSurface } from './profile-surface.tsx'
 import { TitanView } from './workspace.tsx'
 import { useComposerShortcut } from '#web-titan/composer-shortcut.ts'
+import { phoneLayout } from '#web-shared/card-sizing.ts'
 
 const SCROLL_EDGE_EPSILON = 1
 
@@ -428,7 +429,7 @@ export function App() {
       ownerAxisScroll.current = false
 
       const follow = () => {
-        if (!ownerAxisScroll.current || !titan.loaded || surface.dataset.dragging || titan.navigation.page === 'settings') {
+        if (phoneLayout({ width: innerWidth }) || !ownerAxisScroll.current || !titan.loaded || surface.dataset.dragging || titan.navigation.page === 'settings') {
           return
         }
 
@@ -545,22 +546,25 @@ export function App() {
         url,
         location.href,
       ).pathname.split('/')[2]!)
-      const opening = titan.commandFor({ id: destination })({
-        name: 'view',
-        args: [
-          'set',
-          '--json',
-          JSON.stringify({
-            workspace: {
-              collapsed: false,
-              chatCollapsed: false,
-            },
-          }),
-          '--event-id',
-          crypto.randomUUID(),
-        ],
-      })
-      opening.catch((error: Error) => setRootError(error.message))
+
+      if (!phoneLayout({ width: innerWidth })) {
+        titan.commandFor({ id: destination })({
+          name: 'view',
+          args: [
+            'set',
+            '--json',
+            JSON.stringify({
+              workspace: {
+                collapsed: false,
+                chatCollapsed: false,
+              },
+            }),
+            '--event-id',
+            crypto.randomUUID(),
+          ],
+        }).catch((error: Error) => setRootError(error.message))
+      }
+
       await titan.navigate({
         url,
         replace,
@@ -612,7 +616,7 @@ export function App() {
             <motion.div
               onBeforeLayoutMeasure={() => anchor.current?.()}
               ref={axis}
-              className="workspace-axis group/axis flex h-dvh snap-x snap-proximity scroll-px-3 items-stretch gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-3 pt-workspace-axis-top pb-3 data-[dragging]:cursor-grabbing data-[page=settings]:overflow-hidden motion-reduce:scroll-auto max-phone:scroll-px-1.5 max-phone:gap-2 max-phone:px-1.5 max-phone:pt-workspace-axis-phone-top max-phone:pb-workspace-axis-phone-bottom [&.lenis]:snap-none [&.lenis]:scroll-auto [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! [@media(pointer:coarse)]:[&.lenis]:snap-x"
+              className="workspace-axis group/axis flex h-dvh snap-x snap-proximity scroll-px-3 items-stretch gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-3 pt-workspace-axis-top pb-3 data-[dragging]:cursor-grabbing data-[page=settings]:overflow-hidden motion-reduce:scroll-auto max-phone:snap-none! max-phone:scroll-px-0 max-phone:gap-0 max-phone:overflow-x-hidden max-phone:px-0 max-phone:pt-topbar-height max-phone:pb-safe-bottom [&.lenis]:snap-none [&.lenis]:scroll-auto [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! [@media(pointer:coarse)]:[&.lenis]:snap-x"
               data-page={titan.navigation.page}
               aria-label="Titans"
             >

@@ -35,8 +35,8 @@ export function projectWidth({
 
   return {
     phone,
-    minimum: phone ? viewport - WORKSPACE_SIZING.phoneFrameMargin : minimum,
-    width: phone ? viewport - WORKSPACE_SIZING.phoneFrameMargin : Math.max(
+    minimum: phone ? viewport : minimum,
+    width: phone ? viewport : Math.max(
       preview ?? saved,
       minimum,
     ),

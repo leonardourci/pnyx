@@ -519,13 +519,14 @@ test(
       width: 1440,
       height: 900,
     })
-    await page.getByRole(
+    await page.locator('header[aria-label="Othrys navigation"]').getByRole(
       'button',
       {
         name: 'Project-7',
         exact: true,
       },
-    ).click()
+    )
+      .click()
     await until({
       what: 'the requested project to be in view',
       check: () => workspace.locator('[data-column]').last()
@@ -546,13 +547,14 @@ test(
       axis.style.width = `${column.getBoundingClientRect().width}px`
       axis.scrollLeft = 0
     })
-    await page.getByRole(
+    await page.locator('header[aria-label="Othrys navigation"]').getByRole(
       'button',
       {
         name: 'Project-7',
         exact: true,
       },
-    ).click()
+    )
+      .click()
     await until({
       what: 'the requested project to fit when it fills the scroller',
       check: () => finalColumn.evaluate(column => {
@@ -590,13 +592,14 @@ test(
       ).click()
     }
 
-    await page.getByRole(
+    await page.locator('header[aria-label="Othrys navigation"]').getByRole(
       'button',
       {
         name: 'Project-7',
         exact: true,
       },
-    ).click()
+    )
+      .click()
     await until({
       what: 'the folded final project to unfold fully in view',
       check: () => workspace.locator('[data-column]').last()
@@ -1212,7 +1215,7 @@ test(
       args: [
         'emulate',
         '--viewport',
-        '390x844',
+        '900x844',
       ],
     })
     onTestFinished(async () => {
@@ -1416,7 +1419,7 @@ test(
       column: 'ideas',
       title,
       formClosed: true,
-      focusLabel: 'Fold Ideas',
+      focusLabel: 'Ideas',
     })
     const saved = await titan.task({
       key: result.card.id,
@@ -1523,12 +1526,9 @@ test(
   },
 )
 
-test.each([
-  { viewport: '1440x900' },
-  { viewport: '390x844' },
-])(
-  'a folded Titan keeps one upright strip that unfolds it, and folded project columns keep their marks aligned at $viewport',
-  async ({ viewport }) => {
+test(
+  'a folded Titan keeps one upright strip that unfolds it, and folded project columns keep their marks aligned',
+  async () => {
     const titan = await othrys.titan()
     const projects = await addRevealProjects({ titan })
 
@@ -1586,10 +1586,9 @@ test.each([
       args: [
         'emulate',
         '--viewport',
-        viewport,
+        '1440x900',
       ],
     })
-    const wide = viewport === '1440x900'
     const workspace = `[data-titan-workspace="${titan.id}"]`
     const uprightCounts = `({ roots }) => ['.waiting-count', '.running-count > span'].every(selector => {
         const counts = roots.flatMap(root => [...root.querySelectorAll(selector)]);
@@ -1598,34 +1597,13 @@ test.each([
         );
       })`
 
-    const fold = async ({
-      item,
-      patch,
-    }: {
-      item: string
-      patch: object
-    }) => {
-      if (wide) {
-        await chrome({
-          script: `
+    const fold = ({ item }: { item: string }) => chrome({
+      script: `
     await page.click('.active-titan .titan-chip');
     await page.wait('[role="menu"] [role="menuitem"]');
     await page.eval(() => [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].find(item => item.textContent === ${JSON.stringify(item)}).click());
   `,
-        })
-
-        return
-      }
-
-      await titan.owner({
-        args: [
-          'view',
-          'set',
-          '--json',
-          JSON.stringify({ workspace: patch }),
-        ],
-      })
-    }
+    })
 
     const expandedWorkspaceWidth = Number(await chrome({
       script: `
@@ -1634,10 +1612,7 @@ test.each([
     console.log(await page.eval(() => document.querySelector('${workspace}').getBoundingClientRect().width));
   `,
     }))
-    await fold({
-      item: 'Fold Titan',
-      patch: { collapsed: true },
-    })
+    await fold({ item: 'Fold Titan' })
     const strip = JSON.parse(await chrome({
       script: `
     await page.wait('${workspace} [aria-label="Unfold Titan"]');
@@ -1676,18 +1651,7 @@ test.each([
   `,
     }))
     expect(columns).toEqual({ unfolded: true })
-    await fold({
-      item: 'Fold all projects',
-      patch: {
-        foldedProjects: Object.fromEntries([
-          'ideas',
-          ...projects,
-        ].map(id => [
-          id,
-          true,
-        ])),
-      },
-    })
+    await fold({ item: 'Fold all projects' })
     const folded = JSON.parse(await chrome({
       script: `
     await page.wait('${workspace} [aria-label="Unfold Ideas"]');

@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react'
 import Lenis, { type VirtualScrollData } from 'lenis'
 import Snap from 'lenis/snap'
+import { phoneLayout } from '#web-shared/card-sizing.ts'
 
 const SCROLL_IDLE_MS = 500
 const SCROLL_LERP = 0.12
@@ -50,7 +51,8 @@ export function useSmoothScroll({
         virtualScroll: ({
           deltaX,
           deltaY,
-        }) => !horizontal || Math.abs(deltaX) > Math.abs(deltaY),
+        }) => !horizontal
+          || !phoneLayout({ width: innerWidth }) && Math.abs(deltaX) > Math.abs(deltaY),
         smoothWheel: true,
         autoRaf: false,
         lerp: SCROLL_LERP,
@@ -72,12 +74,18 @@ export function useSmoothScroll({
           distanceThreshold: '20%',
         },
       ) : undefined
-      // Wheel deltas are already applied when the delayed snap runs.
-      const settledSnap = ({ event }: VirtualScrollData) => snap?.onSnapDebounced({
-        event,
-        deltaX: 0,
-        deltaY: 0,
-      })
+
+      const settledSnap = ({ event }: VirtualScrollData) => {
+        if (phoneLayout({ width: innerWidth })) {
+          return
+        }
+
+        snap?.onSnapDebounced({
+          event,
+          deltaX: 0,
+          deltaY: 0,
+        })
+      }
 
       if (snap) {
         lenis.off(
@@ -96,23 +104,11 @@ export function useSmoothScroll({
         lenis.resize()
         removeSnaps.forEach(remove => remove())
         const padding = parseFloat(getComputedStyle(wrapper).scrollPaddingLeft) || 0
-        removeSnaps = [...wrapper.querySelectorAll<HTMLElement>('[data-titan-workspace]')]
-          .flatMap(element => {
-            if (!snap) {
-              return []
-            }
-
-            const start = element.offsetLeft + inner.offsetLeft - wrapper.offsetLeft - padding
-            const projects: number[] = JSON.parse(element.dataset.projectSnaps ?? '[]')
-
-            return [
-              0,
-              ...projects,
-            ].map(offset => snap.add(Math.max(
-              0,
-              start + offset,
-            )))
-          })
+        removeSnaps = snap ? [...wrapper.querySelectorAll<HTMLElement>('[data-titan-workspace]')]
+          .map(element => snap.add(Math.max(
+            0,
+            element.offsetLeft + inner.offsetLeft - wrapper.offsetLeft - padding,
+          ))) : []
       }
 
       resize()
