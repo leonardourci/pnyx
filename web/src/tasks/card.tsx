@@ -616,6 +616,7 @@ export const TitanCard = memo(function TitanCard({
     () => (
       <HoverActions anchor={element}>
         <TaskDragHandle
+          className="max-phone:hidden"
           label={`Move ${card.title}`}
           disabled={modal || !connected}
           icon="grip"
@@ -742,7 +743,7 @@ export const TitanCard = memo(function TitanCard({
       <CardContent>
         <header
           data-card-header
-          className={selected ? `flex shrink-0 flex-col gap-1.5 ${modal ? '' : 'cursor-grab touch-none [&_.card-open]:cursor-grab'}` : 'contents'}
+          className={selected ? `flex shrink-0 flex-col gap-1.5 ${modal ? '' : 'cursor-grab touch-none max-phone:touch-pan-y [&_.card-open]:cursor-grab'}` : 'contents'}
         >
           {!selected && closedSummary}
           {selected && (
