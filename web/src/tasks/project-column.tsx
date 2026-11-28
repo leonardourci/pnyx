@@ -53,8 +53,8 @@ export function ProjectColumn({
     viewport: viewport.width,
     preview,
   })
-  // Phones show one view at a time, so a project folded on a wide screen opens in full there.
-  const folded = !phone && view.workspace.foldedProjects.includes(column.id)
+  const canFold = !phone
+  const folded = canFold && view.workspace.foldedProjects.includes(column.id)
   const remembered = useRememberedScroll({
     key: sessionViewKey({
       scope: 'column',
@@ -128,7 +128,7 @@ export function ProjectColumn({
       ref={sort.setNodeRef}
       data-sort-key={sort.key}
       lifted={lifted}
-      className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere data-[outdent-armed=true]:border-gold-line data-[outdent-armed=true]:ring-2 data-[outdent-armed=true]:ring-gold data-[outdent-armed=true]:ring-inset max-phone:snap-start ${folded ? 'folded min-w-12' : ''}`}
+      className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere data-[outdent-armed=true]:border-gold-line data-[outdent-armed=true]:ring-2 data-[outdent-armed=true]:ring-gold data-[outdent-armed=true]:ring-inset max-phone:rounded-none max-phone:border-0 ${folded ? 'folded min-w-12' : ''}`}
       data-column={column.id}
       data-resizing={preview !== null}
       data-outdent-armed={outdentArmed}
@@ -147,7 +147,7 @@ export function ProjectColumn({
         folded={folded}
         hint={showHint}
         drag={sort}
-        fold={phone ? undefined : toggle}
+        fold={canFold ? toggle : undefined}
         create={create}
       />
       <FoldContent
@@ -156,7 +156,7 @@ export function ProjectColumn({
         data-sort-surface={`tasks:${titanId}:${column.id}`}
         className="column-cards project-cards block min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2"
       >
-        <div ref={grid} className="project-card-grid relative w-(--project-card-width)">
+        <div ref={grid} className="project-card-grid relative w-(--project-card-width) max-phone:w-full">
           {children()}
         </div>
       </FoldContent>

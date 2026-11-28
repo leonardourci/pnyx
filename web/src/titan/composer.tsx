@@ -322,7 +322,7 @@ export function Composer({
       {checking && <p className="save-checking muted small" role="status">Checking whether your message was saved. Retrying automatically.</p>}
       <ComposerFrame
         ref={form}
-        className="max-phone:[&_.composer-text]:min-h-24 max-phone:[&_.composer-text]:pr-7 data-tall:max-h-none! data-tall:[&_.composer-text]:min-h-composer-tall data-tall:[&_.composer-text]:max-h-none!"
+        className="max-phone:[&_.composer-text]:min-h-24 max-phone:[&_.composer-text]:pr-7 max-phone:data-tall:max-h-none! max-phone:data-tall:[&_.composer-text]:min-h-composer-tall max-phone:data-tall:[&_.composer-text]:max-h-none!"
         data-limit-height={limitHeight || undefined}
         data-tall={tall || undefined}
         aria-busy={sending}
@@ -365,7 +365,7 @@ export function Composer({
           aria-pressed={tall}
           icon={tall ? 'compact' : 'open'}
           size="compact"
-          onClick={() => setTall(!tall)}
+          onClick={() => setTall(expanded => !expanded)}
         />
         <ComposerField
           ref={field}

@@ -505,7 +505,6 @@ export function TitanView({
     setKanban,
   ] = useState<HTMLDivElement | null>(null)
   const revealPadding = phone ? 0 : WORKSPACE_SIZING.frameMargin / 2
-  // Phones move only through the sheet, so a fold saved on a wide screen shows unfolded there.
   const titanFolded = view.workspace.collapsed && !phone
   const chatFolded = view.workspace.chatCollapsed && !phone
   const requestedColumnId = columns.find(column => column.id === columnRequest?.id)?.id
@@ -1299,7 +1298,7 @@ export function TitanView({
                   onClick={toggleChat}
                   icon={chatFolded ? 'chevron_right' : 'chevron_left'}
                 />
-                <FoldContent open={!chatFolded} className="chat-content h-full [&_.titan-head]:pr-12 [&_.titan-title_.titan-label]:truncate [&>.titan-chat]:h-full [&>.titan-chat]:max-h-none [&>.titan-chat]:min-w-75 [&>.titan-chat]:shrink-0 [&>.titan-chat]:rounded-xl [&>.titan-chat]:border [&>.titan-chat]:border-line max-phone:[&>.titan-chat]:rounded-none max-phone:[&>.titan-chat]:border-0">
+                <FoldContent open={!chatFolded} className="chat-content h-full [&_.titan-head]:pr-12 [&_.titan-title_.titan-label]:truncate [&>.titan-chat]:h-full [&>.titan-chat]:max-h-none [&>.titan-chat]:min-w-75 [&>.titan-chat]:shrink-0 [&>.titan-chat]:rounded-xl [&>.titan-chat]:border [&>.titan-chat]:border-line max-phone:[&>.titan-chat]:min-w-0 max-phone:[&>.titan-chat]:rounded-none max-phone:[&>.titan-chat]:border-0">
                   <ProfileSurface name="chat" titanId={navigation.titanId}>
                     <TitanChat
                       titanId={navigation.titanId}

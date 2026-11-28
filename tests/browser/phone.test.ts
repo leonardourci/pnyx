@@ -1,5 +1,5 @@
 import type { Locator, Page } from 'playwright-core'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { startOthrys, until, type Othrys } from '../setup/othrys.ts'
 import { openTitan } from './page.ts'
 
@@ -153,6 +153,10 @@ for (const engine of ENGINES) {
         page: 0,
         scrollers: 0,
       })
+      await expect(column.getByRole(
+        'button',
+        { name: 'orbit', exact: true },
+      ).count()).resolves.toBe(0)
 
       await header.getByRole(
         'button',
@@ -301,6 +305,7 @@ test(
       reply: 'Done with the next part.',
       hold: true,
     })
+    onTestFinished(() => working.release())
     const heard = titan.chat({ text: 'Keep going' })
     await workspace.getByText('Working on the next part').waitFor()
     await workspace.getByRole(
@@ -308,13 +313,19 @@ test(
       { name: 'Reply to Titan' },
     ).tap()
     const word = await reply.evaluate(element => {
+      const text = element.firstChild
+
+      if (!text) {
+        throw new Error('The reply has no text to select')
+      }
+
       const range = document.createRange()
       range.setStart(
-        element.firstChild!,
+        text,
         0,
       )
       range.setEnd(
-        element.firstChild!,
+        text,
         'Alpha'.length,
       )
       const {

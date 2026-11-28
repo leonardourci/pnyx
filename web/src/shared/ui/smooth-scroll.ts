@@ -75,11 +75,17 @@ export function useSmoothScroll({
         },
       ) : undefined
       // Wheel deltas are already applied when the delayed snap runs.
-      const settledSnap = ({ event }: VirtualScrollData) => snap?.onSnapDebounced({
-        event,
-        deltaX: 0,
-        deltaY: 0,
-      })
+      const settledSnap = ({ event }: VirtualScrollData) => {
+        if (phoneLayout({ width: innerWidth })) {
+          return
+        }
+
+        snap?.onSnapDebounced({
+          event,
+          deltaX: 0,
+          deltaY: 0,
+        })
+      }
 
       if (snap) {
         lenis.off(

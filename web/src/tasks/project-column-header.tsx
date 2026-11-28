@@ -26,21 +26,29 @@ export function ProjectColumnHeader({
 }) {
   const keyDown = drag.listeners?.onKeyDown as KeyboardEventHandler<HTMLButtonElement> | undefined
   const foldLabel = `${folded ? 'Unfold' : 'Fold'} ${column.title}`
+  const title = <><strong>{column.title}</strong><ProjectCounts asks={column.asks} running={column.running} /></>
 
   return (
     <header onPointerDown={drag.pointerDown} className="project-column-heading relative flex min-h-10.75 items-center justify-between gap-2 border-b border-column-line px-2 py-1.25 group-[.folded]/project:h-full group-[.folded]/project:border-0 group-[.folded]/project:p-2">
       <div className={`contents ${hint ? 'invisible' : ''}`} aria-hidden={hint}>
-        <Button
+        {fold ? <Button
           className="min-w-0 touch-none justify-start gap-2 group-[.folded]/project:self-start group-[.folded]/project:writing-vertical max-phone:touch-auto [&>strong]:truncate"
           {...drag.attributes}
           onKeyDown={keyDown}
           aria-disabled={undefined}
           ref={drag.setActivatorNodeRef}
           data-column-heading={column.id}
-          aria-label={fold ? foldLabel : column.title}
+          aria-label={foldLabel}
           onClick={fold}
-        >{fold && <Icon name={folded ? 'chevron_right' : 'chevron_left'} size={ICON_SIZE.control} />}<strong>{column.title}</strong><ProjectCounts asks={column.asks} running={column.running} />
-        </Button>
+        ><Icon name={folded ? 'chevron_right' : 'chevron_left'} size={ICON_SIZE.control} />{title}
+        </Button> : (
+          <div
+            className="flex min-w-0 items-center gap-2 [&>strong]:truncate"
+            tabIndex={-1}
+            data-column-heading={column.id}
+            aria-label={column.title}
+          >{title}</div>
+        )}
         {!folded && <IconButton icon="plus" label={`New task in ${column.title}`} onClick={create} />}
       </div>
       {hint && (
