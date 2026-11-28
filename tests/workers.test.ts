@@ -1941,11 +1941,13 @@ test.each([
     const state = loadTitan({ titanId: titan.id }).state
     const taskId = state.keys['done-unread']
     const task = taskId && state.cards[taskId]
+
     if (!task) {
       throw new Error('The completed task is missing after restart')
     }
 
     const instruction = task.steering?.find(message => message.text === 'Never read this')
+
     if (!instruction) {
       throw new Error('The unread instruction is missing after restart')
     }
@@ -1959,7 +1961,10 @@ test.each([
       ...state,
       cards: {
         ...state.cards,
-        [task.id]: { ...task, steering: [legacyUnreadInstruction] },
+        [task.id]: {
+          ...task,
+          steering: [legacyUnreadInstruction],
+        },
       },
     }
     expect(steeringToFollow({ state: legacySnapshotState })).toBe(false)
