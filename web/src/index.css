@@ -225,6 +225,7 @@
   --shadow-suggestions: 0 8px 20px var(--color-shadow);
   --radius-panel: var(--radius-control);
   --spacing-composer-max: 480px;
+  --spacing-composer-tall: 60dvh;
   --transition-duration-composer: var(--transition-duration-fast);
   --spacing-attachment-gap: .375em;
   --spacing-attachment-inset: .1875em;
