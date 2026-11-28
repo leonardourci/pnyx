@@ -84,7 +84,7 @@ export function shareUnchangedBranches<Value>({
     index,
   ) => key === previousKeys[index])
   let unchanged = sameLength && sameKeys
-  let result: Record<string, unknown> | undefined
+  let result: unknown[] | Record<string, unknown> | undefined
 
   for (const key of keys) {
     const hadKey = Object.hasOwn(
@@ -106,9 +106,9 @@ export function shareUnchangedBranches<Value>({
     )) {
       if (!result) {
         result = nextIsArray ? Object.defineProperties(
-          new Array(next.length),
+          new Array<unknown>(next.length),
           Object.getOwnPropertyDescriptors({ ...after }),
-        ) as Record<string, unknown> : { ...after }
+        ) : { ...after }
       }
 
       Object.defineProperty(
