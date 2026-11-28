@@ -164,7 +164,6 @@ esac
     })
   }
 
-  // A release tag on origin, as the release after a merged version bump leaves it.
   const release = ({
     tag,
     commit,

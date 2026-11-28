@@ -14,7 +14,7 @@ export const OTHRYS_ROOT = join(
 const NETWORK_MS = 60_000
 const BUILD_MS = 15 * 60_000
 const MAIN = 'refs/heads/main'
-const RELEASE_TAG = /^refs\/tags\/v(\d+)\.(\d+)\.(\d+)$/
+const RELEASE_TAG = /^refs\/tags\/v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 const NO_RELEASE = 'origin has no release tag yet. Set upgradeChannel to development to follow main.'
 
 // The last lines of a failed command, enough to recognize the error.
@@ -114,8 +114,8 @@ const newerVersion = ({
   version,
   than,
 }: {
-  version: number[]
-  than: number[]
+  version: bigint[]
+  than: bigint[]
 }) => {
   const differing = version.findIndex((
     part,
@@ -125,10 +125,16 @@ const newerVersion = ({
   return differing !== -1 && version[differing] > than[differing]
 }
 
-// origin's newest vX.Y.Z tag and the commit it points at; undefined when origin has none.
-async function newestRelease({ root }: { root: string }): Promise<RemoteTarget | undefined> {
+async function newestRelease({
+  root,
+  signal,
+}: {
+  root: string
+  signal?: AbortSignal
+}): Promise<RemoteTarget | undefined> {
   const listed = await git({
     root,
+    signal,
     args: [
       'ls-remote',
       '--tags',
@@ -136,16 +142,25 @@ async function newestRelease({ root }: { root: string }): Promise<RemoteTarget |
       'v*',
     ],
   })
-  const commits = new Map(listed.split('\n').filter(Boolean)
-    .map(line => line.split('\t').reverse() as [string, string]))
+  const commits = new Map<string, string>()
+
+  for (const line of listed.split('\n')) {
+    const [commit, ref] = line.split('\t')
+
+    if (commit && ref) {
+      commits.set(ref, commit)
+    }
+  }
+
   let newest: {
     ref: string
-    version: number[]
+    commit: string
+    version: bigint[]
   } | undefined
 
-  for (const ref of commits.keys()) {
+  for (const [ref, object] of commits) {
     const version = RELEASE_TAG.exec(ref)?.slice(1)
-      .map(Number)
+      .map(part => BigInt(part))
 
     if (version && (!newest || newerVersion({
       version,
@@ -153,6 +168,7 @@ async function newestRelease({ root }: { root: string }): Promise<RemoteTarget |
     }))) {
       newest = {
         ref,
+        commit: commits.get(`${ref}^{}`) ?? object,
         version,
       }
     }
@@ -162,29 +178,31 @@ async function newestRelease({ root }: { root: string }): Promise<RemoteTarget |
     return undefined
   }
 
-  // An annotated tag names a tag object; the line ending in ^{} names the commit it points at.
-  const commit = commits.get(`${newest.ref}^{}`) ?? commits.get(newest.ref)!
-
   return {
     ref: newest.ref,
-    commit,
+    commit: newest.commit,
   }
 }
 
-// The origin ref the channel follows and its commit: main on development, the newest release tag on stable.
 async function remoteTarget({
   root,
   channel,
+  signal,
 }: {
   root: string
   channel: UpgradeChannel
+  signal?: AbortSignal
 }): Promise<RemoteTarget | undefined> {
   if (channel === 'stable') {
-    return await newestRelease({ root })
+    return await newestRelease({
+      root,
+      signal,
+    })
   }
 
   const commit = (await git({
     root,
+    signal,
     args: [
       'ls-remote',
       'origin',
@@ -198,8 +216,6 @@ async function remoteTarget({
   } : undefined
 }
 
-// Whether there is something to upgrade: a newer commit on the channel, or a cut upgrade that already pulled; undefined when origin
-// cannot be read or has nothing on the channel.
 export async function upgradeAvailable({
   root = OTHRYS_ROOT,
   channel,
@@ -354,8 +370,6 @@ export type UpgradeResult = Pick<UpgradeOperation, 'steps' | 'from' | 'to' | 'fa
 
 let busy = false
 
-// Pulls what the channel follows, installs and builds; a failed or stopped step puts the folder back on the commit it
-// started from.
 // The caller restarts the server, and only after this reports upgraded.
 // The busy flag guards one process: a CLI and a server upgrading at once can still race.
 export async function runUpgrade({
@@ -481,6 +495,7 @@ async function upgrade({
   }
 
   let to: string | undefined
+  let checkoutMayHaveChanged = false
 
   const step = async ({
     name,
@@ -517,6 +532,18 @@ async function upgrade({
     await step({
       name: 'pull',
       work: async () => {
+        const target = channel === 'stable' ? await remoteTarget({
+          root,
+          channel,
+          signal,
+        }) : { ref: MAIN }
+
+        if (!target) {
+          throw new Error(NO_RELEASE)
+        }
+
+        signal?.throwIfAborted()
+        checkoutMayHaveChanged = true
         const changes = await git({
           root,
           args: [
@@ -555,15 +582,6 @@ async function upgrade({
           reasons.push(`Saved local work as ${saved}. Use git stash apply ${saved} in the Othrys folder to restore it.`)
         }
 
-        const target = await remoteTarget({
-          root,
-          channel,
-        })
-
-        if (!target) {
-          throw new Error(channel === 'stable' ? NO_RELEASE : 'origin has no main branch.')
-        }
-
         await git({
           root,
           args: [
@@ -580,7 +598,6 @@ async function upgrade({
             'FETCH_HEAD^{commit}',
           ],
         })
-        // Fast-forward only, so stable never moves the folder back to an older release than it runs.
         await git({
           root,
           args: [
@@ -606,7 +623,7 @@ async function upgrade({
           state: 'current',
           steps,
           from,
-          to,
+          to: pulled,
         },
       })
     }
@@ -639,22 +656,25 @@ async function upgrade({
         state: 'upgraded',
         steps,
         from,
-        to,
+        to: pulled,
       },
     })
   } catch (error) {
     const failed = steps.at(-1)!.step
     const stopped = signal?.aborted
     let detail = stopped ? undefined : (error as Error).message
-    let rolledBack = true
+    let rolledBack = !cut
 
     try {
-      await rollback({
-        root,
-        from,
-        // The cut upgrade may have installed already, whatever step failed in this one.
-        failed: cut ? 'build' : failed,
-      })
+      if (checkoutMayHaveChanged) {
+        await rollback({
+          root,
+          from,
+          // The cut upgrade may have installed already, whatever step failed in this one.
+          failed: cut ? 'build' : failed,
+        })
+        rolledBack = true
+      }
     } catch (rollbackError) {
       rolledBack = false
       detail = [

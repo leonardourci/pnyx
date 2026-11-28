@@ -979,19 +979,18 @@ export async function startServer({
     interval: CREATION_POLL_MS,
   })
   let upgradeChannel = readSettings().settings.upgradeChannel
-  // Once at start, then daily and when the channel changes: an offline check leaves the last answer, and no answer shows no hint.
+  let upgradeCheckId = 0
   const checkUpgrade = () => options.upgradeRoot && background({
     name: 'upgrade check',
     run: async () => {
-      const channel = upgradeChannel
+      const checkId = ++upgradeCheckId
       const available = await upgradeAvailable({
         root: options.upgradeRoot,
-        channel,
+        channel: upgradeChannel,
       })
-      // A check for a channel the owner has since left answers nothing.
-      const stale = channel !== upgradeChannel
+      const superseded = checkId !== upgradeCheckId
 
-      if (closed || stale || available === undefined) {
+      if (closed || superseded || available === undefined) {
         return
       }
 
@@ -1023,7 +1022,6 @@ export async function startServer({
       served.forEach(m => m.settings())
     }
 
-    // The hint answered for the old channel, so it clears until the new channel is checked.
     if (settings.upgradeChannel !== upgradeChannel) {
       upgradeChannel = settings.upgradeChannel
       upgradeStatus = null

@@ -28,7 +28,6 @@ export const UPGRADE_SUGGESTION: Suggestion = {
 
 export const upgradeCommand = ({ text }: { text: string }) => text.trim() === UPGRADE_COMMAND
 
-// development follows origin main; stable follows the newest vX.Y.Z tag.
 export const UPGRADE_CHANNELS = [
   'development',
   'stable',
@@ -103,7 +102,6 @@ export type UpgradeEvent = EventBase & {
   data: UpgradeOperation
 }
 
-// What the daily check found: whether GitHub's main has a commit the installed Othrys lacks.
 export interface UpgradeStatus {
   available: boolean
   checkedAt: string

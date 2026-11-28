@@ -37,8 +37,6 @@ const follow = ({ channel }: { channel: 'development' | 'stable' }) => owner.own
   ],
 })
 
-// Every test starts from the first commit, its build, the development channel and no restarts, so the tests pass alone
-// and in any order.
 beforeEach(async () => {
   folder.reset()
   restarts = 0
@@ -604,6 +602,14 @@ test(
     })
 
     await follow({ channel: 'stable' })
+    const localNotes = join(
+      folder.install,
+      'local-notes.txt',
+    )
+    writeFileSync(
+      localNotes,
+      'Keep this file in the checkout',
+    )
     await upgrade({ titan })
     const unreleased = await settled({
       titan,
@@ -611,13 +617,17 @@ test(
     })
     expect(unreleased.error).toContain('no release tag')
     expect(folder.head()).toBe(previous)
+    expect(readFileSync(
+      localNotes,
+      'utf8',
+    )).toBe('Keep this file in the checkout')
     expect(upgradeNotice()).toBeNull()
 
     const three = folder.publish({
       files: { 'build.sh': building({ version: 'three' }) },
       message: 'three',
     })
-    folder.publish({
+    const four = folder.publish({
       files: { 'build.sh': building({ version: 'four' }) },
       message: 'four, merged after the last release',
     })
@@ -659,5 +669,27 @@ test(
       what: 'the hint to show main\'s newer commit',
       check: () => upgradeNotice()?.available === true,
     })
+
+    await upgrade({ titan })
+    await settled({
+      titan,
+      state: 'restarting',
+    })
+    await othrys.restart()
+    expect(folder.head()).toBe(four)
+
+    await follow({ channel: 'stable' })
+    await until({
+      what: 'the stable hint to stay clear on a newer checkout',
+      check: () => upgradeNotice()?.available === false,
+    })
+    await upgrade({ titan })
+    const current = await settled({
+      titan,
+      state: 'current',
+    })
+    expect(current.to).toBe(four)
+    expect(folder.head()).toBe(four)
+    expect(folder.built()).toBe('four')
   },
 )
