@@ -75,7 +75,7 @@ const LOG_LEVELS = [
     label: 'Detailed',
   },
 ]
-const CHANNELS = [
+const UPGRADE_CHANNELS = [
   {
     value: 'stable',
     label: 'Stable',
@@ -408,9 +408,9 @@ export function SettingControl({
     case 'upgradeChannel':
       return (
         <Segmented
-          label="Upgrade channel"
+          label={entry.label}
           value={settings.upgradeChannel}
-          options={CHANNELS}
+          options={UPGRADE_CHANNELS}
           onChange={({ value }) => save({ patch: { upgradeChannel: value } })}
         />
       )

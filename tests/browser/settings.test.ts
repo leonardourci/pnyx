@@ -9,7 +9,7 @@ beforeAll(async () => {
 })
 
 test(
-  'choosing Development under Upgrade channel saves the shared upgradeChannel setting',
+  'changing the upgrade channel saves the selection and includes it under Changed',
   async () => {
     const titan = await othrys.titan()
     const page = await openTitan({
@@ -32,9 +32,14 @@ test(
       what: 'upgradeChannel to save as development',
       check: () => othrys.home().settings.settings.upgradeChannel === 'development',
     })
-    await expect.poll(() => channel.getByRole(
-      'radio',
-      { name: 'Development' },
-    ).getAttribute('aria-checked')).toBe('true')
+    const changed = page.getByRole('navigation', { name: 'Settings sections' })
+      .getByRole('button', { name: /^Changed/ })
+    await changed.click()
+    await channel.getByRole('radio', { name: 'Stable' }).click()
+    await until({
+      what: 'upgrade channel to save as stable',
+      check: () => othrys.home().settings.settings.upgradeChannel === 'stable',
+    })
+    await channel.waitFor({ state: 'hidden' })
   },
 )
