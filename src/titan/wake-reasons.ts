@@ -340,14 +340,21 @@ function ordinaryReasons({
   }
 
   switch (event.type) {
-    case 'project.refreshed':
-      return !taskDone({ card }) && (event.data.state === 'needs-attention' || event.data.state === 'unknown') ? [
+    case 'project.refreshed': {
+      const needsAttention = event.data.state === 'needs-attention' || event.data.state === 'unknown'
+
+      if (taskDone({ card }) || !needsAttention) {
+        return []
+      }
+
+      return [
         {
           kind: 'project refresh',
           card: card.id,
           detail: `${event.data.path}: ${event.data.reason}. The pull request remains confirmed merged.`,
         },
-      ] : []
+      ]
+    }
     case 'task.worker-line': {
       const {
         code,

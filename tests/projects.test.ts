@@ -707,7 +707,7 @@ const merges = ({ number }: { number: number }) => readFileSync(
   .filter(line => line.includes('PUT') && line.includes(`/pulls/${number}/merge`)).length
 
 test(
-  'after a restart, a done task whose pull request merged long ago gets no project refresh again and Titan hears nothing about it',
+  'a saved refresh for a done task survives restart without another wake',
   async () => {
     const titan = await othrys.titan()
     await createProject({
@@ -733,16 +733,17 @@ test(
       number: 31,
       state: 'merged',
     })
+    const url = 'https://github.com/o/shop/pull/31'
     await titan.owner({
       args: [
         'link',
         'refresh',
         '--url',
-        'https://github.com/o/shop/pull/31',
+        url,
       ],
     })
     const { id } = await titan.task({ key: 'refresh' })
-    const refreshed = () => loadTitan({ titanId: titan.id }).state.cards[id]?.projectRefresh?.['https://github.com/o/shop/pull/31']
+    const refreshed = () => loadTitan({ titanId: titan.id }).state.cards[id]?.projectRefresh?.[url]
     const first = await until({
       what: 'the merged pull request to refresh its project',
       check: refreshed,
