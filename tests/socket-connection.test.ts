@@ -22,14 +22,14 @@ beforeAll(async () => {
   othrys = await startOthrys()
 })
 
-type Frame = {
+type PageSocket = {
   socket: WebSocket
   url: URL
   frames: ServerMessage[]
 }
 
 function connectPage({ primary }: { primary: string }) {
-  const sockets: Frame[] = []
+  const sockets: PageSocket[] = []
 
   class ClientSocket extends WebSocket {
     constructor({ href }: URL) {
@@ -289,11 +289,11 @@ test(
         what: 'the worker chat page to load',
         check: () => thread()?.card === task.id,
       })
+      const loaded = thread()
       await command({
         name: 'page',
         args: [],
       })
-      expect(thread()?.card).toBe(task.id)
       await command({
         name: 'page',
         args: [
@@ -301,7 +301,7 @@ test(
           task.id,
         ],
       })
-      expect(thread()?.card).toBe(task.id)
+      expect(thread()).toBe(loaded)
 
       const otherCards: string[] = []
 

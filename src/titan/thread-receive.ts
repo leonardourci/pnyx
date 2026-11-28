@@ -7,18 +7,26 @@ const CLOSED_THREADS_KEPT = 8
 
 export function createThreadReceiver() {
   let titan: ThreadPage | null = null
-  const workers = new Map<string, ThreadPage>()
+  const updatedWorkers = new Set<string>()
+  let workerPages: Record<string, ThreadPage> = {}
   let openCards = new Set<string>()
 
   const trimClosedPages = () => {
-    const closedOldestFirst = [...workers.keys()].filter(id => !openCards.has(id))
+    const closedOldestFirst = [...updatedWorkers].filter(id => !openCards.has(id))
     const dropped = closedOldestFirst.slice(
       0,
       -CLOSED_THREADS_KEPT,
     )
 
+    if (!dropped.length) {
+      return
+    }
+
+    workerPages = { ...workerPages }
+
     for (const id of dropped) {
-      workers.delete(id)
+      updatedWorkers.delete(id)
+      delete workerPages[id]
     }
   }
 
@@ -27,12 +35,19 @@ export function createThreadReceiver() {
       return titan
     }
 
-    return workers.get(card) ?? null
+    if (!Object.hasOwn(
+      workerPages,
+      card,
+    )) {
+      return null
+    }
+
+    return workerPages[card] ?? null
   }
 
   return {
     read,
-    workerPages: () => Object.fromEntries(workers),
+    workerPages: () => workerPages,
     retain({ cards }: { cards: string[] }) {
       openCards = new Set(cards)
       trimClosedPages()
@@ -69,11 +84,12 @@ export function createThreadReceiver() {
       if (thread.card === TITAN_CARD) {
         titan = thread
       } else {
-        workers.delete(thread.card)
-        workers.set(
-          thread.card,
-          thread,
-        )
+        updatedWorkers.delete(thread.card)
+        updatedWorkers.add(thread.card)
+        workerPages = {
+          ...workerPages,
+          [thread.card]: thread,
+        }
         trimClosedPages()
       }
 
