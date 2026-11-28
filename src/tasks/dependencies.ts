@@ -3,7 +3,7 @@ import { holdBlocker, ownerGates, questionBlockers, type Blocker } from './owner
 import type { TitanEvent, TitanState } from '#app/model.ts'
 import { TitanError } from '#store/errors.ts'
 import type { Card } from './model.ts'
-import { cardLanding } from '#tasks/delivery/model.ts'
+import { completedOutcome } from '#tasks/delivery/model.ts'
 import { knownCards } from '#tasks/select.ts'
 import { touch } from './touch.ts'
 import { waitReadiness } from './waits.ts'
@@ -71,10 +71,6 @@ export function applyDependencies({
   return true
 }
 
-export function completedOutcome({ outcome }: { outcome?: Card['outcome'] | null }): boolean {
-  return Boolean(outcome?.closed || outcome?.state === 'done' || outcome?.state === 'cancelled')
-}
-
 export function completionGaps({
   state,
   card,
@@ -98,21 +94,8 @@ export function completionGaps({
     gaps.push('waiting for an answer')
   }
 
-  const pullRequests = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
-  const merged = pullRequests.length > 0 && pullRequests.every(link => link.state === 'merged')
-  const completed = card.workerLog?.status?.code === 'done' || completedOutcome({ outcome: card.outcome }) || merged
-
-  if (!completed) {
+  if (!completedOutcome({ outcome: card.outcome })) {
     gaps.push('not completed')
-  }
-
-  const branchLanding = cardLanding({
-    card,
-    projects: state.projects ?? [],
-  })?.landing === 'branch'
-
-  if (!branchLanding && pullRequests.some(link => link.state !== 'merged')) {
-    gaps.push('pull request not merged')
   }
 
   gaps.push(...unmetPrerequisites({

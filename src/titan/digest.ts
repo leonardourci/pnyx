@@ -252,10 +252,7 @@ function digestParts({
     return position < 0 ? projectOrder.length : position
   }
 
-  const open = tasks.filter(card => !taskDone({
-    state,
-    card,
-  }))
+  const open = tasks.filter(card => !taskDone({ card }))
   const ordered = tasks.sort((
     a,
     b,
@@ -345,10 +342,7 @@ function digestParts({
             counts.asks++
           } else if (status === 'working') {
             counts.working++
-          } else if (taskDone({
-            state,
-            card,
-          })) {
+          } else if (taskDone({ card })) {
             counts.done++
           } else {
             counts.waiting++
@@ -597,10 +591,7 @@ export function titanDigest({
     const previousHash = before?.parts[identity]
 
     if (card) {
-      if (!previousHash && taskDone({
-        state,
-        card,
-      })) {
+      if (!previousHash && taskDone({ card })) {
         continue
       }
 

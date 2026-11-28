@@ -205,15 +205,5 @@ export const toolApplicationReady = ({ card }: {
   card.agent?.host === 'othrys' && card.toolsRevision !== undefined
     && card.toolsRevision !== card.toolsApplied && card.copy?.state !== 'removed'
 
-export function closedTask({
-  state,
-  card,
-}: {
-  state: TitanState
-  card: Card
-}): boolean {
-  return card.hidden === true || taskDone({
-    state,
-    card,
-  }) || card.copy?.state === 'removed'
-}
+export const closedTask = ({ card }: { card: Card }): boolean =>
+  card.hidden === true || taskDone({ card }) || card.copy?.state === 'removed'

@@ -1,6 +1,6 @@
 import type { Card } from './model.ts'
 import type { TitanState } from '#app/model.ts'
-import { cardStatus } from './card-status.ts'
+import { completedOutcome } from '#tasks/delivery/model.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 
 const known = new WeakMap<Record<string, Card>, {
@@ -45,27 +45,8 @@ export function liveTask({ card }: { card: Card }): boolean {
   return card.hidden !== true
 }
 
-export function taskDone({
-  state,
-  card,
-}: {
-  state: TitanState
-  card: Card
-}): boolean {
-  const hasChildren = Object.values(knownCards({ state })).some(child => child.parentId === card.id)
-
-  if (hasChildren) {
-    return card.doneAt !== undefined
-  }
-
-  const status = cardStatus({
-    card,
-    cards: state.cards,
-    sessions: state.sessions,
-  }).kind
-
-  return status === 'done' || status === 'merged'
-}
+export const taskDone = ({ card }: { card: Card }): boolean =>
+  completedOutcome({ outcome: card.outcome })
 
 export function rankOf({ card }: { card: Pick<Card, 'rank' | 'createdSeq'> }): number {
   return card.rank ?? card.createdSeq

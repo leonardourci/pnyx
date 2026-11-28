@@ -76,14 +76,12 @@ export function waitingReminders({ state }: { state: TitanState }) {
 }
 
 export function reminderRepeat({
-  state,
   card,
   when,
   every,
   until,
   question,
 }: {
-  state: TitanState
   card: Card
   when: string
   every?: string
@@ -117,10 +115,7 @@ export function reminderRepeat({
     })
   }
 
-  if (until === 'task-done' && reminderDone({
-    state,
-    card,
-  })) {
+  if (until === 'task-done' && taskDone({ card })) {
     inform({
       task: card.id,
       reason: 'Task is already done; its recurring reminder stops immediately',
@@ -166,19 +161,6 @@ function clearReminder({ card }: { card: Card }) {
   delete card.reminder
 }
 
-function reminderDone({
-  state,
-  card,
-}: {
-  state: TitanState
-  card: Card
-}): boolean {
-  return taskDone({
-    state,
-    card,
-  })
-}
-
 export function stopReminders({
   state,
   event,
@@ -198,10 +180,7 @@ export function stopReminders({
 
     const question = card.asks?.find(ask => ask.id === repeat.question)
     const answered = repeat.until === 'question-answered' && (!question || question.answered || question.closed)
-    const done = repeat.until === 'task-done' && reminderDone({
-      state,
-      card,
-    })
+    const done = repeat.until === 'task-done' && taskDone({ card })
     const stopped = done || answered || (repeat.until === 'worker-started' && workerStarted)
 
     if (stopped) {

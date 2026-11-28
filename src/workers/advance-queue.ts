@@ -12,7 +12,7 @@ import { decideLink } from '#tasks/delivery/links.ts'
 import { decideSession } from './sessions.ts'
 import { titanEvent } from '#titan/titan.ts'
 import type { Card } from '#tasks/model.ts'
-import type { LinkState } from '#tasks/delivery/model.ts'
+import { completedOutcome, type LinkState } from '#tasks/delivery/model.ts'
 import type { AgentSession } from './model.ts'
 import { taskPrompt } from './worker-brief.ts'
 import { refreshConfirmedProject } from '#projects/refresh-confirmed.ts'
@@ -557,12 +557,8 @@ export async function advanceQueues({
       }
 
       const sourceRevision = card.revision
-      const prs = card.links.filter(l => l.kind === 'github_pr')
 
-      const landed = prs.length ? prs.every(l => l.state === 'merged')
-        : card.workerLog?.status?.code === 'done' || Boolean(card.doneAt)
-
-      if (!landed) {
+      if (!completedOutcome({ outcome: card.outcome })) {
         continue
       }
 

@@ -10,6 +10,7 @@ import { notUndoable } from './command-validation.ts'
 import { viewFor } from '#preferences/view.ts'
 import { decided } from './decision.ts'
 import { currentHolder } from '#tasks/move.ts'
+import { refuseOutcomeFrom } from '#tasks/delivery/outcome.ts'
 import { sessionTaskFields } from '#workers/session-facts.ts'
 
 function editBefore({ target }: { target: Extract<TitanEvent, { type: 'task.edited' }> }): PushFields {
@@ -243,14 +244,6 @@ export function decideUndo({
     throw notUndoable({ message: `${target.id} created card ${target.cardId} and cannot be undone` })
   }
 
-  const after = target.type === 'card.outcome' && !target.undoes && target.data.after?.source
-  const before = target.type === 'card.outcome' && target.data.before?.source
-  const observedBy = after || (before && (before !== 'hooks' || target.actor.startsWith('hook:')) && before)
-
-  if (observedBy) {
-    throw notUndoable({ message: `${target.id} records an outcome observed by ${observedBy} and cannot be undone` })
-  }
-
   if (target.type === 'card.linked' && target.data.after?.state === 'merged') {
     throw notUndoable({ message: `${target.id} records a merge, which cannot be undone` })
   }
@@ -345,6 +338,8 @@ export function decideUndo({
   if (target.type !== 'card.outcome') {
     throw notUndoable({ message: `${target.id} cannot be undone` })
   }
+
+  refuseOutcomeFrom({ actor: meta.actor })
 
   return decided({
     state,
