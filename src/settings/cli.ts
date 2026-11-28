@@ -47,6 +47,7 @@ export const settings = guard({
           'oracleRememberFilters takes true or false; titanOrder takes the whole list of Titan ids, each once; hiddenTitans takes the Titan ids hidden from the page list and switcher',
           `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
           'allowedHosts takes the host names beside this computer that may open Othrys, such as a Tailscale name served by tailscale serve; [] allows only this computer',
+          'upgradeChannel takes stable (/upgrade moves to the newest vX.Y.Z release tag) or development (/upgrade follows main)',
         ],
       }
     }

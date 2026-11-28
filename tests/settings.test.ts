@@ -41,7 +41,10 @@ test(
         'settings',
         'schema',
       ],
-    })).defaults.doneAfterHours).toBe(1)
+    })).defaults).toMatchObject({
+      doneAfterHours: 1,
+      upgradeChannel: 'stable',
+    })
 
     await first.owner({
       args: [
@@ -122,6 +125,7 @@ test(
       '{"nope":1}',
       '{"theme":"purple"}',
       '{"logDays":0}',
+      '{"upgradeChannel":"beta"}',
       '{"keyboard":{"bindings":{}}}',
       '{"defaultColumnWidth":460}',
       '{"defaultColumnWidths":{"ideas":460}}',

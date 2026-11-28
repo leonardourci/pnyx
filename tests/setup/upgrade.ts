@@ -164,6 +164,50 @@ esac
     })
   }
 
+  const release = ({
+    tag,
+    commit,
+    annotated = false,
+  }: {
+    tag: string
+    commit: string
+    annotated?: boolean
+  }) => {
+    const message = annotated ? [
+      '-a',
+      '-m',
+      tag,
+    ] : []
+
+    git({
+      cwd: author,
+      args: [
+        'tag',
+        ...message,
+        tag,
+        commit,
+      ],
+    })
+    git({
+      cwd: author,
+      args: [
+        'push',
+        '-q',
+        'origin',
+        `refs/tags/${tag}`,
+      ],
+    })
+  }
+
+  const tags = ({ cwd }: { cwd: string }) => git({
+    cwd,
+    args: [
+      'tag',
+      '--list',
+    ],
+  }).split('\n')
+    .filter(Boolean)
+
   const first = publish({
     files: {
       '.gitignore': 'built.txt\ndist/\n',
@@ -188,6 +232,38 @@ esac
 
   // Puts origin and the install folder back on the first commit, its branch and its build, so every test starts from the same folder.
   const reset = () => {
+    for (const tag of tags({ cwd: author })) {
+      git({
+        cwd: author,
+        args: [
+          'push',
+          '-q',
+          'origin',
+          '--delete',
+          `refs/tags/${tag}`,
+        ],
+      })
+      git({
+        cwd: author,
+        args: [
+          'tag',
+          '-d',
+          tag,
+        ],
+      })
+    }
+
+    for (const tag of tags({ cwd: install })) {
+      git({
+        cwd: install,
+        args: [
+          'tag',
+          '-d',
+          tag,
+        ],
+      })
+    }
+
     git({
       cwd: author,
       args: [
@@ -287,6 +363,7 @@ esac
     install,
     first,
     publish,
+    release,
     reset,
     head: () => git({
       cwd: install,
