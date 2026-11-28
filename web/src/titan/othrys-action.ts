@@ -48,8 +48,7 @@ export function othrysLookup({ state }: { state(): TitanState }): OthrysLookup {
   }
 }
 
-// One lookup per Titan's config and projects that reads the latest state, so rows that receive it are not redrawn for
-// every Titan change.
+// Changes only with config and projects, so rows that receive it do not redraw on every Titan change.
 export function useOthrysLookup({ state }: { state: TitanState }): OthrysLookup {
   const latest = useRef(state)
   latest.current = state

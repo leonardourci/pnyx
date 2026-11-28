@@ -3,8 +3,7 @@ import { TITAN_CARD } from './identity.ts'
 import { applyThreadDelta, receivedThread } from './thread-delta.ts'
 import type { ThreadPage } from './transcripts-read.ts'
 
-// The worker chats updated last keep their page after they close, so one opened again shows at once while its read
-// refreshes it.
+// Closed worker chats updated last keep their page, so a reopened chat shows at once while it refreshes.
 const CLOSED_THREADS_KEPT = 8
 
 export function createThreadReceiver() {

@@ -52,8 +52,7 @@ const plain = ({ value }: { value: unknown }) => {
   return prototype === Object.prototype || prototype === Array.prototype
 }
 
-// The next value with every branch that holds the same leaves as before swapped for the previous one, so a view rebuilt
-// with nothing new keeps its identity and only the branches that changed are new.
+// The next value with each branch that reads the same swapped for the previous one, so a rebuilt view keeps its identity.
 export function shared<Value>({
   previous,
   next,
