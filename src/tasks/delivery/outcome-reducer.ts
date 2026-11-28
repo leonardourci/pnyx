@@ -32,6 +32,13 @@ export function applyOutcome({
     delete card.keepDone
   }
 
+  // An ended task settles the instructions its worker never read, so nothing keeps notifying it.
+  for (const message of card.steering ?? []) {
+    if (!message.ack) {
+      message.stopped = true
+    }
+  }
+
   const closes = new Set(event.data.closes)
 
   if (!closes.size) {
