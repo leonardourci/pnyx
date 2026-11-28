@@ -74,6 +74,7 @@ export function useSmoothScroll({
           distanceThreshold: '20%',
         },
       ) : undefined
+
       // Wheel deltas are already applied when the delayed snap runs.
       const settledSnap = ({ event }: VirtualScrollData) => {
         if (phoneLayout({ width: innerWidth })) {

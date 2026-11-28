@@ -155,7 +155,10 @@ for (const engine of ENGINES) {
       })
       await expect(column.getByRole(
         'button',
-        { name: 'orbit', exact: true },
+        {
+          name: 'orbit',
+          exact: true,
+        },
       ).count()).resolves.toBe(0)
 
       await header.getByRole(

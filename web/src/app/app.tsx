@@ -546,6 +546,7 @@ export function App() {
         url,
         location.href,
       ).pathname.split('/')[2]!)
+
       if (!phoneLayout({ width: innerWidth })) {
         titan.commandFor({ id: destination })({
           name: 'view',
@@ -563,6 +564,7 @@ export function App() {
           ],
         }).catch((error: Error) => setRootError(error.message))
       }
+
       await titan.navigate({
         url,
         replace,
