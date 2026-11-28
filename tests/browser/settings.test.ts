@@ -23,15 +23,18 @@ test(
     )
     expect(othrys.home().settings.settings.upgradeChannel).toBe('stable')
 
+    const search = page.getByLabel('Search settings', { exact: true })
+    await search.fill('release tag')
     await channel.getByRole(
       'radio',
       { name: 'Development' },
     ).click()
 
     await until({
-      what: 'upgradeChannel to save as development',
+      what: 'upgrade channel to save as development',
       check: () => othrys.home().settings.settings.upgradeChannel === 'development',
     })
+    await search.clear()
     const changed = page.getByRole(
       'navigation',
       { name: 'Settings sections' },

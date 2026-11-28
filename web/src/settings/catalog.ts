@@ -124,6 +124,17 @@ const TEXT_SIZE = [
   'readable',
 ]
 
+export const UPGRADE_CHANNEL_OPTIONS = [
+  {
+    value: 'stable',
+    label: 'Stable',
+  },
+  {
+    value: 'development',
+    label: 'Development',
+  },
+]
+
 export const SETTINGS_CATALOG: CatalogEntry[] = [
   {
     id: 'theme',
@@ -403,16 +414,10 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'upgradeChannel',
     section: 'about',
     label: 'Upgrade channel',
-    description: 'What /upgrade follows. Stable moves to the newest release tag; Development follows main.',
-    values: [
-      'Stable',
-      'Development',
-    ],
+    description: 'Stable follows the newest release tag. Development follows main.',
+    values: UPGRADE_CHANNEL_OPTIONS.map(({ label }) => label),
     related: [
       'update',
-      'release',
-      'main',
-      'tag',
     ],
   },
 ]

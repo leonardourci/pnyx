@@ -27,7 +27,7 @@ import { AgentPreview, TitanPreview, CardTextPreview, CardUpdatesPreview, ChatTe
 import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './titan-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
 import { AllowedHosts } from './allowed-hosts.tsx'
-import { SETTING_ICONS, SETTINGS_SECTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
+import { SETTING_ICONS, SETTINGS_SECTIONS, UPGRADE_CHANNEL_OPTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
 
 const UNITS: Record<string, string> = {
   fontSize: 'px',
@@ -73,16 +73,6 @@ const LOG_LEVELS = [
   {
     value: 'detailed',
     label: 'Detailed',
-  },
-]
-const UPGRADE_CHANNELS = [
-  {
-    value: 'stable',
-    label: 'Stable',
-  },
-  {
-    value: 'development',
-    label: 'Development',
   },
 ]
 const SUGGESTIONS = [
@@ -410,7 +400,7 @@ export function SettingControl({
         <Segmented
           label={entry.label}
           value={settings.upgradeChannel}
-          options={UPGRADE_CHANNELS}
+          options={UPGRADE_CHANNEL_OPTIONS}
           onChange={({ value }) => save({ patch: { upgradeChannel: value } })}
         />
       )
