@@ -28,31 +28,6 @@ export interface OthrysLookup {
   column({ ref }: { ref: string }): ProjectGroup | undefined
 }
 
-function findTask<Task>({
-  ref,
-  tasks,
-  keys,
-}: {
-  ref: string
-  tasks: Record<string, Task>
-  keys: TitanState['keys']
-}) {
-  const id = keys[ref]
-
-  return tasks[ref] ?? (id === undefined ? undefined : tasks[id])
-}
-
-function findColumn({
-  ref,
-  columns,
-}: {
-  ref: string
-  columns: ProjectGroup[]
-}) {
-  return columns.find(column => column.id === ref
-    || column.title.toLowerCase() === ref.toLowerCase())
-}
-
 export function useOthrysLookup({ state }: { state: TitanState }): OthrysLookup {
   const tasks = useKept({
     value: Object.fromEntries(Object.entries(knownCards({ state })).map(([
@@ -71,15 +46,13 @@ export function useOthrysLookup({ state }: { state: TitanState }): OthrysLookup 
 
   return useMemo<OthrysLookup>(
     () => ({
-      task: ({ ref }) => findTask({
-        ref,
-        tasks,
-        keys,
-      }),
-      column: ({ ref }) => findColumn({
-        ref,
-        columns,
-      }),
+      task: ({ ref }) => {
+        const id = Object.hasOwn(tasks, ref) ? ref : keys[ref]
+
+        return id !== undefined && Object.hasOwn(tasks, id) ? tasks[id] : undefined
+      },
+      column: ({ ref }) => columns.find(column => column.id === ref
+        || column.title.toLowerCase() === ref.toLowerCase()),
     }),
     [
       tasks,

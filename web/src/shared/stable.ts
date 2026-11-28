@@ -59,13 +59,17 @@ export function shareUnchangedBranches<Value>({
   previous?: Value
   next: Value
 }): Value {
-  const comparable = plain({ value: previous }) && plain({ value: next })
-    && Array.isArray(previous) === Array.isArray(next)
-
   if (Object.is(
     previous,
     next,
-  ) || !comparable) {
+  )) {
+    return next
+  }
+
+  const comparable = plain({ value: previous }) && plain({ value: next })
+    && Array.isArray(previous) === Array.isArray(next)
+
+  if (!comparable) {
     return next
   }
 
@@ -100,19 +104,17 @@ export function shareUnchangedBranches<Value>({
       value,
       after[key],
     )) {
-      result ??= (nextIsArray ? Object.assign(
-        new Array(next.length),
-        next,
-      ) : { ...after }) as Record<string, unknown>
+      if (!result) {
+        result = nextIsArray ? Object.defineProperties(
+          new Array(next.length),
+          Object.getOwnPropertyDescriptors({ ...after }),
+        ) as Record<string, unknown> : { ...after }
+      }
+
       Object.defineProperty(
         result,
         key,
-        {
-          value,
-          writable: true,
-          enumerable: true,
-          configurable: true,
-        },
+        { value },
       )
     }
   }

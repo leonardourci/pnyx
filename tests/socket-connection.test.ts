@@ -245,7 +245,7 @@ test(
 )
 
 test(
-  'a worker chat closed on the page keeps its loaded page for when it opens again',
+  'a worker chat reopens from cache and older closed pages are evicted',
   async () => {
     const primary = await othrys.titan()
     await primary.owner({
@@ -265,8 +265,9 @@ test(
       close,
     } = connectPage({ primary: primary.id })
     const command = client.commandFor({ id: primary.id })
-    const thread = () => client.shownWorkspaces()
-      .find(workspace => workspace.navigation.titanId === primary.id)?.taskThreads[task.id]
+    const pages = () => client.shownWorkspaces()
+      .find(workspace => workspace.navigation.titanId === primary.id)?.taskThreads
+    const thread = () => pages()?.[task.id]
 
     try {
       await until({
@@ -301,6 +302,35 @@ test(
         ],
       })
       expect(thread()?.card).toBe(task.id)
+
+      const otherCards: string[] = []
+
+      for (let index = 0; index < 9; index++) {
+        const key = `other-${index}`
+        await primary.owner({
+          args: [
+            'task',
+            'create',
+            '--no-start',
+            '--key',
+            key,
+            '--title',
+            key,
+          ],
+        })
+        const other = await primary.task({ key })
+        otherCards.push(other.id)
+        await command({
+          name: 'thread',
+          args: [other.id],
+        })
+      }
+
+      const expectedCards = [
+        task.id,
+        ...otherCards.slice(1),
+      ].sort()
+      expect(Object.keys(pages() ?? {}).sort()).toEqual(expectedCards)
     } finally {
       close()
     }

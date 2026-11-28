@@ -8,6 +8,19 @@ const CLOSED_THREADS_KEPT = 8
 export function createThreadReceiver() {
   let titan: ThreadPage | null = null
   const workers = new Map<string, ThreadPage>()
+  let openCards = new Set<string>()
+
+  const trimClosedPages = () => {
+    const closedOldestFirst = [...workers.keys()].filter(id => !openCards.has(id))
+    const dropped = closedOldestFirst.slice(
+      0,
+      -CLOSED_THREADS_KEPT,
+    )
+
+    for (const id of dropped) {
+      workers.delete(id)
+    }
+  }
 
   const read = ({ card }: { card: string }) => {
     if (card === TITAN_CARD) {
@@ -21,16 +34,8 @@ export function createThreadReceiver() {
     read,
     workerPages: () => Object.fromEntries(workers),
     retain({ cards }: { cards: string[] }) {
-      const closedOldestFirst = [...workers.keys()].filter(id => !cards.includes(id))
-
-      const dropped = closedOldestFirst.slice(
-        0,
-        -CLOSED_THREADS_KEPT,
-      )
-
-      for (const id of dropped) {
-        workers.delete(id)
-      }
+      openCards = new Set(cards)
+      trimClosedPages()
     },
     receive({ message }: { message: ServerMessage }): ServerMessage | undefined {
       let incoming = message
@@ -69,6 +74,7 @@ export function createThreadReceiver() {
           thread.card,
           thread,
         )
+        trimClosedPages()
       }
 
       return {
