@@ -29,7 +29,10 @@ test(
       },
     )
     await stable.waitFor({ state: 'visible' })
-    const version = page.getByText('Version and upgrade', { exact: true })
+    const version = page.getByText(
+      'Version and upgrade',
+      { exact: true },
+    )
     await version.waitFor({ state: 'visible' })
 
     const search = page.getByRole(
