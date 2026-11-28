@@ -320,6 +320,11 @@ test(
         })
         const other = await primary.task({ key })
         otherCards.push(other.id)
+        await until({
+          what: `${key} to reach the page`,
+          check: () => !!client.shownWorkspaces()
+            .find(workspace => workspace.navigation.titanId === primary.id)?.state.cards[other.id],
+        })
         await command({
           name: 'thread',
           args: [other.id],
