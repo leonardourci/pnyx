@@ -6,7 +6,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the issue, review and merge proces
 
 ## Build and test
 
-Use Node 22.13 or newer (22.18 for `pnpm deslop`) and the pnpm version pinned in `package.json`. The browser checks in `tests/browser/` also need Google Chrome, which they open headless with a profile of their own.
+Use Node 22.13 or newer (22.18 for `pnpm deslop`) and the pnpm version pinned in `package.json`. The browser checks in `tests/browser/` also need Google Chrome and Playwright's Chromium and WebKit (`pnpm exec playwright-core install chromium webkit`), which they open headless with a profile of their own. CI installs the Playwright browsers before the tests.
 
 ```sh
 pnpm install

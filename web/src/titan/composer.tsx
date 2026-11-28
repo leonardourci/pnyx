@@ -18,6 +18,7 @@ import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#titan/attachments.ts'
 import { draftView, hasPendingImage } from './draft.ts'
 import { selectionRange } from './composer-editable.ts'
+import { touchFirst } from '#web-shared/touch.ts'
 
 export function Composer({
   titanId,
@@ -289,7 +290,7 @@ export function Composer({
       return
     }
 
-    if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !touchFirst()) {
       e.preventDefault()
 
       if (!e.repeat) {
@@ -306,6 +307,8 @@ export function Composer({
       e.preventDefault(); e.stopPropagation()
     }
   }
+
+  const sendHint = touchFirst() ? 'Send' : 'Send · Enter'
 
   return (
     <>
@@ -473,7 +476,7 @@ export function Composer({
             type="submit"
             variant="primary"
             aria-label={sendLabel}
-            title={sending ? 'Sending…' : `Send · Enter${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
+            title={sending ? 'Sending…' : `${sendHint}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
             disabled={unavailable || sending || disabled}
           >
             <Icon name="send" size={ICON_SIZE.toolbar} />

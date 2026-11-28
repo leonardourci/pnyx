@@ -18,6 +18,7 @@ import {
   type ComponentProps,type RefObject,type ReactNode,
   type KeyboardEvent as KeyEvent,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { ChatTokensContext } from './chat-token-text.tsx'
 import { clock,copiedText,orderedComments,type ChatComment } from './chat.ts'
 import { leadingTask, ownMessage, type TurnTiming } from '#titan/chat-messages.ts'
@@ -39,8 +40,19 @@ import type { AnswerLead } from './answer-leads.ts'
 import { roleLabel } from './trace-row.tsx'
 import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
 
-const PILL_GAP = 6
+const SELECTION_ACTIONS_SELECTOR = '.comment-pill, .comment-dock'
 let highlights = 0
+
+function selectionBelongsToMessages({
+  selection,
+  messages,
+}: {
+  selection: Selection | null
+  messages: HTMLElement | null
+}) {
+  return Boolean(selection && messages?.contains(selection.anchorNode)
+    && messages.contains(selection.focusNode))
+}
 
 // A message the owner just sent shows at once, faded until the server records it.
 export type ChatEntry = ThreadEntry & {
@@ -354,6 +366,28 @@ const MessageRow = memo(function MessageRow({
   )
 })
 
+function SelectionActionButton({
+  act,
+  ...props
+}: ComponentProps<typeof Button> & { act(): void }) {
+  return (
+    <Button
+      {...props}
+      onPointerDown={event => {
+        if (event.button === 0) {
+          event.preventDefault()
+          act()
+        }
+      }}
+      onClick={event => {
+        if (event.detail === 0) {
+          act()
+        }
+      }}
+    />
+  )
+}
+
 export function Messages({
   entries,
   lookup,
@@ -412,6 +446,14 @@ export function Messages({
     selection,
     setSelection,
   ] = useState<CommentPassage | null>(null)
+  const [
+    chatViewport,
+    setChatViewport,
+  ] = useState<Element | null>(null)
+  useLayoutEffect(
+    () => setChatViewport(root.current?.closest('.chat-viewport') ?? null),
+    [],
+  )
   const ordered = useMemo(
     () => orderedComments({ comments }),
     [comments],
@@ -497,15 +539,33 @@ export function Messages({
       return
     }
 
-    const typeComment = (event: KeyboardEvent) => {
+    const selectionShortcut = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null
       const selected = window.getSelection()
+      const action = target?.closest(SELECTION_ACTIONS_SELECTOR)
+      const actionInThisChat = action && action.closest('.chat-viewport') === chatViewport
+      const selectionInThisChat = selectionBelongsToMessages({
+        selection: selected,
+        messages: root.current,
+      })
+
+      if (event.key === 'Escape' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey
+        && !event.defaultPrevented && !event.isComposing
+        && target !== root.current && !actionInThisChat) {
+        setSelection(null)
+
+        if (selected && !selected.isCollapsed && selectionInThisChat) {
+          selected.removeAllRanges()
+        }
+
+        return
+      }
 
       if (event.defaultPrevented || event.isComposing ||
         event.ctrlKey || event.metaKey || event.altKey ||
-        event.key.length !== 1 || (target && isEditing({ target })) ||
-        !selected?.toString().trim() || !root.current?.contains(selected.anchorNode) ||
-        !root.current.contains(selected.focusNode)) {
+        event.key.length !== 1 || action ||
+        (target && isEditing({ target })) ||
+        !selected?.toString().trim() || !selectionInThisChat) {
         return
       }
 
@@ -518,58 +578,99 @@ export function Messages({
 
     window.addEventListener(
       'keydown',
-      typeComment,
+      selectionShortcut,
       true,
     )
 
     return () => window.removeEventListener(
       'keydown',
-      typeComment,
+      selectionShortcut,
       true,
     )
   })
 
-  // Mouse selections count on mouseup so the comment offer never moves text under the pointer.
   useEffect(
     () => {
-      const track = ({ buttons }: { buttons: number }) => {
-        if (buttons) {
+      let retainCollapsedSelection = false
+
+      const trackSelection = ({ mouseButtons }: { mouseButtons: number }) => {
+        if (mouseButtons) {
           return
         }
 
-        const focusNode = window.getSelection()?.focusNode ?? null
+        const browserSelection = window.getSelection()
+        const focusNode = browserSelection?.focusNode ?? null
         const block = root.current?.contains(focusNode) ? messageBlock({ node: focusNode }) : null
         const next = selectedPassage({ messages: root.current })
+        const focusedAction = document.activeElement?.closest(SELECTION_ACTIONS_SELECTOR)
+        const actionInThisChat = focusedAction
+          && focusedAction.closest('.chat-viewport') === root.current?.closest('.chat-viewport')
+        const selectionCollapsed = browserSelection?.isCollapsed ?? true
+        const keepPassage = selectionCollapsed && (retainCollapsedSelection || actionInThisChat)
 
-        if (block && !document.activeElement?.closest('.comment-card')) {
-          setActive(block.dataset.messageBlock!)
+        const blockKey = block?.dataset.messageBlock
+
+        if (blockKey && !document.activeElement?.closest('.comment-card')) {
+          setActive(blockKey)
         }
 
-        setSelection(prior => samePassage({
-          before: prior,
-          after: next,
-        }) ? prior : next)
+        setSelection(prior => {
+          if (!next) {
+            return keepPassage ? prior : null
+          }
+
+          return samePassage({
+            before: prior,
+            after: next,
+          }) ? prior : next
+        })
       }
 
-      let buttons = 0
+      const rememberPointerType = (event: PointerEvent) => {
+        retainCollapsedSelection = event.pointerType === 'touch' || event.pointerType === 'pen'
+      }
+
+      const dismissCollapsedSelection = (event: MouseEvent) => {
+        const target = event.target instanceof Element ? event.target : null
+
+        if (target?.closest(SELECTION_ACTIONS_SELECTOR)) {
+          return
+        }
+
+        if (!selectedPassage({ messages: root.current })) {
+          setSelection(null)
+        }
+      }
+
+      let mouseButtons = 0
 
       const press = (event: MouseEvent) => {
-        buttons = event.buttons
+        mouseButtons = event.buttons
       }
 
       const release = (event: MouseEvent) => {
-        buttons = event.buttons; track({ buttons })
+        mouseButtons = event.buttons
+        trackSelection({ mouseButtons })
       }
 
-      // A drag that ends outside the window never sends its mouseup here.
-      const reset = () => {
-        buttons = 0
+      const resetMouseButtonsOnBlur = () => {
+        mouseButtons = 0
       }
 
-      const change = () => track({ buttons })
+      const change = () => trackSelection({ mouseButtons })
       document.addEventListener(
         'selectionchange',
         change,
+      )
+      document.addEventListener(
+        'pointerdown',
+        rememberPointerType,
+        true,
+      )
+      document.addEventListener(
+        'click',
+        dismissCollapsedSelection,
+        true,
       )
       document.addEventListener(
         'mousedown',
@@ -580,13 +681,23 @@ export function Messages({
       )
       window.addEventListener(
         'blur',
-        reset,
+        resetMouseButtonsOnBlur,
       )
 
       return () => {
         document.removeEventListener(
           'selectionchange',
           change,
+        )
+        document.removeEventListener(
+          'pointerdown',
+          rememberPointerType,
+          true,
+        )
+        document.removeEventListener(
+          'click',
+          dismissCollapsedSelection,
+          true,
         )
         document.removeEventListener(
           'mousedown',
@@ -597,7 +708,7 @@ export function Messages({
         )
         window.removeEventListener(
           'blur',
-          reset,
+          resetMouseButtonsOnBlur,
         )
       }
     },
@@ -610,7 +721,6 @@ export function Messages({
     requestAnimationFrame(() => focusChatComposer({ from: root.current }))
   }
 
-  // The pill floats under the selection, inside the messages so it scrolls with them and moves no text.
   const pill = useRef<HTMLDivElement>(null)
   // Each conversation on screen paints its own highlight, so one doesn't clear the other's.
   const [highlight] = useState(() => `othrys-comments-${++highlights}`)
@@ -641,17 +751,18 @@ export function Messages({
   )
   useLayoutEffect(
     () => {
-      const place = () => {
+      const placePillBesideLiveSelection = () => {
         const element = pill.current, host = root.current, selected = window.getSelection()
 
-        if (!element || !host || !selected?.rangeCount) {
+        if (!element || !host || !selected?.rangeCount || selected.isCollapsed
+          || !host.contains(selected.getRangeAt(0).commonAncestorContainer)) {
           return
         }
 
         const range = selected.getRangeAt(0).getBoundingClientRect()
         const box = host.getBoundingClientRect(), half = element.offsetWidth / 2
         const center = range.left + range.width / 2 - box.left
-        element.style.top = `${range.bottom - box.top + PILL_GAP}px`
+        element.style.top = `${range.bottom - box.top}px`
         element.style.left = `${Math.max(
           half,
           Math.min(
@@ -661,8 +772,8 @@ export function Messages({
         ) - half}px`
       }
 
-      place()
-      const observer = new ResizeObserver(place)
+      placePillBesideLiveSelection()
+      const observer = new ResizeObserver(placePillBesideLiveSelection)
 
       if (root.current) {
         observer.observe(root.current)
@@ -676,6 +787,18 @@ export function Messages({
     ],
   )
 
+  const commentSelected = () => {
+    if (selection) {
+      addComment({ quote: selection })
+    }
+  }
+
+  const quoteSelected = () => {
+    if (selection) {
+      quoteSelection({ passage: selection })
+    }
+  }
+
   const selectionKey = ({ event }: { event: KeyEvent<HTMLDivElement> }) => {
     const {
       key,
@@ -687,21 +810,38 @@ export function Messages({
 
     const modified = altKey || ctrlKey || metaKey
 
-    if (event.target !== event.currentTarget || event.nativeEvent.isComposing || modified) {
+    if (event.nativeEvent.isComposing || modified) {
       return
     }
 
-    if (key === 'Escape' && !shiftKey) {
+    const fromMessages = event.target === event.currentTarget
+    const target = event.target instanceof Element ? event.target : null
+    const fromSelectionAction = target?.closest(SELECTION_ACTIONS_SELECTOR)
+
+    if (key === 'Escape' && !shiftKey && (fromMessages || fromSelectionAction)) {
       event.preventDefault()
-      window.getSelection()?.removeAllRanges()
+      setSelection(null)
+      const selected = window.getSelection()
+
+      if (selectionBelongsToMessages({
+        selection: selected,
+        messages: root.current,
+      })) {
+        selected?.removeAllRanges()
+      }
+
       event.currentTarget.closest<HTMLElement>('.thread')?.focus({ preventScroll: true })
 
       return
     }
 
+    if (!fromMessages || key !== 'Enter') {
+      return
+    }
+
     const selected = selectedPassage({ messages: root.current })
 
-    if (key === 'Enter' && selected) {
+    if (selected) {
       event.preventDefault()
 
       if (shiftKey) {
@@ -791,30 +931,49 @@ export function Messages({
         <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
         {selection && (
           <div
-            className="comment-pill absolute z-5 flex items-center gap-0.5 p-0.75 border border-gold-line rounded-lg bg-surface shadow-comment-pill whitespace-nowrap [&_.button]:min-h-6.5 [&_.button]:py-0.5 [&_.button]:px-2 [&_.button]:gap-1.25 [&_.button]:text-meta [&_.button:first-child]:text-gold [&_kbd]:py-0 [&_kbd]:px-1"
+            className="comment-pill absolute z-5 mt-1.5 flex items-center gap-0.5 p-0.75 border border-gold-line rounded-lg bg-surface shadow-comment-pill whitespace-nowrap touch:mt-7 [&_.button]:min-h-6.5 [&_.button]:py-0.5 [&_.button]:px-2 [&_.button]:gap-1.25 [&_.button]:text-meta [&_.button:first-child]:text-gold [&_kbd]:py-0 [&_kbd]:px-1 touch:[&_kbd]:hidden"
             ref={pill}
-            onMouseDown={e => e.preventDefault()}
+            role="group"
+            aria-label="Actions by selected text"
           >
-            <Button
+            <SelectionActionButton
               aria-label="Comment on selection"
               title="Enter, or start typing"
-              onClick={() => addComment({ quote: selection })}
+              act={commentSelected}
             >
               <Icon name="comment" size={ICON_SIZE.inline} />
               Comment
               <kbd>↵</kbd>
-            </Button>
+            </SelectionActionButton>
             <span className="comment-pill-divider w-px self-stretch my-1 mx-px bg-line" />
-            <Button
+            <SelectionActionButton
               aria-label="Quote selection"
               title="Shift+Enter"
-              onClick={() => quoteSelection({ passage: selection })}
+              act={quoteSelected}
             >
               <Icon name="quote" size={ICON_SIZE.inline} />
               Quote
               <kbd>⇧↵</kbd>
-            </Button>
+            </SelectionActionButton>
           </div>
+        )}
+        {selection && chatViewport && createPortal(
+          <div
+            className="comment-dock absolute inset-x-(--chat-inset) bottom-2 z-4 flex items-center gap-1.5 p-1.5 border border-gold-line rounded-xl bg-gold-wash [&_.button]:min-h-9 [&_.button]:shrink-0 [&_.button]:border-gold-line [&_.button]:bg-surface [&_.button]:px-3 [&_.button]:font-semibold [&_.button]:text-gold"
+            role="group"
+            aria-label="Selected text"
+          >
+            <span className="comment-dock-quote min-w-0 flex-1 truncate pl-1.5 text-meta text-muted">“{selection.quote}”</span>
+            <SelectionActionButton act={commentSelected}>
+              <Icon name="comment" size={ICON_SIZE.inline} />
+              Comment
+            </SelectionActionButton>
+            <SelectionActionButton act={quoteSelected}>
+              <Icon name="quote" size={ICON_SIZE.inline} />
+              Quote
+            </SelectionActionButton>
+          </div>,
+          chatViewport,
         )}
       </div>
     </TaskReferencesProvider>

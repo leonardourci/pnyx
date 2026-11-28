@@ -88,7 +88,7 @@ Replace `project` with the attached folder's name and `work` with your Titan's I
 
 Open the card to follow the worker's updates, and send follow-up instructions through Titan's chat. Stop a foreground server with Ctrl+C.
 
-Writing fields wrap and grow with their text; chat drafts keep their height limit and scroll inside. Enter keeps each field’s submit or focus action, and Shift+Enter adds a line only in multiline fields.
+Writing fields wrap and grow with their text; chat drafts keep their height limit and scroll inside. Enter keeps each field’s submit or focus action, and Shift+Enter adds a line only in multiline fields. On a touch screen, Enter in a chat draft adds a line and only Send sends. Select text in a reply to comment on it or quote it, from the pill by the selection or the bar above the composer.
 
 ## Core ideas
 

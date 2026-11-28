@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { afterAll } from 'vitest'
 import { keepFiles } from './keep.ts'
 
@@ -41,6 +42,31 @@ for (const command of GUARDED) {
   )
 }
 
+const realHomeBrowserCache = process.platform === 'darwin'
+  ? join(
+    homedir(),
+    'Library/Caches',
+  )
+  : process.env.XDG_CACHE_HOME || join(
+    homedir(),
+    '.cache',
+  )
+const installedBrowserCache = join(
+  realHomeBrowserCache,
+  'ms-playwright',
+)
+const configuredBrowserCache = process.env.PLAYWRIGHT_BROWSERS_PATH
+let playwrightBrowsers = installedBrowserCache
+
+if (configuredBrowserCache === '0') {
+  playwrightBrowsers = configuredBrowserCache
+} else if (configuredBrowserCache) {
+  playwrightBrowsers = resolve(
+    process.env.INIT_CWD || process.cwd(),
+    configuredBrowserCache,
+  )
+}
+
 for (const key of Object.keys(process.env)) {
   if (!KEEP.test(key)) {
     delete process.env[key]
@@ -78,6 +104,7 @@ Object.assign(
       'gitconfig',
     ),
     LANG: 'en_US.UTF-8',
+    PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsers,
     NODE_OPTIONS: `--max-old-space-size=${CHILD_HEAP_MB}`,
   },
 )

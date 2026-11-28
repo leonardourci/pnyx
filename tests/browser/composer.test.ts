@@ -477,3 +477,63 @@ test(
     await page.locator(`${send}:enabled`).waitFor()
   },
 )
+
+for (const engine of [
+  'chromium',
+  'webkit',
+] as const) {
+  for (const [
+    size,
+    viewport,
+  ] of [
+      [
+        'wide',
+        {
+          width: 1440,
+          height: 900,
+        },
+      ],
+      [
+        'phone',
+        PHONE,
+      ],
+    ] as const) {
+    test(
+      `${engine} ${size}: Enter starts a new line on a touch screen and only Send sends, while a physical keyboard sends on Enter and starts a new line on Shift+Enter`,
+      async () => {
+        for (const touch of [
+          true,
+          false,
+        ]) {
+          const titan = await othrys.titan()
+          const session = await titan.chat({ text: 'Say something' })
+          const page = await openTitan({
+            port: othrys.port(),
+            titanId: titan.id,
+            engine,
+            viewport,
+            touch,
+          })
+          const composer = composerOf({ page })
+          await composer.click()
+          await page.keyboard.type('first')
+
+          if (touch) {
+            await page.keyboard.press('Enter')
+            await page.keyboard.type('second')
+            await page.locator('[data-titan-workspace][data-active=true] [aria-label="Send reply"]').tap()
+          } else {
+            await page.keyboard.press('Shift+Enter')
+            await page.keyboard.type('second')
+            await page.keyboard.press('Enter')
+          }
+
+          await until({
+            what: 'both lines in one message',
+            check: () => session.received.some(heard => heard.includes('first\nsecond')),
+          })
+        }
+      },
+    )
+  }
+}

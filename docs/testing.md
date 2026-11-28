@@ -1,17 +1,17 @@
 # Tests
 
-The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Othrys server the way its users do: the owner and the agents through the built `othrys`, the page through its resumed WebSocket. A few small browser checks open the real page in Chrome.
+The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Othrys server the way its users do: the owner and the agents through the built `othrys`, the page through its resumed WebSocket. The browser checks open the real page in Chrome or in Playwright's Chromium and WebKit. Touch emulation covers pointer events and media queries. It does not show the native iOS selection menu or handles.
 
 ```text
 tests/
 ├── <area>.test.ts      one file per area: its integration tests and its tricky edge cases
-├── browser/            targeted checks in isolated headless Chrome
+├── browser/            targeted checks in isolated headless browsers
 └── setup/              the shared setup: scratch files, the server, fake agents, fixtures
 ```
 
 ## Running
 
-The targeted browser checks require an installed Chrome; they launch their own headless session with a scratch profile and never attach to an existing browser. The harnesses use pinned `playwright-core` and `chrome-devtools-axi` development dependencies.
+The targeted browser checks require an installed Chrome and Playwright's Chromium and WebKit (`pnpm exec playwright-core install chromium webkit`); they launch their own headless session with a scratch profile and never attach to an existing browser. The harnesses use pinned `playwright-core` and `chrome-devtools-axi` development dependencies.
 
 Run:
 
@@ -107,7 +107,8 @@ Rules:
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
 - `browser/chat.test.ts`: both chats interrupt and deliver sends through either provider, retain sent bubbles through held operations and refused deliveries, retry the same message, render task references as live chips, and keep Stop silent. They open on their latest row and retain the visible rows through older-page loading and Retry. Focus mode keeps tool names out of the working line, and a card's status never names one.
 - `browser/cards.test.ts`: every column and card stays mounted through horizontal and vertical scrolling at desktop and phone widths, project requests reveal their column, Activity loads and retains all update rows and receives live changes, an open card fills its column after a viewport resize, and starting its worker keeps one stored card and the same DOM node.
-- `browser/composer.test.ts`: the caret is drawn right after the last letter typed past chips, wide and at phone size. Arrows, Shift+arrows, Backspace, Delete and a chip's × treat each chip as one unit, and an @ or / right after a chip opens its picker. The message keeps every chip's Markdown through copy, paste, cut, Undo, Redo and new lines; Undo reselects a cut, closes the @ picker, takes back a whole uploaded image, and takes back only a mention added from the menu even after an edit the browser announced but never made; a word still in composition enables Send.
-- `browser/nav.test.ts`: the top bar keeps poleis in order with a gap and no filter, holds the open Titan's project chips and menu and drops down another Titan's projects; hiding the nav is kept per layout and comes back from the chip, the top edge and the shortcut; below the 900px switch point the phone header opens the nav sheet and Waiting on you and a task opens full screen with Context, Chat and Activity, while at 900px the wide bar and inline tasks stay; on a touch screen a card's ⋯ opens its actions.
+- `browser/comments.test.ts`: in Chromium and WebKit, wide and at phone size, the bar above the composer and the pill by the selection comment on and quote the selected text when pressed; on touch the pill sits clear of the selection handle, and both keep the passage when the selection drops until a tap lands elsewhere.
+- `browser/composer.test.ts`: the caret is drawn right after the last letter typed past chips, wide and at phone size. Arrows, Shift+arrows, Backspace, Delete and a chip's × treat each chip as one unit, and an @ or / right after a chip opens its picker. The message keeps every chip's Markdown through copy, paste, cut, Undo, Redo and new lines; Undo reselects a cut, closes the @ picker, takes back a whole uploaded image, and takes back only a mention added from the menu even after an edit the browser announced but never made; a word still in composition enables Send. In Chromium and WebKit, wide and at phone size, Enter starts a new line on a touch screen and only Send sends, while a physical keyboard sends on Enter and starts a new line on Shift+Enter.
+- `browser/nav.test.ts`: hiding the nav is kept per layout and comes back from the chip, the top edge and the shortcut; below the 900px switch point the phone header opens the nav sheet and Waiting on you and a task opens full screen with Context, Chat and Activity, while at 900px the wide bar and inline tasks stay; on a touch screen a card's ⋯ opens its actions.
 - `browser/pickers.test.ts`: `@` matches every typed word ignoring case, accents and spaces, offers other Titans, renders only the rows in reach and reaches the last by arrowing, and keeps its rows through unrelated changes; `/` matches commands only; the model step shows its list at once when reopened, and Reload changes only the rows that changed and keeps the list when it fails; `@` offers project files, a typed path shows its folder's contents filtered as the name is typed without asking the server again, and the rows shown stay while the next folder loads instead of the parent folder's whole contents.
 - `browser/status.test.ts`: Independent first-send flows for Titan and a task without an attached worker show Starting… on the first animation frame after Send, Thinking at turn start, Working through tools and Idle at turn end. The worker pill and chat agree on each sampled frame. A refused first start shows its server error; later in-place turns follow live lifecycle facts. Refused turns show their error, later turns clear stale failures, outside delivery errors replace pending badges, and Oracle preserves status on tasks with a retention deadline.
