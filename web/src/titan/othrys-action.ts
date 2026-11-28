@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+import { useKept } from '#web-shared/stable.ts'
 import type { TitanState } from '#app/model.ts'
 import { knownCards } from '#tasks/select.ts'
 import { firstLine, obj } from '#titan/calls.ts'
@@ -26,25 +28,44 @@ export interface OthrysLookup {
   column({ ref }: { ref: string }): ProjectGroup | undefined
 }
 
-export function othrysLookup({ state }: { state(): TitanState }): OthrysLookup {
-  return {
-    task: ({ ref }) => {
-      const current = state()
-      const cards = knownCards({ state: current })
-      const card = cards[ref] ?? cards[current.keys[ref] ?? '']
-
-      return card ? {
+export function useOthrysLookup({ state }: { state: TitanState }): OthrysLookup {
+  const tasks = useKept({
+    value: Object.fromEntries(Object.entries(knownCards({ state })).map(([
+      id,
+      card,
+    ]) => [
+      id,
+      {
         id: card.id,
         title: card.title,
-      } : undefined
-    },
-    column: ({ ref }) => {
-      const columns = projectGroups({ state: state() })
+      },
+    ])),
+  })
+  const columns = useKept({ value: projectGroups({ state }) })
+  const keys = state.keys
 
-      return columns.find(column => column.id === ref
-        || column.title.toLowerCase() === ref.toLowerCase())
-    },
-  }
+  return useMemo<OthrysLookup>(
+    () => ({
+      task: ({ ref }) => {
+        const id = Object.hasOwn(
+          tasks,
+          ref,
+        ) ? ref : keys[ref]
+
+        return id !== undefined && Object.hasOwn(
+          tasks,
+          id,
+        ) ? tasks[id] : undefined
+      },
+      column: ({ ref }) => columns.find(column => column.id === ref
+        || column.title.toLowerCase() === ref.toLowerCase()),
+    }),
+    [
+      tasks,
+      columns,
+      keys,
+    ],
+  )
 }
 
 export function shellCommand({ text }: { text: string }): string | undefined {

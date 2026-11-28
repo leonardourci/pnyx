@@ -169,7 +169,7 @@ Whole-Titan layout animation runs for explicit folding and Titan dragging. Backg
 
 The independent anchoring investigation separated two failures. Scroll compensation runs before Motion measures the horizontal axis; the axis uses viewport coordinates, so widening an earlier Titan does not animate the selected Titan’s cards. The chat surface paints above sliding project columns.
 
-The connection store preserves unchanged cards across home changes, so one changed card does not redraw every visible card. Final combined proof and the stress rerun remain open.
+The connection store preserves unchanged cards across home changes, so one changed card does not redraw every visible card. A receipt or message that changes nothing on screen keeps the store's snapshot, and each Titan's view keeps the branches that did not change, so the page redraws nothing for it. Final combined proof and the stress rerun remain open.
 
 ### Stress rerun refinements
 

@@ -8,6 +8,7 @@ import type { Catalog } from '#titan/transcripts-catalog.ts'
 import type { ThreadEntry } from '#titan/transcripts-read.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
 import { isEditing } from '#web-shared/ui/focus.ts'
+import { kept } from '#web-shared/stable.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
@@ -61,6 +62,28 @@ export type ChatEntry = ThreadEntry & {
   // Why the owner's message was not sent; it stays with a retry.
   unsent?: string
   renderKey?: string
+}
+
+function useKeptEntries({ entries }: { entries: ChatEntry[] }) {
+  const held = useRef<ChatEntry[]>([])
+  const previous = new Map(held.current.map(entry => [
+    entry.renderKey ?? entry.id,
+    entry,
+  ]))
+  const next = entries.map(entry => kept({
+    previous: previous.get(entry.renderKey ?? entry.id) ?? entry,
+    next: entry,
+  }))
+  const unchanged = next.length === held.current.length && next.every((
+    entry,
+    index,
+  ) => entry === held.current[index])
+
+  if (!unchanged) {
+    held.current = next
+  }
+
+  return held.current
 }
 
 function MessageTask({ entry }: { entry: ChatEntry }) {
@@ -389,7 +412,7 @@ function SelectionActionButton({
 }
 
 export function Messages({
-  entries,
+  entries: givenEntries,
   lookup,
   comments,
   drafts,
@@ -437,6 +460,7 @@ export function Messages({
   drafts: ChatDrafts
   quote({ text }: { text: string }): void
 }) {
+  const entries = useKeptEntries({ entries: givenEntries })
   const root = useRef<HTMLDivElement>(null)
   const [
     active,

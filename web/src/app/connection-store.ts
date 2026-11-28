@@ -24,6 +24,7 @@ import type { SocketCursor } from '#app/socket-history.ts'
 import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingTitan } from './pending-state.ts'
 import { shouldReload } from './view.ts'
+import { shareUnchangedBranches } from '#web-shared/stable.ts'
 
 const HEARTBEAT_INTERVAL_MS = 10_000
 const RECOVERY_TIMEOUT_MS = 25_000
@@ -408,19 +409,7 @@ export function createTitanConnection() {
       creating: !!scope.creation && scope.id.startsWith('pending-'),
       error: scope.creation && scope.failed ? '' : scope.error,
       titanThread: scope.thread,
-      taskThreads: Object.fromEntries((scope.page ?? []).filter((
-        _,
-        index,
-        args,
-      ) => args[index - 1] === '--card')
-        .map(ref => {
-          const id = resource.view.keys[ref] ?? ref
-
-          return [
-            id,
-            scope.threads.read({ card: id }),
-          ]
-        })),
+      taskThreads: scope.threads.workerPages(),
       titanQueue: scope.queue,
       upgrade,
       latest: scope.latest,
@@ -451,6 +440,33 @@ export function createTitanConnection() {
   }
 
   let snapshot = visible()
+  let shownWorkspaces: ReturnType<typeof visible>[] = []
+
+  const updateWorkspaces = () => {
+    const ids = new Set([
+      selected,
+      ...titans.snapshot().view.map(titan => titan.id),
+    ])
+    const previous = new Map(shownWorkspaces.map(view => [
+      view.navigation.titanId,
+      view,
+    ]))
+    const next = [...ids].map(id => shareUnchangedBranches({
+      previous: previous.get(id),
+      next: visible({ scope: scopeFor({ id }) }),
+    }))
+    const unchanged = next.length === shownWorkspaces.length
+      && next.every((
+        workspace,
+        index,
+      ) => workspace === shownWorkspaces[index])
+
+    if (!unchanged) {
+      shownWorkspaces = next
+    }
+  }
+
+  updateWorkspaces()
 
   const metadata = () => {
     document.querySelector<HTMLMetaElement>('meta[name=othrys-titan]')?.setAttribute(
@@ -485,7 +501,19 @@ export function createTitanConnection() {
 
     releaseInactive()
     metadata()
-    snapshot = visible()
+    const shownBefore = shownWorkspaces
+    updateWorkspaces()
+    const workspacesChanged = shownWorkspaces !== shownBefore
+    const next = shareUnchangedBranches({
+      previous: snapshot,
+      next: visible(),
+    })
+
+    if (next === snapshot && !workspacesChanged) {
+      return
+    }
+
+    snapshot = next
     listeners.forEach(listener => listener())
   }
 
@@ -1293,14 +1321,7 @@ export function createTitanConnection() {
 
   return {
     snapshot: () => snapshot,
-    workspaces: () => {
-      const ids = new Set([
-        selected,
-        ...titans.snapshot().view.map(titan => titan.id),
-      ])
-
-      return [...ids].map(id => visible({ scope: scopeFor({ id }) }))
-    },
+    shownWorkspaces: () => shownWorkspaces,
     // eslint-disable-next-line othrys/object-params -- React useSyncExternalStore subscription contract.
     subscribe: (listener: () => void) => {
       listeners.add(listener)

@@ -3,26 +3,54 @@ import { TITAN_CARD } from './identity.ts'
 import { applyThreadDelta, receivedThread } from './thread-delta.ts'
 import type { ThreadPage } from './transcripts-read.ts'
 
+const CLOSED_THREADS_KEPT = 8
+
 export function createThreadReceiver() {
   let titan: ThreadPage | null = null
-  const workers = new Map<string, ThreadPage>()
+  const updatedWorkers = new Set<string>()
+  let workerPages: Record<string, ThreadPage> = {}
+  let openCards = new Set<string>()
+
+  const trimClosedPages = () => {
+    const closedOldestFirst = [...updatedWorkers].filter(id => !openCards.has(id))
+    const dropped = closedOldestFirst.slice(
+      0,
+      -CLOSED_THREADS_KEPT,
+    )
+
+    if (!dropped.length) {
+      return
+    }
+
+    workerPages = { ...workerPages }
+
+    for (const id of dropped) {
+      updatedWorkers.delete(id)
+      delete workerPages[id]
+    }
+  }
 
   const read = ({ card }: { card: string }) => {
     if (card === TITAN_CARD) {
       return titan
     }
 
-    return workers.get(card) ?? null
+    if (!Object.hasOwn(
+      workerPages,
+      card,
+    )) {
+      return null
+    }
+
+    return workerPages[card] ?? null
   }
 
   return {
     read,
+    workerPages: () => workerPages,
     retain({ cards }: { cards: string[] }) {
-      for (const id of workers.keys()) {
-        if (!cards.includes(id)) {
-          workers.delete(id)
-        }
-      }
+      openCards = new Set(cards)
+      trimClosedPages()
     },
     receive({ message }: { message: ServerMessage }): ServerMessage | undefined {
       let incoming = message
@@ -56,10 +84,13 @@ export function createThreadReceiver() {
       if (thread.card === TITAN_CARD) {
         titan = thread
       } else {
-        workers.set(
-          thread.card,
-          thread,
-        )
+        updatedWorkers.delete(thread.card)
+        updatedWorkers.add(thread.card)
+        workerPages = {
+          ...workerPages,
+          [thread.card]: thread,
+        }
+        trimClosedPages()
       }
 
       return {

@@ -18,6 +18,10 @@ export function useTitan() {
     connection.subscribe,
     connection.snapshot,
   )
+  const workspaces = useSyncExternalStore(
+    connection.subscribe,
+    connection.shownWorkspaces,
+  )
   useEffect(
     () => connection.start(),
     [connection],
@@ -26,7 +30,7 @@ export function useTitan() {
   return useMemo(
     () => ({
       ...snapshot,
-      workspaces: connection.workspaces(),
+      workspaces,
       command: connection.commandFor({ id: snapshot.navigation.titanId }),
       // Another Titan's command, over the same connection; the Oracle sends requests to any Titan.
       commandFor: connection.commandFor,
@@ -38,6 +42,7 @@ export function useTitan() {
     [
       connection,
       snapshot,
+      workspaces,
     ],
   )
 }

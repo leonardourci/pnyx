@@ -41,3 +41,83 @@ export function useKept<Value>({ value }: { value: Value }): Value {
 
   return held.current
 }
+
+const plain = ({ value }: { value: unknown }) => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  const prototype = Object.getPrototypeOf(value)
+
+  return prototype === Object.prototype || prototype === Array.prototype
+}
+
+export function shareUnchangedBranches<Value>({
+  previous,
+  next,
+}: {
+  previous?: Value
+  next: Value
+}): Value {
+  if (Object.is(
+    previous,
+    next,
+  )) {
+    return next
+  }
+
+  const comparable = plain({ value: previous }) && plain({ value: next })
+    && Array.isArray(previous) === Array.isArray(next)
+
+  if (!comparable) {
+    return next
+  }
+
+  const before = previous as Record<string, unknown>
+  const after = next as Record<string, unknown>
+  const keys = Object.keys(after)
+  const previousKeys = Object.keys(before)
+  const nextIsArray = Array.isArray(next)
+  const sameLength = !nextIsArray || (Array.isArray(previous) && previous.length === next.length)
+  const sameKeys = keys.length === previousKeys.length && keys.every((
+    key,
+    index,
+  ) => key === previousKeys[index])
+  let unchanged = sameLength && sameKeys
+  let result: unknown[] | Record<string, unknown> | undefined
+
+  for (const key of keys) {
+    const hadKey = Object.hasOwn(
+      before,
+      key,
+    )
+    const value = shareUnchangedBranches({
+      previous: hadKey ? before[key] : undefined,
+      next: after[key],
+    })
+    unchanged = unchanged && hadKey && Object.is(
+      value,
+      before[key],
+    )
+
+    if (!Object.is(
+      value,
+      after[key],
+    )) {
+      if (!result) {
+        result = nextIsArray ? Object.defineProperties(
+          new Array<unknown>(next.length),
+          Object.getOwnPropertyDescriptors({ ...after }),
+        ) : { ...after }
+      }
+
+      Object.defineProperty(
+        result,
+        key,
+        { value },
+      )
+    }
+  }
+
+  return unchanged ? previous as Value : (result ?? next) as Value
+}
