@@ -4,6 +4,7 @@ import type { TitanState } from '#app/model.ts'
 import type { UpgradeOperation } from './model.ts'
 import { runUpgrade } from './runner.ts'
 import { background } from '#app/background.ts'
+import { readSettings } from '#settings/store.ts'
 
 const WAIT_MS = 100
 // Bound how long messages remain held if the restart process does not complete.
@@ -145,6 +146,7 @@ export function upgradeQueue({
     try {
       result = await runUpgrade({
         root: root!,
+        channel: readSettings().settings.upgradeChannel,
         signal: mine.stopping.signal,
         progress: async ({ steps }) => await record({
           operation: {

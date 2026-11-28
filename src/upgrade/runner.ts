@@ -3,7 +3,7 @@ import { basename, join, resolve } from 'node:path'
 import { log } from '#app/diagnostics.ts'
 import { runFile } from '#app/run-process.ts'
 import { replaceFile } from '#store/storage.ts'
-import type { UpgradeOperation, UpgradeStep, UpgradeStepName } from './model.ts'
+import type { UpgradeChannel, UpgradeOperation, UpgradeStep, UpgradeStepName } from './model.ts'
 
 export const OTHRYS_ROOT = join(
   import.meta.dirname,
@@ -13,6 +13,9 @@ export const OTHRYS_ROOT = join(
 
 const NETWORK_MS = 60_000
 const BUILD_MS = 15 * 60_000
+const MAIN = 'refs/heads/main'
+const RELEASE_TAG = /^refs\/tags\/v(\d+)\.(\d+)\.(\d+)$/
+const NO_RELEASE = 'origin has no release tag yet. Set upgradeChannel to development to follow main.'
 
 // The last lines of a failed command, enough to recognize the error.
 const excerpt = ({ text }: { text: string }) => text.split('\n').map(line => line.trimEnd())
@@ -102,17 +105,108 @@ const pnpm = ({
   signal,
 })
 
-const remoteMain = async ({ root }: { root: string }) => (await git({
-  root,
-  args: [
-    'ls-remote',
-    'origin',
-    'refs/heads/main',
-  ],
-})).split(/\s/)[0] || undefined
+interface RemoteTarget {
+  ref: string
+  commit: string
+}
 
-// Whether there is something to upgrade: a newer origin main, or a cut upgrade that already pulled; undefined when origin cannot be read.
-export async function upgradeAvailable({ root = OTHRYS_ROOT }: { root?: string } = {}) {
+const newerVersion = ({
+  version,
+  than,
+}: {
+  version: number[]
+  than: number[]
+}) => {
+  const differing = version.findIndex((
+    part,
+    index,
+  ) => part !== than[index])
+
+  return differing !== -1 && version[differing] > than[differing]
+}
+
+// origin's newest vX.Y.Z tag and the commit it points at; undefined when origin has none.
+async function newestRelease({ root }: { root: string }): Promise<RemoteTarget | undefined> {
+  const listed = await git({
+    root,
+    args: [
+      'ls-remote',
+      '--tags',
+      'origin',
+      'v*',
+    ],
+  })
+  const commits = new Map(listed.split('\n').filter(Boolean)
+    .map(line => line.split('\t').reverse() as [string, string]))
+  let newest: {
+    ref: string
+    version: number[]
+  } | undefined
+
+  for (const ref of commits.keys()) {
+    const version = RELEASE_TAG.exec(ref)?.slice(1)
+      .map(Number)
+
+    if (version && (!newest || newerVersion({
+      version,
+      than: newest.version,
+    }))) {
+      newest = {
+        ref,
+        version,
+      }
+    }
+  }
+
+  if (!newest) {
+    return undefined
+  }
+
+  // An annotated tag names a tag object; the line ending in ^{} names the commit it points at.
+  const commit = commits.get(`${newest.ref}^{}`) ?? commits.get(newest.ref)!
+
+  return {
+    ref: newest.ref,
+    commit,
+  }
+}
+
+// The origin ref the channel follows and its commit: main on development, the newest release tag on stable.
+async function remoteTarget({
+  root,
+  channel,
+}: {
+  root: string
+  channel: UpgradeChannel
+}): Promise<RemoteTarget | undefined> {
+  if (channel === 'stable') {
+    return await newestRelease({ root })
+  }
+
+  const commit = (await git({
+    root,
+    args: [
+      'ls-remote',
+      'origin',
+      MAIN,
+    ],
+  })).split(/\s/)[0]
+
+  return commit ? {
+    ref: MAIN,
+    commit,
+  } : undefined
+}
+
+// Whether there is something to upgrade: a newer commit on the channel, or a cut upgrade that already pulled; undefined when origin
+// cannot be read or has nothing on the channel.
+export async function upgradeAvailable({
+  root = OTHRYS_ROOT,
+  channel,
+}: {
+  root?: string
+  channel: UpgradeChannel
+}) {
   try {
     const head = await git({
       root,
@@ -128,7 +222,10 @@ export async function upgradeAvailable({ root = OTHRYS_ROOT }: { root?: string }
       return true
     }
 
-    const remote = await remoteMain({ root })
+    const remote = (await remoteTarget({
+      root,
+      channel,
+    }))?.commit
 
     if (!remote) {
       return undefined
@@ -257,20 +354,22 @@ export type UpgradeResult = Pick<UpgradeOperation, 'steps' | 'from' | 'to' | 'fa
 
 let busy = false
 
-// Pulls main, installs, builds and checks the new build can import the data; a failed or stopped step puts the folder
-// back on the commit it started from.
+// Pulls what the channel follows, installs and builds; a failed or stopped step puts the folder back on the commit it
+// started from.
 // The caller restarts the server, and only after this reports upgraded.
 // The busy flag guards one process: a CLI and a server upgrading at once can still race.
 export async function runUpgrade({
   root = OTHRYS_ROOT,
+  channel,
   progress = () => {},
   signal,
 }: {
   root?: string
+  channel: UpgradeChannel
   progress?({ steps }: { steps: UpgradeStep[] }): void | Promise<void>
   // Aborting stops the running step and goes back, as a failed step does.
   signal?: AbortSignal
-} = {}): Promise<UpgradeResult> {
+}): Promise<UpgradeResult> {
   if (busy) {
     return {
       state: 'refused',
@@ -285,6 +384,7 @@ export async function runUpgrade({
   try {
     const result = await upgrade({
       root,
+      channel,
       progress,
       signal,
     })
@@ -302,10 +402,12 @@ export async function runUpgrade({
 
 async function upgrade({
   root,
+  channel,
   progress,
   signal,
 }: {
   root: string
+  channel: UpgradeChannel
   progress({ steps }: { steps: UpgradeStep[] }): void | Promise<void>
   signal?: AbortSignal
 }): Promise<UpgradeResult> {
@@ -453,12 +555,21 @@ async function upgrade({
           reasons.push(`Saved local work as ${saved}. Use git stash apply ${saved} in the Othrys folder to restore it.`)
         }
 
+        const target = await remoteTarget({
+          root,
+          channel,
+        })
+
+        if (!target) {
+          throw new Error(channel === 'stable' ? NO_RELEASE : 'origin has no main branch.')
+        }
+
         await git({
           root,
           args: [
             'fetch',
             'origin',
-            'main',
+            target.ref,
           ],
           signal,
         })
@@ -466,15 +577,16 @@ async function upgrade({
           root,
           args: [
             'rev-parse',
-            'FETCH_HEAD',
+            'FETCH_HEAD^{commit}',
           ],
         })
+        // Fast-forward only, so stable never moves the folder back to an older release than it runs.
         await git({
           root,
           args: [
             'merge',
             '--ff-only',
-            'FETCH_HEAD',
+            to,
           ],
         })
       },

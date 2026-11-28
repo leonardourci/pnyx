@@ -7,6 +7,7 @@ import { startOthrys, until, type Titan, type Othrys } from './setup/othrys.ts'
 import { building, git, upgradeFolder } from './setup/upgrade.ts'
 
 let othrys: Othrys
+let owner: Titan
 let folder: ReturnType<typeof upgradeFolder>
 let restarts = 0
 const root = join(
@@ -24,12 +25,24 @@ beforeAll(async () => {
       restarts++
     },
   })
+  owner = await othrys.titan()
 })
 
-// Every test starts from the first commit, its build and no restarts, so the tests pass alone and in any order.
-beforeEach(() => {
+const follow = ({ channel }: { channel: 'development' | 'stable' }) => owner.owner({
+  args: [
+    'settings',
+    'set',
+    '--json',
+    JSON.stringify({ upgradeChannel: channel }),
+  ],
+})
+
+// Every test starts from the first commit, its build, the development channel and no restarts, so the tests pass alone
+// and in any order.
+beforeEach(async () => {
   folder.reset()
   restarts = 0
+  await follow({ channel: 'development' })
 })
 
 const upgrades = ({ titan }: { titan: Titan }) =>
@@ -577,5 +590,74 @@ test(
       marker,
       'utf8',
     )).toBe('restarted')
+  },
+)
+
+test(
+  'the stable channel upgrades to the newest release tag, not main, and the hint follows the channel',
+  async () => {
+    const titan = await othrys.titan()
+    const previous = folder.head()
+    const two = folder.publish({
+      files: { 'build.sh': building({ version: 'two' }) },
+      message: 'two',
+    })
+
+    await follow({ channel: 'stable' })
+    await upgrade({ titan })
+    const unreleased = await settled({
+      titan,
+      state: 'failed',
+    })
+    expect(unreleased.error).toContain('no release tag')
+    expect(folder.head()).toBe(previous)
+    expect(upgradeNotice()).toBeNull()
+
+    const three = folder.publish({
+      files: { 'build.sh': building({ version: 'three' }) },
+      message: 'three',
+    })
+    folder.publish({
+      files: { 'build.sh': building({ version: 'four' }) },
+      message: 'four, merged after the last release',
+    })
+    folder.release({
+      tag: 'v0.9.0',
+      commit: two,
+    })
+    folder.release({
+      tag: 'v0.10.0',
+      commit: three,
+      annotated: true,
+    })
+    await othrys.restart()
+    await until({
+      what: 'the page to hear of the new release',
+      check: () => upgradeNotice()?.available === true,
+    })
+
+    await upgrade({ titan })
+    const released = await settled({
+      titan,
+      state: 'restarting',
+    })
+    expect(released.to).toBe(three)
+    expect(folder.head()).toBe(three)
+    expect(folder.built()).toBe('three')
+    await othrys.restart()
+    await settled({
+      titan,
+      state: 'done',
+    })
+    await until({
+      what: 'the hint to clear on the newest release',
+      check: () => upgradeNotice()?.available === false,
+    })
+
+    await follow({ channel: 'development' })
+    await until({
+      what: 'the hint to show main\'s newer commit',
+      check: () => upgradeNotice()?.available === true,
+    })
   },
 )

@@ -978,6 +978,30 @@ export async function startServer({
     changed: mountAll,
     interval: CREATION_POLL_MS,
   })
+  let upgradeChannel = readSettings().settings.upgradeChannel
+  // Once at start, then daily and when the channel changes: an offline check leaves the last answer, and no answer shows no hint.
+  const checkUpgrade = () => options.upgradeRoot && background({
+    name: 'upgrade check',
+    run: async () => {
+      const channel = upgradeChannel
+      const available = await upgradeAvailable({
+        root: options.upgradeRoot,
+        channel,
+      })
+      // A check for a channel the owner has since left answers nothing.
+      const stale = channel !== upgradeChannel
+
+      if (closed || stale || available === undefined) {
+        return
+      }
+
+      upgradeStatus = {
+        available,
+        checkedAt: new Date().toISOString(),
+      }
+      publishHome()
+    },
+  })
   const settingsDir = dirname(settingsLogPath())
   privateDir({ dir: settingsDir })
   let appliedRevision = readSettings().revision
@@ -997,6 +1021,13 @@ export async function startServer({
       allowedHosts = settings.allowedHosts
       logs.apply({ settings })
       served.forEach(m => m.settings())
+    }
+
+    // The hint answered for the old channel, so it clears until the new channel is checked.
+    if (settings.upgradeChannel !== upgradeChannel) {
+      upgradeChannel = settings.upgradeChannel
+      upgradeStatus = null
+      checkUpgrade()
     }
 
     publishHome()
@@ -1020,23 +1051,6 @@ export async function startServer({
     },
     RETRY_MS,
   ).unref()
-  // Once at start, then daily: an offline check leaves the last answer, and no answer shows no hint.
-  const checkUpgrade = () => options.upgradeRoot && background({
-    name: 'upgrade check',
-    run: async () => {
-      const available = await upgradeAvailable({ root: options.upgradeRoot })
-
-      if (closed || available === undefined) {
-        return
-      }
-
-      upgradeStatus = {
-        available,
-        checkedAt: new Date().toISOString(),
-      }
-      publishHome()
-    },
-  })
   let upgradeTimer: NodeJS.Timeout | undefined
 
   const close = async () => {
