@@ -53,28 +53,6 @@ function findColumn({
     || column.title.toLowerCase() === ref.toLowerCase())
 }
 
-export function othrysLookup({ state }: { state(): TitanState }): OthrysLookup {
-  return {
-    task: ({ ref }) => {
-      const current = state()
-      const card = findTask({
-        ref,
-        tasks: knownCards({ state: current }),
-        keys: current.keys,
-      })
-
-      return card ? {
-        id: card.id,
-        title: card.title,
-      } : undefined
-    },
-    column: ({ ref }) => findColumn({
-      ref,
-      columns: projectGroups({ state: state() }),
-    }),
-  }
-}
-
 export function useOthrysLookup({ state }: { state: TitanState }): OthrysLookup {
   const tasks = useKept({
     value: Object.fromEntries(Object.entries(knownCards({ state })).map(([
