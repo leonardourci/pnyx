@@ -3,6 +3,9 @@ import { loadTitan } from '#app/store.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { emptyTitan, reduce, replay } from '#app/reducer.ts'
+import { cardDoneDeadline } from '#tasks/retention-rules.ts'
+import { settles } from '#projects/copies.ts'
+import type { Card } from '#tasks/model.ts'
 import { readEvents } from '#app/event-log.ts'
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -1801,6 +1804,26 @@ test(
       asks: 0,
       projects: [expect.objectContaining({ asks: 0 })],
     })
+  },
+)
+
+test(
+  'a done time saved by older homes without Titan\'s outcome starts no hide clock and settles no copy',
+  () => {
+    const doneAt = '2026-11-01T00:00:00.000Z'
+    const legacy = {
+      doneAt,
+      copy: { state: 'active' },
+    } as unknown as Card
+    expect(cardDoneDeadline({ card: legacy })).toBeUndefined()
+    expect(settles({ card: legacy })).toBe(false)
+
+    const marked = {
+      ...legacy,
+      outcome: { state: 'done' as const },
+    }
+    expect(cardDoneDeadline({ card: marked })).toBe(Date.parse(doneAt) + 60 * 60 * 1000)
+    expect(settles({ card: marked })).toBe(true)
   },
 )
 

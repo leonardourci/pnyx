@@ -53,6 +53,41 @@ describe(
     )
 
     it(
+      'sets and clears a task outcome',
+      async () => {
+        await titan.owner({
+          args: [
+            'task',
+            'create',
+            '--no-start',
+            '--key',
+            'plain-outcome',
+            '--title',
+            'Plain outcome',
+          ],
+        })
+        expect((await run({
+          args: [
+            'outcome',
+            'plain-outcome',
+            'done',
+            '--note',
+            'Shipped',
+          ],
+        })).status).toBe(0)
+        expect((await titan.task({ key: 'plain-outcome' })).status).toBe('done')
+        expect((await run({
+          args: [
+            'outcome',
+            'plain-outcome',
+            '--clear',
+          ],
+        })).status).toBe(0)
+        expect((await titan.task({ key: 'plain-outcome' })).status).not.toBe('done')
+      },
+    )
+
+    it(
       'creates and starts a task once, messages its worker and prints a plain Titan',
       async () => {
         const folder = titan.folder({ name: 'plain-cli-worker' })
