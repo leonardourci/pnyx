@@ -237,3 +237,58 @@ test(
     }
   },
 )
+
+test(
+  'a worker chat closed on the page keeps its loaded page for when it opens again',
+  async () => {
+    const primary = await othrys.titan()
+    await primary.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'reopened',
+        '--title',
+        'Opened twice',
+      ],
+    })
+    const task = await primary.task({ key: 'reopened' })
+    const {
+      client,
+      close,
+    } = connectPage({ primary: primary.id })
+    const command = client.commandFor({ id: primary.id })
+    const thread = () => client.shownWorkspaces()
+      .find(workspace => workspace.navigation.titanId === primary.id)?.taskThreads[task.id]
+
+    try {
+      await until({
+        what: 'the Titan to connect',
+        check: () => !!client.snapshot().connected,
+      })
+      await command({
+        name: 'page',
+        args: [
+          '--card',
+          task.id,
+        ],
+      })
+      await command({
+        name: 'thread',
+        args: [task.id],
+      })
+      await until({
+        what: 'the worker chat page to load',
+        check: () => thread()?.card === task.id,
+      })
+      await command({
+        name: 'page',
+        args: [],
+      })
+      expect(thread()?.card).toBe(task.id)
+    } finally {
+      close()
+    }
+  },
+)

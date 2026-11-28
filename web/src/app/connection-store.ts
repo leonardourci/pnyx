@@ -409,19 +409,7 @@ export function createTitanConnection() {
       creating: !!scope.creation && scope.id.startsWith('pending-'),
       error: scope.creation && scope.failed ? '' : scope.error,
       titanThread: scope.thread,
-      taskThreads: Object.fromEntries((scope.page ?? []).filter((
-        _,
-        index,
-        args,
-      ) => args[index - 1] === '--card')
-        .map(ref => {
-          const id = resource.view.keys[ref] ?? ref
-
-          return [
-            id,
-            scope.threads.read({ card: id }),
-          ]
-        })),
+      taskThreads: scope.threads.workers(),
       titanQueue: scope.queue,
       upgrade,
       latest: scope.latest,

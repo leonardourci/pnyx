@@ -3,6 +3,10 @@ import { TITAN_CARD } from './identity.ts'
 import { applyThreadDelta, receivedThread } from './thread-delta.ts'
 import type { ThreadPage } from './transcripts-read.ts'
 
+// The worker chats updated last keep their page after they close, so one opened again shows at once while its read
+// refreshes it.
+const CLOSED_THREADS_KEPT = 8
+
 export function createThreadReceiver() {
   let titan: ThreadPage | null = null
   const workers = new Map<string, ThreadPage>()
@@ -17,11 +21,18 @@ export function createThreadReceiver() {
 
   return {
     read,
+    // Every worker page held, open or kept after closing, by card id.
+    workers: () => Object.fromEntries(workers),
     retain({ cards }: { cards: string[] }) {
-      for (const id of workers.keys()) {
-        if (!cards.includes(id)) {
-          workers.delete(id)
-        }
+      const closed = [...workers.keys()].filter(id => !cards.includes(id))
+
+      const dropped = closed.slice(
+        0,
+        -CLOSED_THREADS_KEPT,
+      )
+
+      for (const id of dropped) {
+        workers.delete(id)
       }
     },
     receive({ message }: { message: ServerMessage }): ServerMessage | undefined {
@@ -56,6 +67,8 @@ export function createThreadReceiver() {
       if (thread.card === TITAN_CARD) {
         titan = thread
       } else {
+        // Setting a key again keeps its place in the map, so it moves to the end as the newest.
+        workers.delete(thread.card)
         workers.set(
           thread.card,
           thread,
