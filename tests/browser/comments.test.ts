@@ -200,27 +200,36 @@ for (const engine of [
 
         if (layout.touch) {
           await dropTouchSelection()
-          await page.keyboard.press('Escape')
-          await pill.waitFor({ state: 'detached' })
-
-          await selectPassage({ words: 'proof they were read' })
-          await dropTouchSelection()
-          const selectionAfterEscape = await composer.evaluate(field => {
+          const selectionAfterEscape = await page.evaluate(() => {
             const selection = getSelection()
-            const range = document.createRange()
-            range.selectNodeContents(field)
-            selection?.addRange(range)
-            document.body.dispatchEvent(new KeyboardEvent(
-              'keydown',
-              {
-                key: 'Escape',
-                bubbles: true,
-              },
-            ))
 
-            return selection?.toString()
+            if (!selection) {
+              throw new Error('The browser selection is unavailable')
+            }
+
+            const outsideChat = document.createElement('p')
+            outsideChat.textContent = 'Text outside the chat'
+            document.body.append(outsideChat)
+
+            try {
+              const range = document.createRange()
+              range.selectNodeContents(outsideChat)
+              selection.removeAllRanges()
+              selection.addRange(range)
+              outsideChat.dispatchEvent(new KeyboardEvent(
+                'keydown',
+                {
+                  key: 'Escape',
+                  bubbles: true,
+                },
+              ))
+
+              return selection.toString()
+            } finally {
+              outsideChat.remove()
+            }
           })
-          expect(selectionAfterEscape).toContain('233 old instructions')
+          expect(selectionAfterEscape).toBe('Text outside the chat')
           await pill.waitFor({ state: 'detached' })
 
           await selectPassage({ words: 'proof they were read' })
