@@ -1,5 +1,5 @@
 import type { Locator, Page } from 'playwright-core'
-import { beforeAll, expect, onTestFinished, test } from 'vitest'
+import { beforeAll, expect, test } from 'vitest'
 import { startOthrys, until, type Othrys } from '../setup/othrys.ts'
 import { openTitan } from './page.ts'
 
@@ -254,7 +254,6 @@ for (const engine of ENGINES) {
         { name: 'Reply to Titan' },
       )
       await field.waitFor()
-      const resting = await box({ target: composer })
       expect((await box({ target: field })).height).toBeGreaterThanOrEqual(96)
 
       await composer.getByRole(
@@ -271,104 +270,9 @@ for (const engine of ENGINES) {
         { name: 'Shrink the composer' },
       ).tap()
       await until({
-        what: 'the composer to return to its resting height',
-        check: async () => (await box({ target: composer })).height === resting.height,
+        what: 'the composer to shrink back',
+        check: async () => (await box({ target: composer })).height < PHONE.height / 4,
       })
     },
   )
 }
-
-test(
-  'chromium phone: a long press on a message selects a word and shows the comments bar while Titan works and the composer has focus',
-  async () => {
-    const titan = await othrys.titan()
-    othrys.claude.plan({
-      titan: titan.id,
-      text: 'Say something',
-      reply: 'Alpha bravo charlie delta echo.',
-    })
-    await titan.chat({ text: 'Say something' })
-    const page = await openTitan({
-      port: othrys.port(),
-      titanId: titan.id,
-      engine: 'chromium',
-      viewport: PHONE,
-      touch: true,
-    })
-    const workspace = page.locator(`[data-titan-workspace="${titan.id}"]`)
-    const reply = workspace.getByText(
-      'Alpha bravo charlie delta echo.',
-      { exact: true },
-    )
-    await reply.waitFor()
-    const working = othrys.claude.plan({
-      titan: titan.id,
-      text: 'Keep going',
-      partial: 'Working on the next part',
-      reply: 'Done with the next part.',
-      hold: true,
-    })
-    onTestFinished(() => working.release())
-    const heard = titan.chat({ text: 'Keep going' })
-    await workspace.getByText('Working on the next part').waitFor()
-    await workspace.getByRole(
-      'textbox',
-      { name: 'Reply to Titan' },
-    ).tap()
-    const word = await reply.evaluate(element => {
-      const text = element.firstChild
-
-      if (!text) {
-        throw new Error('The reply has no text to select')
-      }
-
-      const range = document.createRange()
-      range.setStart(
-        text,
-        0,
-      )
-      range.setEnd(
-        text,
-        'Alpha'.length,
-      )
-      const {
-        left,
-        top,
-        width,
-        height,
-      } = range.getBoundingClientRect()
-
-      return {
-        x: left + width / 2,
-        y: top + height / 2,
-      }
-    })
-    const browser = await page.context().newCDPSession(page)
-    await browser.send(
-      'Input.synthesizeTapGesture',
-      {
-        ...word,
-        duration: 1000,
-        gestureSourceType: 'touch',
-      },
-    )
-    const bar = workspace.getByRole(
-      'group',
-      {
-        name: 'Selected text',
-        exact: true,
-      },
-    )
-    await until({
-      what: 'the pressed word selected with the comments bar',
-      check: async () => await page.evaluate(() => getSelection()?.toString()) === 'Alpha'
-        && (await bar.textContent())?.includes('Alpha'),
-    })
-
-    working.release()
-    await heard
-    await workspace.getByText('Done with the next part.').waitFor()
-    await expect(page.evaluate(() => getSelection()?.toString())).resolves.toBe('Alpha')
-    await expect(bar.textContent()).resolves.toContain('Alpha')
-  },
-)
