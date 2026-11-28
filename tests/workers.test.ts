@@ -1950,7 +1950,8 @@ test.each([
     expect(pendingSteering({ card: task })).toEqual([])
 
     const stateFromOlderSnapshot = structuredClone(state)
-    const restoredInstruction = stateFromOlderSnapshot.cards[task.id]?.steering?.find(message => message.id === instruction.id)
+    const restoredTask = stateFromOlderSnapshot.cards[task.id]
+    const restoredInstruction = restoredTask?.steering?.find(message => message.id === instruction.id)
 
     if (!restoredInstruction) {
       throw new Error('Expected the older snapshot to contain the unread instruction')
