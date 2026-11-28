@@ -32,10 +32,19 @@ test(
       what: 'upgradeChannel to save as development',
       check: () => othrys.home().settings.settings.upgradeChannel === 'development',
     })
-    const changed = page.getByRole('navigation', { name: 'Settings sections' })
-      .getByRole('button', { name: /^Changed/ })
+    const changed = page.getByRole(
+      'navigation',
+      { name: 'Settings sections' },
+    )
+      .getByRole(
+        'button',
+        { name: /^Changed/ },
+      )
     await changed.click()
-    await channel.getByRole('radio', { name: 'Stable' }).click()
+    await channel.getByRole(
+      'radio',
+      { name: 'Stable' },
+    ).click()
     await until({
       what: 'upgrade channel to save as stable',
       check: () => othrys.home().settings.settings.upgradeChannel === 'stable',
