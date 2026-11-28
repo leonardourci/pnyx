@@ -2,7 +2,7 @@ import type { AgentSession } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { rootSessionId } from './session-attachments.ts'
 
-export function findSessionsWithWorkingChild({
+function findSessionsWithWorkingChild({
   sessions,
 }: {
   sessions: Record<string, AgentSession>
