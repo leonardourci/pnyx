@@ -21,6 +21,8 @@ import { EVENT_VERSION } from '#store/events.ts'
 import { applySessionMove } from '#workers/reduce.ts'
 import { applySessionFacts } from '#workers/session-facts.ts'
 import { inbox } from '#titan/update-queue.ts'
+import { steeringToFollow } from '#workers/inbox-follow-up.ts'
+import { pendingSteering } from '#workers/steering.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { WORKER_RESUME } from '#workers/host.ts'
 import { claudeProvider } from '#workers/claude.ts'
@@ -1897,6 +1899,75 @@ test(
       sessions: othrys.claude.sessions.filter(session => session.cwd === folder),
       text: 'Keep this instruction unread',
     })).toBe(1)
+  },
+)
+
+test.each([
+  { outcome: 'done' },
+  { outcome: 'cancelled' },
+])(
+  'a task marked $outcome settles its unread instruction after a restart',
+  async ({ outcome }) => {
+    const titan = await othrys.titan()
+    const { worker } = await titan.startTask({ key: 'done-unread' })
+    const held = othrys.claude.plan({
+      titan: titan.id,
+      match: ({ text }) => text.includes('Never read this'),
+      partial: 'Starting',
+      hold: true,
+    })
+    onTestFinished(() => held.release())
+    await titan.owner({
+      args: [
+        'reply',
+        'done-unread',
+        '--text',
+        'Never read this',
+      ],
+    })
+    await until({
+      what: 'the instruction to reach the held turn',
+      check: () => worker.received.some(text => text.includes('Never read this')),
+    })
+    await titan.owner({
+      args: [
+        'outcome',
+        'done-unread',
+        outcome,
+      ],
+    })
+    await othrys.restart()
+
+    const state = loadTitan({ titanId: titan.id }).state
+    const taskId = state.keys['done-unread']
+    const task = taskId && state.cards[taskId]
+
+    if (!task) {
+      throw new Error('The completed task is missing after restart')
+    }
+
+    const instruction = task.steering?.find(message => message.text === 'Never read this')
+
+    if (!instruction) {
+      throw new Error('The unread instruction is missing after restart')
+    }
+
+    expect(instruction.ack).toBeUndefined()
+    expect(pendingSteering({ card: task })).toEqual([])
+
+    const legacyUnreadInstruction = { ...instruction }
+    delete legacyUnreadInstruction.stopped
+    const legacySnapshotState = {
+      ...state,
+      cards: {
+        ...state.cards,
+        [task.id]: {
+          ...task,
+          steering: [legacyUnreadInstruction],
+        },
+      },
+    }
+    expect(steeringToFollow({ state: legacySnapshotState })).toBe(false)
   },
 )
 

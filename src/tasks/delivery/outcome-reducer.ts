@@ -32,6 +32,12 @@ export function applyOutcome({
     delete card.keepDone
   }
 
+  for (const message of card.steering ?? []) {
+    if (!message.ack) {
+      message.stopped = true
+    }
+  }
+
   const closes = new Set(event.data.closes)
 
   if (!closes.size) {

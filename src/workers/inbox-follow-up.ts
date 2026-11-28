@@ -4,7 +4,7 @@ import type { TitanState } from '#app/model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession, SteeringClaim, SteeringMessage, SteeringRecovery } from './model.ts'
-import { liveTask } from '#tasks/select.ts'
+import { liveTask, taskDone } from '#tasks/select.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
@@ -19,7 +19,7 @@ const STEERING_RING_LIMIT = 3
 const STEERING_DEFERRAL_LIMIT = 2
 
 function oldestUnread({ card }: { card: Card }): SteeringMessage | undefined {
-  if (!liveTask({ card }) || card.id === TITAN_CARD) {
+  if (!liveTask({ card }) || taskDone({ card }) || card.id === TITAN_CARD) {
     return undefined
   }
 
