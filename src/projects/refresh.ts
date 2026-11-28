@@ -473,7 +473,7 @@ export async function refreshProject({
     }
 
     if (root === await realpath(OTHRYS_ROOT)) {
-      result.state = 'needs-attention'
+      result.state = 'skipped'
       result.reason = 'this checkout is the running Othrys install; use /upgrade to pull, build and restart together'
 
       return
