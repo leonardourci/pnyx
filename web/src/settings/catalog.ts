@@ -22,6 +22,7 @@ export const SETTING_ICONS: Record<string, string> = {
   logDays: 'log-days',
   logMaxMB: 'log-size',
   allowedHosts: 'world',
+  upgradeChannel: 'upgrade',
 }
 
 // Every setting the Settings page shows, with the words a search finds it by; the Oracle will move to this list.
@@ -396,6 +397,22 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
       'build',
       'license',
       'credits',
+    ],
+  },
+  {
+    id: 'upgradeChannel',
+    section: 'about',
+    label: 'Upgrade channel',
+    description: 'What /upgrade follows. Stable moves to the newest release tag; Development follows main.',
+    values: [
+      'Stable',
+      'Development',
+    ],
+    related: [
+      'update',
+      'release',
+      'main',
+      'tag',
     ],
   },
 ]

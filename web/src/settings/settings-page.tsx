@@ -75,6 +75,16 @@ const LOG_LEVELS = [
     label: 'Detailed',
   },
 ]
+const CHANNELS = [
+  {
+    value: 'stable',
+    label: 'Stable',
+  },
+  {
+    value: 'development',
+    label: 'Development',
+  },
+]
 const SUGGESTIONS = [
   'width',
   'model',
@@ -393,6 +403,15 @@ export function SettingControl({
           }}
           onChange={({ value }) => save({ patch: { logMaxMB: value } })}
           onSlide={slideTo({ key: 'logMaxMB' })}
+        />
+      )
+    case 'upgradeChannel':
+      return (
+        <Segmented
+          label="Upgrade channel"
+          value={settings.upgradeChannel}
+          options={CHANNELS}
+          onChange={({ value }) => save({ patch: { upgradeChannel: value } })}
         />
       )
     case 'allowedHosts':
