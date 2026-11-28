@@ -43,7 +43,10 @@ import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
 const SELECTION_ACTIONS_SELECTOR = '.comment-pill, .comment-dock'
 let highlights = 0
 
-function selectionBelongsToMessages({ selection, messages }: {
+function selectionBelongsToMessages({
+  selection,
+  messages,
+}: {
   selection: Selection | null
   messages: HTMLElement | null
 }) {

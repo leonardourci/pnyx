@@ -181,7 +181,10 @@ for (const engine of [
         await expect.poll(() => composer.textContent()).toContain('233 old instructions')
         expect(await workspace.getByRole(
           'group',
-          { name: 'Comment 2', exact: true },
+          {
+            name: 'Comment 2',
+            exact: true,
+          },
         ).count()).toBe(0)
         await bar.waitFor({ state: 'detached' })
 
