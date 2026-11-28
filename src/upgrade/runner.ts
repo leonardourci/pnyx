@@ -145,10 +145,16 @@ async function newestRelease({
   const commits = new Map<string, string>()
 
   for (const line of listed.split('\n')) {
-    const [commit, ref] = line.split('\t')
+    const [
+      commit,
+      ref,
+    ] = line.split('\t')
 
     if (commit && ref) {
-      commits.set(ref, commit)
+      commits.set(
+        ref,
+        commit,
+      )
     }
   }
 
@@ -158,7 +164,10 @@ async function newestRelease({
     version: bigint[]
   } | undefined
 
-  for (const [ref, object] of commits) {
+  for (const [
+    ref,
+    object,
+  ] of commits) {
     const version = RELEASE_TAG.exec(ref)?.slice(1)
       .map(part => BigInt(part))
 
