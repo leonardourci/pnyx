@@ -978,6 +978,29 @@ export async function startServer({
     changed: mountAll,
     interval: CREATION_POLL_MS,
   })
+  let upgradeChannel = readSettings().settings.upgradeChannel
+  let upgradeCheckId = 0
+  const checkUpgrade = () => options.upgradeRoot && background({
+    name: 'upgrade check',
+    run: async () => {
+      const checkId = ++upgradeCheckId
+      const available = await upgradeAvailable({
+        root: options.upgradeRoot,
+        channel: upgradeChannel,
+      })
+      const superseded = checkId !== upgradeCheckId
+
+      if (closed || superseded || available === undefined) {
+        return
+      }
+
+      upgradeStatus = {
+        available,
+        checkedAt: new Date().toISOString(),
+      }
+      publishHome()
+    },
+  })
   const settingsDir = dirname(settingsLogPath())
   privateDir({ dir: settingsDir })
   let appliedRevision = readSettings().revision
@@ -997,6 +1020,12 @@ export async function startServer({
       allowedHosts = settings.allowedHosts
       logs.apply({ settings })
       served.forEach(m => m.settings())
+    }
+
+    if (settings.upgradeChannel !== upgradeChannel) {
+      upgradeChannel = settings.upgradeChannel
+      upgradeStatus = null
+      checkUpgrade()
     }
 
     publishHome()
@@ -1020,23 +1049,6 @@ export async function startServer({
     },
     RETRY_MS,
   ).unref()
-  // Once at start, then daily: an offline check leaves the last answer, and no answer shows no hint.
-  const checkUpgrade = () => options.upgradeRoot && background({
-    name: 'upgrade check',
-    run: async () => {
-      const available = await upgradeAvailable({ root: options.upgradeRoot })
-
-      if (closed || available === undefined) {
-        return
-      }
-
-      upgradeStatus = {
-        available,
-        checkedAt: new Date().toISOString(),
-      }
-      publishHome()
-    },
-  })
   let upgradeTimer: NodeJS.Timeout | undefined
 
   const close = async () => {

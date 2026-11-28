@@ -43,7 +43,7 @@ import { ProjectColumn } from '#web-tasks/project-column.tsx'
 import { TaskChat } from '#web-tasks/task-chat.tsx'
 import { TaskFamily, type FamilyCard } from '#web-tasks/task-family.tsx'
 import { SortableChip } from '#web-shared/ui/sortable-chip.tsx'
-import { expandedTaskWidth, projectWidth } from '#web-tasks/project-layout.ts'
+import { expandedTaskWidth } from '#web-tasks/project-layout.ts'
 import { projectColumns, statusPriority, IDEAS_COLUMN, type ProjectColumnData } from '#web-tasks/project-view.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
 import { Detail } from '#web-tasks/detail.tsx'
@@ -499,36 +499,14 @@ export function TitanView({
     )
   }
 
-  const columnWidth = ({ item }: { item: ProjectColumnData }) => {
-    if (view.workspace.foldedProjects.includes(item.id)) {
-      return WORKSPACE_SIZING.foldedColumn
-    }
-
-    return projectWidth({
-      id: item.id,
-      widths: view.workspace.projectWidths,
-      expandedWidth: expandedProjectWidths.get(item.id) ?? 0,
-      viewport: viewport.width,
-    }).width
-  }
-
   const phone = phoneLayout({ width: viewport.width })
-  const chatWidth = view.workspace.chatCollapsed ? WORKSPACE_SIZING.foldedChat
-    : phone ? viewport.width - WORKSPACE_SIZING.phoneChatInset : view.titanWidth
-  let projectLeft = (phone ? WORKSPACE_SIZING.phoneInset : WORKSPACE_SIZING.inset) / 2
-    + chatWidth + WORKSPACE_SIZING.columnGap
-  const projectSnaps = columns.map(column => {
-    const left = projectLeft
-    projectLeft += columnWidth({ item: column }) + WORKSPACE_SIZING.columnGap
-
-    return left
-  })
   const [
     kanban,
     setKanban,
   ] = useState<HTMLDivElement | null>(null)
-  const revealPadding = (phone ? WORKSPACE_SIZING.phoneFrameMargin
-    : WORKSPACE_SIZING.frameMargin) / 2
+  const revealPadding = phone ? 0 : WORKSPACE_SIZING.frameMargin / 2
+  const titanFolded = view.workspace.collapsed && !phone
+  const chatFolded = view.workspace.chatCollapsed && !phone
   const requestedColumnId = columns.find(column => column.id === columnRequest?.id)?.id
   useLayoutEffect(
     () => {
@@ -999,7 +977,7 @@ export function TitanView({
 
     return (
       <div className="nav-sheet flex min-h-0 flex-col gap-2 overflow-auto p-3 [&_h3]:px-1.75 [&_h3]:pt-2 [&_h3]:text-meta [&_h3]:tracking-eyebrow [&_h3]:text-muted [&_h3]:uppercase">
-        <div className="flex flex-none gap-1.5 overflow-x-auto pb-1">
+        <div className="flex flex-none flex-wrap gap-1.5 pb-1">
           {edits.titans.map(item => (
             <Chip
               key={item.id}
@@ -1160,13 +1138,12 @@ export function TitanView({
     >
       <div
         ref={setLayer}
-        className="app titan-workspace group/workspace flex h-full w-max min-w-workspace-frame flex-none snap-start flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal data-[collapsed=true]:w-14.5 data-[collapsed=true]:min-w-0 max-phone:min-w-phone-workspace-frame max-phone:p-1.5"
+        className="app titan-workspace group/workspace flex h-full w-max min-w-workspace-frame flex-none snap-start flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal data-[collapsed=true]:w-14.5 data-[collapsed=true]:min-w-0 max-phone:min-w-screen max-phone:rounded-none max-phone:border-0 max-phone:p-0"
         data-ui-surface="workspace"
         data-titan-workspace={navigation.titanId}
         data-active={active}
         data-page={page}
-        data-project-snaps={phone ? JSON.stringify(projectSnaps) : undefined}
-        data-collapsed={view.workspace.collapsed}
+        data-collapsed={titanFolded}
         data-seq={state.seq}
         data-connected={connected}
         style={runtimeStyle(fontSizes)}
@@ -1272,7 +1249,7 @@ export function TitanView({
             }}
           />
         </Panel>
-        {view.workspace.collapsed && (
+        {titanFolded && (
           <Button
             className="titan-fold-strip flex h-full w-full items-center justify-start gap-1.5 px-0 py-2 font-brand text-workspace font-bold writing-vertical [&_.titan-label]:max-w-workspace-label"
             aria-label="Unfold Titan"
@@ -1284,7 +1261,7 @@ export function TitanView({
         )}
         <FoldContent
           as="main"
-          open={!view.workspace.collapsed}
+          open={!titanFolded}
           className="shell flex min-h-0 w-max flex-1 flex-col gap-2 overflow-visible p-0"
           aria-busy={!!loading || !loaded}
           data-titan={navigation.titanId}
@@ -1314,14 +1291,14 @@ export function TitanView({
           />
           {showWorkspace && (
             <div className="titan-page flex h-full min-h-0 w-max flex-row gap-2.5 overflow-visible">
-              <div data-ui-surface="chat" className={`workspace-chat relative z-1 h-full flex-none ${view.workspace.chatCollapsed ? 'collapsed w-10 rounded-card border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
+              <div data-ui-surface="chat" className={`workspace-chat relative z-1 h-full flex-none ${chatFolded ? 'collapsed w-10 rounded-card border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
                 <IconButton
-                  className="chat-fold absolute top-3 right-1.75 z-4 p-1"
-                  label={view.workspace.chatCollapsed ? 'Unfold chat' : 'Fold chat'}
+                  className="chat-fold absolute top-3 right-1.75 z-4 p-1 max-phone:hidden"
+                  label={chatFolded ? 'Unfold chat' : 'Fold chat'}
                   onClick={toggleChat}
-                  icon={view.workspace.chatCollapsed ? 'chevron_right' : 'chevron_left'}
+                  icon={chatFolded ? 'chevron_right' : 'chevron_left'}
                 />
-                <FoldContent open={!view.workspace.chatCollapsed} className="chat-content h-full [&_.titan-head]:pr-12 [&_.titan-title_.titan-label]:truncate [&>.titan-chat]:h-full [&>.titan-chat]:max-h-none [&>.titan-chat]:min-w-75 [&>.titan-chat]:shrink-0 [&>.titan-chat]:rounded-xl [&>.titan-chat]:border [&>.titan-chat]:border-line max-phone:[&>.titan-chat]:w-phone-chat! max-phone:[&>.titan-chat]:basis-phone-chat!">
+                <FoldContent open={!chatFolded} className="chat-content h-full [&_.titan-head]:pr-12 [&_.titan-title_.titan-label]:truncate [&>.titan-chat]:h-full [&>.titan-chat]:max-h-none [&>.titan-chat]:min-w-75 [&>.titan-chat]:shrink-0 [&>.titan-chat]:rounded-xl [&>.titan-chat]:border [&>.titan-chat]:border-line max-phone:[&>.titan-chat]:min-w-0 max-phone:[&>.titan-chat]:rounded-none max-phone:[&>.titan-chat]:border-0">
                   <ProfileSurface name="chat" titanId={navigation.titanId}>
                     <TitanChat
                       titanId={navigation.titanId}

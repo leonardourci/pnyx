@@ -14,7 +14,7 @@ export function CardTitle({
   return (
     <div
       {...props}
-      className="button card-open block min-h-0 w-full min-w-0 flex-1 cursor-pointer touch-none p-0 text-left text-ui leading-detail font-medium group-[.selected]/card:font-semibold group-[.selected]/card:whitespace-normal group-[:not(.selected)]/card:truncate"
+      className="button card-open block min-h-0 w-full min-w-0 flex-1 cursor-pointer touch-none p-0 text-left text-ui leading-detail font-medium group-[.selected]/card:font-semibold group-[.selected]/card:whitespace-normal group-[:not(.selected)]/card:truncate max-phone:touch-pan-y"
       role="button"
       aria-expanded={expanded}
       aria-description="Enter or Space opens or folds the task, F2 or Command/Control+E edits"

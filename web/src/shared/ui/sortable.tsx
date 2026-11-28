@@ -2,7 +2,7 @@ import { runtimeStyle, type RuntimeStyle } from './runtime-style.ts'
 import { layoutBox } from './layout-box.ts'
 import { useKept } from '#web-shared/stable.ts'
 import { trackUIDrag } from '#web-app/ui-metrics.ts'
-import { CARD_SIZING, WORKSPACE_SIZING, liftedCardSize } from '#web-shared/card-sizing.ts'
+import { CARD_SIZING, WORKSPACE_SIZING, liftedCardSize, phoneLayout } from '#web-shared/card-sizing.ts'
 import { motionDuration, MOTION_EASING, MOTION_CSS_EASING } from '#web-shared/motion.ts'
 import { createContext, useContext, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type PointerEventHandler } from 'react'
 import { createPortal } from 'react-dom'
@@ -415,6 +415,10 @@ class WorkspacePointerSensor extends PointerSensor {
         event,
         options,
       ) => {
+        if (phoneLayout({ width: innerWidth })) {
+          return false
+        }
+
         const target = event.target
         const control = target instanceof Element ? target.closest('button,input,textarea,[contenteditable],select,a,.resize,[popover]') : null
 

@@ -10,6 +10,7 @@ import { sendableRequest } from './project-request.ts'
 import { Button, NativeInput } from '#web-shared/ui/controls.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
+import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { ComposerField, type ComposerFieldHandle } from './composer-field.tsx'
 import { commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -82,6 +83,10 @@ export function Composer({
   const [
     checking,
     setChecking,
+  ] = useState(false)
+  const [
+    tall,
+    setTall,
   ] = useState(false)
   const field = useRef<ComposerFieldHandle>(null)
   const form = useRef<HTMLFormElement>(null), files = useRef<HTMLInputElement>(null)
@@ -245,6 +250,7 @@ export function Composer({
       })
       setComments({ items: comments.filter(comment => !sendableComment({ comment })) })
       field.current?.closePickers()
+      setTall(false)
     }
 
     try {
@@ -309,13 +315,16 @@ export function Composer({
   }
 
   const sendHint = touchFirst() ? 'Send' : 'Send · Enter'
+  const tallLabel = tall ? 'Shrink the composer' : 'Expand the composer'
 
   return (
     <>
       {checking && <p className="save-checking muted small" role="status">Checking whether your message was saved. Retrying automatically.</p>}
       <ComposerFrame
         ref={form}
+        className="max-phone:[&_.composer-text]:min-h-24 max-phone:[&_.composer-text]:pr-7 max-phone:data-tall:max-h-none! max-phone:data-tall:[&_.composer-text]:min-h-composer-tall max-phone:data-tall:[&_.composer-text]:max-h-none!"
         data-limit-height={limitHeight || undefined}
+        data-tall={tall || undefined}
         aria-busy={sending}
         // eslint-disable-next-line othrys/object-params -- React owns form event handlers.
         onSubmit={e => {
@@ -350,6 +359,14 @@ export function Composer({
             close={closeListing}
           />
         )}
+        <IconButton
+          className="composer-tall absolute top-1 right-1 z-1 hidden max-phone:inline-flex"
+          label={tallLabel}
+          aria-pressed={tall}
+          icon={tall ? 'compact' : 'open'}
+          size="compact"
+          onClick={() => setTall(expanded => !expanded)}
+        />
         <ComposerField
           ref={field}
           standalone={false}

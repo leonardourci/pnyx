@@ -7,6 +7,7 @@ import { knownHarness } from '#workers/providers.ts'
 import { NAME, NAME_RULE } from '#workers/dispatch-check.ts'
 import { TitanError } from '#store/errors.ts'
 import { TITAN_ID } from '#titan/identity.ts'
+import { UPGRADE_CHANNELS } from '#upgrade/model.ts'
 import { isSharedViewKey, SETTING_KEYS, SHARED_VIEW_KEYS, type Settings, type SharedView } from './model.ts'
 
 export const DEFAULT_REVIEW_MINUTES = 30
@@ -30,6 +31,7 @@ export const DEFAULT_SETTINGS: Settings = {
   logDays: DEFAULT_LOG_DAYS,
   logMaxMB: DEFAULT_LOG_MAX_MB,
   allowedHosts: [],
+  upgradeChannel: 'stable',
 }
 
 // Settings stored before a key existed lack it, so each missing key reads as its default.
@@ -252,6 +254,16 @@ export function patchSettings({
       pattern: HOST_HEADER,
       detail: 'allowedHosts takes a list of lowercase host names such as mac.example.ts.net, each once',
     })
+  }
+
+  if ('upgradeChannel' in patch) {
+    const channel = UPGRADE_CHANNELS.find(name => name === patch.upgradeChannel)
+
+    if (!channel) {
+      return invalid({ detail: 'upgradeChannel takes stable or development' })
+    }
+
+    next.upgradeChannel = channel
   }
 
   for (const key of [

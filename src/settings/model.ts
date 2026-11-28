@@ -1,5 +1,6 @@
 import type { LogMode } from '#app/log-line.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
+import type { UpgradeChannel } from '#upgrade/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 
 export const SHARED_VIEW_KEYS = [
@@ -45,6 +46,7 @@ export interface Settings extends SharedView {
   logDays: number
   logMaxMB: number
   allowedHosts: string[]
+  upgradeChannel: UpgradeChannel
 }
 
 export type PageSettings = Settings
@@ -61,6 +63,7 @@ export const SETTING_KEYS = [
   'logDays',
   'logMaxMB',
   'allowedHosts',
+  'upgradeChannel',
 ] as const
 
 export type SettingKey = (typeof SETTING_KEYS)[number]

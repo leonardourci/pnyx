@@ -36,11 +36,7 @@
   --grid-template-columns-setting-preview: var(--spacing-setting-icon) minmax(0, 1fr) var(--spacing-setting-preview);
   --grid-template-columns-dispatch-issue: var(--spacing-dispatch-issue) minmax(0, 1fr);
   --spacing-workspace-frame: calc(100vw - --spacing(6));
-  --spacing-phone-workspace-frame: calc(100vw - --spacing(3));
-  --spacing-phone-chat: calc(100vw - --spacing(9.5));
   --spacing-workspace-axis-top: calc(var(--spacing-topbar-height) + --spacing(2.5));
-  --spacing-workspace-axis-phone-top: calc(var(--spacing-topbar-height) + --spacing(2));
-  --spacing-workspace-axis-phone-bottom: calc(--spacing(1.5) + var(--spacing-safe-bottom));
   --spacing-oracle-excerpt: 9em;
   --spacing-search-basis: 140px;
   --color-background: #ffffff;
@@ -166,6 +162,7 @@
   --spacing-message-gap: 18px;
   --spacing-chat-max: 960px;
   --spacing-chat-pad: 24px;
+  --spacing-chat-pad-phone: 12px;
   --spacing-chat-gap: 24px;
   --spacing-chat-row: 96px;
   --spacing-jump: 34px;
@@ -228,6 +225,7 @@
   --shadow-suggestions: 0 8px 20px var(--color-shadow);
   --radius-panel: var(--radius-control);
   --spacing-composer-max: 480px;
+  --spacing-composer-tall: 60dvh;
   --transition-duration-composer: var(--transition-duration-fast);
   --spacing-attachment-gap: .375em;
   --spacing-attachment-inset: .1875em;
