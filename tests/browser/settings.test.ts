@@ -1,4 +1,4 @@
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, test } from 'vitest'
 import { startOthrys, until, type Othrys } from '../setup/othrys.ts'
 import { openTitan } from './page.ts'
 
@@ -21,13 +21,23 @@ test(
       'radiogroup',
       { name: 'Upgrade channel' },
     )
-    expect(othrys.home().settings.settings.upgradeChannel).toBe('stable')
+    const stable = channel.getByRole(
+      'radio',
+      {
+        name: 'Stable',
+        checked: true,
+      },
+    )
+    await stable.waitFor({ state: 'visible' })
+    const version = page.getByText('Version and upgrade', { exact: true })
+    await version.waitFor({ state: 'visible' })
 
     const search = page.getByRole(
       'textbox',
       { name: 'Search settings' },
     )
     await search.fill('release tag')
+    await version.waitFor({ state: 'hidden' })
     await channel.getByRole(
       'radio',
       { name: 'Development' },
