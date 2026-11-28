@@ -16,15 +16,9 @@ const phoneBreakpoint = parseFloat(styles?.getPropertyValue('--breakpoint-phone'
 export const WORKSPACE_SIZING = {
   subtaskIndent: Number.isFinite(subtaskIndent) ? subtaskIndent : 26,
   cardGap: unit * 2,
-  columnGap: unit * 2.5,
-  inset: unit * 4 + 2,
-  phoneInset: unit * 3 + 2,
   foldedColumn: unit * 12,
   createColumn: unit * 57.5,
-  foldedChat: unit * 10,
-  phoneChatInset: unit * 9.5,
   frameMargin: unit * 6,
-  phoneFrameMargin: unit * 3,
 } as const
 
 export const phoneLayout = ({ width }: { width: number }) => width < phoneBreakpoint

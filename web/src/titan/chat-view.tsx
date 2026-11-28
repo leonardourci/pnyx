@@ -5,7 +5,7 @@ import type { ChatScroll } from './chat-scroll.ts'
 
 const SCREEN_AND_A_HALF_ABOVE = '150% 0px 0px 0px'
 
-export const CHAT_FRAME = 'chat-frame [--chat-max:var(--spacing-chat-max)] [--chat-pad:var(--spacing-chat-pad)] [--chat-gap:var(--spacing-chat-gap)] [--chat-inset:max(calc(var(--chat-pad)_+_var(--chat-scrollbar,0px)),calc((100%_-_var(--chat-max))/2))] [&>:is(.composer,.compaction-queue,.save-checking,.waiting-decisions)]:mx-(--chat-inset) [&>.waiting-decisions]:px-0 [&>.composer]:mb-3 [&_.composer-bar]:h-auto'
+export const CHAT_FRAME = 'chat-frame [--chat-max:var(--spacing-chat-max)] [--chat-pad:var(--spacing-chat-pad)] max-phone:[--chat-pad:var(--spacing-chat-pad-phone)] [--chat-gap:var(--spacing-chat-gap)] [--chat-inset:max(calc(var(--chat-pad)_+_var(--chat-scrollbar,0px)),calc((100%_-_var(--chat-max))/2))] [&>:is(.composer,.compaction-queue,.save-checking,.waiting-decisions)]:mx-(--chat-inset) [&>.waiting-decisions]:px-0 [&>.composer]:mb-3 [&_.composer-bar]:h-auto'
 
 export interface OlderRows {
   cursor?: string

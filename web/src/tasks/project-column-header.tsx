@@ -21,10 +21,11 @@ export function ProjectColumnHeader({
   folded: boolean
   hint: boolean
   drag: ColumnDrag
-  fold(): unknown
+  fold?(): unknown
   create(): void
 }) {
   const keyDown = drag.listeners?.onKeyDown as KeyboardEventHandler<HTMLButtonElement> | undefined
+  const foldLabel = `${folded ? 'Unfold' : 'Fold'} ${column.title}`
 
   return (
     <header onPointerDown={drag.pointerDown} className="project-column-heading relative flex min-h-10.75 items-center justify-between gap-2 border-b border-column-line px-2 py-1.25 group-[.folded]/project:h-full group-[.folded]/project:border-0 group-[.folded]/project:p-2">
@@ -36,9 +37,9 @@ export function ProjectColumnHeader({
           aria-disabled={undefined}
           ref={drag.setActivatorNodeRef}
           data-column-heading={column.id}
-          aria-label={`${folded ? 'Unfold' : 'Fold'} ${column.title}`}
+          aria-label={fold ? foldLabel : column.title}
           onClick={fold}
-        ><Icon name={folded ? 'chevron_right' : 'chevron_left'} size={ICON_SIZE.control} /><strong>{column.title}</strong><ProjectCounts asks={column.asks} running={column.running} />
+        >{fold && <Icon name={folded ? 'chevron_right' : 'chevron_left'} size={ICON_SIZE.control} />}<strong>{column.title}</strong><ProjectCounts asks={column.asks} running={column.running} />
         </Button>
         {!folded && <IconButton icon="plus" label={`New task in ${column.title}`} onClick={create} />}
       </div>

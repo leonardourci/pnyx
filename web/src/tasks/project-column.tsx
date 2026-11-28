@@ -41,7 +41,20 @@ export function ProjectColumn({
     root: scroll,
     content: grid,
   })
-  const folded = view.workspace.foldedProjects.includes(column.id)
+  const viewport = useWorkspaceViewport()
+  const {
+    width,
+    minimum,
+    phone,
+  } = projectWidth({
+    id: column.id,
+    widths: view.workspace.projectWidths,
+    expandedWidth,
+    viewport: viewport.width,
+    preview,
+  })
+  // Phones show one view at a time, so a project folded on a wide screen opens in full there.
+  const folded = !phone && view.workspace.foldedProjects.includes(column.id)
   const remembered = useRememberedScroll({
     key: sessionViewKey({
       scope: 'column',
@@ -72,18 +85,6 @@ export function ProjectColumn({
       outdentNode,
     ],
   )
-  const viewport = useWorkspaceViewport()
-  const {
-    width,
-    minimum,
-    phone,
-  } = projectWidth({
-    id: column.id,
-    widths: view.workspace.projectWidths,
-    expandedWidth,
-    viewport: viewport.width,
-    preview,
-  })
   const toggle = () => save({
     patch: {
       workspace: {
@@ -146,7 +147,7 @@ export function ProjectColumn({
         folded={folded}
         hint={showHint}
         drag={sort}
-        fold={toggle}
+        fold={phone ? undefined : toggle}
         create={create}
       />
       <FoldContent

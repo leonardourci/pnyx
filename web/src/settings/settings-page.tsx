@@ -445,7 +445,7 @@ function Empty({
     <div className="settings-empty px-2.5 py-10 text-center text-ui text-muted [&_.settings-chips]:mx-0 [&_.settings-chips]:my-2.5 [&>h3]:mx-0 [&>h3]:mt-0 [&>h3]:mb-1.5 [&>h3]:text-pane [&>h3]:text-ink" role="status">
       <h3>No setting matches “{query || 'Changed'}”</h3>
       <p>Search looks at names, descriptions, values and related words.</p>
-      <div className="settings-chips mt-2.5 flex flex-wrap justify-center gap-1.5 max-phone:flex-nowrap max-phone:justify-start max-phone:overflow-x-auto max-phone:pb-1">
+      <div className="settings-chips mt-2.5 flex flex-wrap justify-center gap-1.5">
         {SUGGESTIONS.map(word => (
           <Chip key={word} variant="settings" onClick={() => search({ query: word })}>{word}</Chip>
         ))}
@@ -620,7 +620,7 @@ export function SettingsPage({
             }
           }}
         />
-        <nav className="settings-chips mt-2.5 flex flex-wrap justify-center gap-1.5 max-phone:flex-nowrap max-phone:justify-start max-phone:overflow-x-auto max-phone:pb-1" aria-label="Settings sections">
+        <nav className="settings-chips mt-2.5 flex flex-wrap justify-center gap-1.5" aria-label="Settings sections">
           <Chip
             variant="settings"
             data-filter

@@ -48,7 +48,7 @@ export function TitanHead({
 
   return (
     <header
-      className="titan-head font-brand font-bold flex items-center justify-start gap-2 py-2.5 px-3.5 border-b border-line shrink-0 text-pane [&_strong]:min-w-0 [&_strong]:truncate [&_strong]:[font-weight:inherit] [&_.titan-name-editor]:flex-1 [&_.titan-name-editor]:max-w-90 [&_.titan-name-field_.input]:text-ui"
+      className="titan-head max-phone:hidden max-phone:has-[.titan-status]:flex font-brand font-bold flex items-center justify-start gap-2 py-2.5 px-3.5 border-b border-line shrink-0 text-pane [&_strong]:min-w-0 [&_strong]:truncate [&_strong]:[font-weight:inherit] [&_.titan-name-editor]:flex-1 [&_.titan-name-editor]:max-w-90 [&_.titan-name-field_.input]:text-ui"
       onContextMenu={event => canEdit && openMenu({ event })}
       onKeyDown={event => canEdit && opensMenu({ event }) && openMenu({
         event: {

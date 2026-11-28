@@ -675,7 +675,7 @@ export function TitanChat({
 
   return (
     <aside
-      className={`titan-chat relative flex-none min-h-0 flex flex-col border border-line rounded-xl bg-surface overflow-visible max-phone:w-70 max-phone:basis-70 ${CHAT_FRAME}`}
+      className={`titan-chat relative flex-none min-h-0 flex flex-col border border-line rounded-xl bg-surface overflow-visible max-phone:w-screen! max-phone:basis-auto! ${CHAT_FRAME}`}
       aria-label="Titan’s chat"
       style={{
         width: width ?? view.titanWidth,
@@ -808,6 +808,7 @@ export function TitanChat({
         )}
       />
       <Resize
+        className="max-phone:hidden"
         label="Resize Titan panel"
         value={view.titanWidth}
         min={VIEW_SIZE_LIMITS.titanWidth.min}
