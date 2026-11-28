@@ -3,7 +3,7 @@ import { WebSocket } from 'ws'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { titanIdentity, localToken } from '#app/server-state.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
-import { createTitanConnection } from '../web/src/app/connection-store.ts'
+import { createTitanConnection } from '#web-app/connection-store.ts'
 import { startOthrys, until, type Othrys } from './setup/othrys.ts'
 
 vi.mock(
@@ -28,14 +28,12 @@ type Frame = {
   frames: ServerMessage[]
 }
 
-// A page connection in this process, as the browser opens it on the primary Titan's address.
 function connectPage({ primary }: { primary: string }) {
   const sockets: Frame[] = []
 
   class ClientSocket extends WebSocket {
-    // eslint-disable-next-line othrys/object-params -- WebSocket owns its constructor signature.
-    constructor(url: URL) {
-      super(url)
+    constructor({ href }: URL) {
+      super(href)
       const frames: ServerMessage[] = []
       this.on(
         'message',
@@ -43,30 +41,26 @@ function connectPage({ primary }: { primary: string }) {
       )
       sockets.push({
         socket: this,
-        url,
+        url: new URL(href),
         frames,
       })
     }
   }
 
   const events = new EventTarget()
+  const metadata = new Map(Object.entries({
+    'meta[name=othrys-installation]': titanIdentity({ titanId: '' }),
+    'meta[name=othrys-titan]': primary,
+    'meta[name=othrys-token]': localToken(),
+  }).map(([selector, content]) => [
+    selector,
+    { content, setAttribute: () => {} },
+  ]))
   const document = Object.assign(
     new EventTarget(),
     {
       visibilityState: 'visible',
-      // eslint-disable-next-line othrys/object-params -- Document owns the selector signature.
-      querySelector: (selector: string) => {
-        const content = {
-          'meta[name=othrys-installation]': titanIdentity({ titanId: '' }),
-          'meta[name=othrys-titan]': primary,
-          'meta[name=othrys-token]': localToken(),
-        }[selector]
-
-        return content ? {
-          content,
-          setAttribute: () => {},
-        } : null
-      },
+      querySelector: metadata.get.bind(metadata),
     },
   )
   vi.stubGlobal(
@@ -136,9 +130,9 @@ test(
     const connected = () => [
       primary.id,
       background.id,
-    ].every(id => client.workspaces()
+    ].every(id => client.shownWorkspaces()
       .some(workspace => workspace.navigation.titanId === id && workspace.connected))
-    const taskCards = () => client.workspaces().map(workspace => ({
+    const taskCards = () => client.shownWorkspaces().map(workspace => ({
       titan: workspace.navigation.titanId,
       cards: Object.values(workspace.state.cards).filter(card => card.id !== TITAN_CARD)
         .map(card => ({
@@ -160,7 +154,7 @@ test(
         throw new Error('The initial home did not become ready')
       }
 
-      const saved = client.workspaces().find(
+      const saved = client.shownWorkspaces().find(
         workspace => workspace.navigation.titanId === background.id,
       )!
       const state = saved.state
@@ -175,7 +169,7 @@ test(
       const resumed = sockets[1]!
       expect(JSON.parse(resumed.url.searchParams.get('cursor')!)).toEqual(ready.cursor)
       expect(resumed.frames.filter(frame => frame.type.startsWith('home.'))).toEqual([ready])
-      const current = client.workspaces().find(
+      const current = client.shownWorkspaces().find(
         workspace => workspace.navigation.titanId === background.id,
       )!
       expect(current.state.seq).toBe(state.seq)
@@ -198,6 +192,8 @@ test(
     } = connectPage({ primary: primary.id })
     const shown = ({ id }: { id: string }) => client.shownWorkspaces()
       .find(workspace => workspace.navigation.titanId === id)
+    let notified = false
+    const unsubscribe = client.subscribe(() => { notified = true })
 
     try {
       await until({
@@ -209,12 +205,14 @@ test(
       })
       const snapshot = client.snapshot()
       const workspaces = client.shownWorkspaces()
+      notified = false
       await client.commandFor({ id: primary.id })({
         name: 'rule',
         args: ['list'],
       })
       expect(client.snapshot()).toBe(snapshot)
       expect(client.shownWorkspaces()).toBe(workspaces)
+      expect(notified).toBe(false)
 
       await background.owner({
         args: [
@@ -232,7 +230,9 @@ test(
         what: 'the other Titan\'s new task to reach the page',
         check: () => shown({ id: background.id })?.state.cards[task.id]?.title === 'Made in the other Titan',
       })
+      expect(notified).toBe(true)
     } finally {
+      unsubscribe()
       close()
     }
   },
@@ -285,6 +285,14 @@ test(
       await command({
         name: 'page',
         args: [],
+      })
+      expect(thread()?.card).toBe(task.id)
+      await command({
+        name: 'page',
+        args: [
+          '--card',
+          task.id,
+        ],
       })
       expect(thread()?.card).toBe(task.id)
     } finally {

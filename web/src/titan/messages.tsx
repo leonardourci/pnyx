@@ -64,7 +64,6 @@ export type ChatEntry = ThreadEntry & {
   renderKey?: string
 }
 
-// Rows that read the same keep their objects, so a chat redraw skips their memoized rows.
 function useKeptEntries({ entries }: { entries: ChatEntry[] }) {
   const held = useRef<ChatEntry[]>([])
   const previous = new Map(held.current.map(entry => [

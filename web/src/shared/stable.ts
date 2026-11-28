@@ -52,8 +52,7 @@ const plain = ({ value }: { value: unknown }) => {
   return prototype === Object.prototype || prototype === Array.prototype
 }
 
-// The next value with each branch that reads the same swapped for the previous one, so a rebuilt view keeps its identity.
-export function shared<Value>({
+export function shareUnchangedBranches<Value>({
   previous,
   next,
 }: {
@@ -63,24 +62,38 @@ export function shared<Value>({
   const comparable = plain({ value: previous }) && plain({ value: next })
     && Array.isArray(previous) === Array.isArray(next)
 
-  if (previous === next || !comparable) {
+  if (Object.is(previous, next) || !comparable) {
     return next
   }
 
   const before = previous as Record<string, unknown>
   const after = next as Record<string, unknown>
   const keys = Object.keys(after)
-  const result = (Array.isArray(next) ? [] : {}) as Record<string, unknown>
+  const previousKeys = Object.keys(before)
+  const nextIsArray = Array.isArray(next)
+  const sameLength = !nextIsArray || (Array.isArray(previous) && previous.length === next.length)
+  const sameKeys = keys.length === previousKeys.length && keys.every((key, index) => key === previousKeys[index])
+  let unchanged = sameLength && sameKeys
+  let result: Record<string, unknown> | undefined
 
   for (const key of keys) {
-    result[key] = shared({
-      previous: before[key],
+    const hadKey = Object.hasOwn(before, key)
+    const value = shareUnchangedBranches({
+      previous: hadKey ? before[key] : undefined,
       next: after[key],
     })
+    unchanged = unchanged && hadKey && Object.is(value, before[key])
+
+    if (!Object.is(value, after[key])) {
+      result ??= (nextIsArray ? Object.assign(new Array(next.length), next) : { ...after }) as Record<string, unknown>
+      Object.defineProperty(result, key, {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      })
+    }
   }
 
-  const sameKeys = keys.length === Object.keys(before).length
-  const same = sameKeys && keys.every(key => result[key] === before[key])
-
-  return same ? previous as Value : result as Value
+  return unchanged ? previous as Value : (result ?? next) as Value
 }

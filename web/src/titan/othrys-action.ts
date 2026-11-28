@@ -1,4 +1,5 @@
-import { useMemo, useRef } from 'react'
+import { useMemo } from 'react'
+import { useKept } from '#web-shared/stable.ts'
 import type { TitanState } from '#app/model.ts'
 import { knownCards } from '#tasks/select.ts'
 import { firstLine, obj } from '#titan/calls.ts'
@@ -27,37 +28,66 @@ export interface OthrysLookup {
   column({ ref }: { ref: string }): ProjectGroup | undefined
 }
 
+function findTask<Task>({
+  ref,
+  tasks,
+  keys,
+}: {
+  ref: string
+  tasks: Record<string, Task>
+  keys: TitanState['keys']
+}) {
+  const id = keys[ref]
+
+  return tasks[ref] ?? (id === undefined ? undefined : tasks[id])
+}
+
+function findColumn({ ref, columns }: { ref: string; columns: ProjectGroup[] }) {
+  return columns.find(column => column.id === ref
+    || column.title.toLowerCase() === ref.toLowerCase())
+}
+
 export function othrysLookup({ state }: { state(): TitanState }): OthrysLookup {
   return {
     task: ({ ref }) => {
       const current = state()
-      const cards = knownCards({ state: current })
-      const card = cards[ref] ?? cards[current.keys[ref] ?? '']
+      const card = findTask({
+        ref,
+        tasks: knownCards({ state: current }),
+        keys: current.keys,
+      })
 
       return card ? {
         id: card.id,
         title: card.title,
       } : undefined
     },
-    column: ({ ref }) => {
-      const columns = projectGroups({ state: state() })
-
-      return columns.find(column => column.id === ref
-        || column.title.toLowerCase() === ref.toLowerCase())
-    },
+    column: ({ ref }) => findColumn({
+      ref,
+      columns: projectGroups({ state: state() }),
+    }),
   }
 }
 
-// Changes only with config and projects, so rows that receive it do not redraw on every Titan change.
 export function useOthrysLookup({ state }: { state: TitanState }): OthrysLookup {
-  const latest = useRef(state)
-  latest.current = state
+  const tasks = useKept({
+    value: Object.fromEntries(Object.entries(knownCards({ state })).map(([id, card]) => [
+      id,
+      { id: card.id, title: card.title },
+    ])),
+  })
+  const columns = useKept({ value: projectGroups({ state }) })
+  const keys = state.keys
 
-  return useMemo(
-    () => othrysLookup({ state: () => latest.current }),
+  return useMemo<OthrysLookup>(
+    () => ({
+      task: ({ ref }) => findTask({ ref, tasks, keys }),
+      column: ({ ref }) => findColumn({ ref, columns }),
+    }),
     [
-      state.config,
-      state.projects,
+      tasks,
+      columns,
+      keys,
     ],
   )
 }

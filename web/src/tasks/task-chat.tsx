@@ -5,7 +5,7 @@ import type { PendingTurn } from '#web-workers/pending-turns.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { queuedAgentLabel } from '#workers/providers.ts'
 import { useCardAgent, RepositoryPicker } from '#web-workers/card-agent.tsx'
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react'
 import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { ThreadPage } from '#titan/transcripts-read.ts'
@@ -196,7 +196,7 @@ export function TaskChat({
     }),
   })
   const draft = useDraftSnapshot({ drafts })
-  useEffect(
+  useLayoutEffect(
     () => {
       if (live) {
         resource.confirm({
