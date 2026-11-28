@@ -630,14 +630,14 @@ export function Messages({
         retainCollapsedSelection = event.pointerType === 'touch' || event.pointerType === 'pen'
       }
 
-      const tapElsewhere = (event: MouseEvent) => {
+      const dismissCollapsedSelection = (event: MouseEvent) => {
         const target = event.target instanceof Element ? event.target : null
 
         if (target?.closest(SELECTION_ACTIONS_SELECTOR)) {
           return
         }
 
-        if (retainCollapsedSelection || !selectedPassage({ messages: root.current })) {
+        if (!selectedPassage({ messages: root.current })) {
           setSelection(null)
         }
       }
@@ -669,7 +669,7 @@ export function Messages({
       )
       document.addEventListener(
         'click',
-        tapElsewhere,
+        dismissCollapsedSelection,
         true,
       )
       document.addEventListener(
@@ -696,7 +696,7 @@ export function Messages({
         )
         document.removeEventListener(
           'click',
-          tapElsewhere,
+          dismissCollapsedSelection,
           true,
         )
         document.removeEventListener(

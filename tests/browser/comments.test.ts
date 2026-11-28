@@ -98,6 +98,11 @@ for (const engine of [
             words,
           )
           await expect.poll(() => bar.textContent()).toContain(words)
+
+          if (layout.touch) {
+            await reply.dispatchEvent('click')
+            expect(await bar.textContent()).toContain(words)
+          }
         }
 
         const dropTouchSelection = async () => {
@@ -200,6 +205,19 @@ for (const engine of [
 
         if (layout.touch) {
           await dropTouchSelection()
+          const outside = workspace.getByText(
+            'Say something',
+            { exact: true },
+          )
+          await bar.waitFor()
+          await outside.dispatchEvent(
+            'keydown',
+            { key: 'Escape' },
+          )
+          await bar.waitFor({ state: 'detached' })
+
+          await selectPassage({ words: 'proof they were read' })
+          await dropTouchSelection()
           const selectionAfterEscape = await page.evaluate(() => {
             const selection = getSelection()
 
@@ -234,12 +252,7 @@ for (const engine of [
 
           await selectPassage({ words: 'proof they were read' })
           await dropTouchSelection()
-          await press({
-            target: workspace.getByText(
-              'Say something',
-              { exact: true },
-            ),
-          })
+          await press({ target: outside })
         } else {
           await page.evaluate(() => getSelection()?.removeAllRanges())
         }
