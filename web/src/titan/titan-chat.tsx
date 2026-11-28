@@ -43,7 +43,7 @@ import { TitanAgent } from './titan-agent.tsx'
 import { TitanHead } from './titan-head.tsx'
 import { type TitanIdentity } from './titan-title.tsx'
 import { Messages,type ChatEntry } from './messages.tsx'
-import { othrysLookup } from './othrys-action.ts'
+import { useOthrysLookup } from './othrys-action.ts'
 import { TITAN_SEND_SETTLED,readUnsent,saveUnsent } from './outbox.ts'
 import { Running } from './running-indicator.tsx'
 
@@ -501,15 +501,7 @@ export function TitanChat({
     pending: pendingTurn,
   })
   const running = status.kind === 'working'
-  const lookupState = useRef(state)
-  lookupState.current = state
-  const lookup = useMemo(
-    () => othrysLookup({ state: () => lookupState.current }),
-    [
-      state.config,
-      state.projects,
-    ],
-  )
+  const lookup = useOthrysLookup({ state })
   const since = running ? card?.workingSince ?? inFlight.at(-1)?.at ?? null : null
 
   const deliver = useCallback<Command>(

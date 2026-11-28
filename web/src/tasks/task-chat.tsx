@@ -5,7 +5,7 @@ import type { PendingTurn } from '#web-workers/pending-turns.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { queuedAgentLabel } from '#workers/providers.ts'
 import { useCardAgent, RepositoryPicker } from '#web-workers/card-agent.tsx'
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { ThreadPage } from '#titan/transcripts-read.ts'
@@ -24,7 +24,7 @@ import { useChatThread } from '#web-titan/chat-thread.ts'
 import { Running } from '#web-titan/running-indicator.tsx'
 import { Composer } from '#web-titan/composer.tsx'
 import { useChatDrafts, useDraftSnapshot } from '#web-titan/chat-drafts.ts'
-import { othrysLookup } from '#web-titan/othrys-action.ts'
+import { useOthrysLookup } from '#web-titan/othrys-action.ts'
 import { quoteInto } from '#web-titan/chat.ts'
 import { Icon } from '#web-shared/icons.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
@@ -217,10 +217,7 @@ export function TaskChat({
     connected,
     scroll,
   })
-  const lookup = useMemo(
-    () => othrysLookup({ state: () => state }),
-    [state],
-  )
+  const lookup = useOthrysLookup({ state })
   const failed = snapshot.intents.filter(intent => intent.stage === 'refused')
     .map(intent => ({
       ...intent.patch,

@@ -1,3 +1,4 @@
+import { useMemo, useRef } from 'react'
 import type { TitanState } from '#app/model.ts'
 import { knownCards } from '#tasks/select.ts'
 import { firstLine, obj } from '#titan/calls.ts'
@@ -45,6 +46,21 @@ export function othrysLookup({ state }: { state(): TitanState }): OthrysLookup {
         || column.title.toLowerCase() === ref.toLowerCase())
     },
   }
+}
+
+// One lookup per Titan's config and projects that reads the latest state, so rows that receive it are not redrawn for
+// every Titan change.
+export function useOthrysLookup({ state }: { state: TitanState }): OthrysLookup {
+  const latest = useRef(state)
+  latest.current = state
+
+  return useMemo(
+    () => othrysLookup({ state: () => latest.current }),
+    [
+      state.config,
+      state.projects,
+    ],
+  )
 }
 
 export function shellCommand({ text }: { text: string }): string | undefined {
