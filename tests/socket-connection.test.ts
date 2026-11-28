@@ -198,10 +198,8 @@ test(
     } = connectPage({ primary: primary.id })
     const shown = ({ id }: { id: string }) => client.shownWorkspaces()
       .find(workspace => workspace.navigation.titanId === id)
-    let notified = false
-    const unsubscribe = client.subscribe(() => {
-      notified = true
-    })
+    const onChange = vi.fn()
+    const unsubscribe = client.subscribe(onChange)
 
     try {
       await until({
@@ -213,14 +211,14 @@ test(
       })
       const snapshot = client.snapshot()
       const workspaces = client.shownWorkspaces()
-      notified = false
+      onChange.mockClear()
       await client.commandFor({ id: primary.id })({
         name: 'rule',
         args: ['list'],
       })
       expect(client.snapshot()).toBe(snapshot)
       expect(client.shownWorkspaces()).toBe(workspaces)
-      expect(notified).toBe(false)
+      expect(onChange).not.toHaveBeenCalled()
 
       await background.owner({
         args: [
@@ -238,7 +236,7 @@ test(
         what: 'the other Titan\'s new task to reach the page',
         check: () => shown({ id: background.id })?.state.cards[task.id]?.title === 'Made in the other Titan',
       })
-      expect(notified).toBe(true)
+      expect(onChange).toHaveBeenCalled()
     } finally {
       unsubscribe()
       close()
