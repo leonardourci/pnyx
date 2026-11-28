@@ -28,6 +28,14 @@ export const UPGRADE_SUGGESTION: Suggestion = {
 
 export const upgradeCommand = ({ text }: { text: string }) => text.trim() === UPGRADE_COMMAND
 
+// development follows origin main; stable follows the newest vX.Y.Z tag.
+export const UPGRADE_CHANNELS = [
+  'development',
+  'stable',
+] as const
+
+export type UpgradeChannel = (typeof UPGRADE_CHANNELS)[number]
+
 export type UpgradeStepName = 'pull' | 'install' | 'build' | 'data' | 'restart'
 
 // Each step's name before, while and after it runs.
