@@ -1451,8 +1451,9 @@ test(
       ],
     })
     expect(await status()).toBe('done')
-    expect((await full()).asks.find((ask: { id: string }) => ask.id === reopenedQuestion.ask).closed.reason)
-      .toBe('task marked done')
+    const restored = await full()
+    const question = restored.asks.find((ask: { id: string }) => ask.id === reopenedQuestion.ask)
+    expect(question?.closed?.reason).toBe('task marked done')
   },
 )
 
