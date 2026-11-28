@@ -1943,6 +1943,13 @@ test.each([
     expect(task.steering?.find(message => message.text === 'Never read this')?.ack).toBeUndefined()
     expect(pendingSteering({ card: task })).toEqual([])
     expect(steeringToFollow({ state })).toBe(false)
+
+    // A snapshot saved before the outcome settled instructions restores them unsettled.
+    for (const message of task.steering ?? []) {
+      delete message.stopped
+    }
+
+    expect(steeringToFollow({ state })).toBe(false)
   },
 )
 
