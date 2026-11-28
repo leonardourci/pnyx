@@ -293,7 +293,11 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
   }
 
   if (command === 'outcome') {
-    const { values, positionals, titanId } = parse({
+    const {
+      values,
+      positionals,
+      titanId,
+    } = parse({
       args,
       options: {
         ...WRITE,
@@ -303,6 +307,7 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
       positionals: 2,
     })
     const m = meta({ values })
+
     return runAction({
       name: 'outcome',
       args,
@@ -325,7 +330,10 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
         }
 
         const outcome: Outcome | null = validState
-          ? { state, note: values.note as string | undefined }
+          ? {
+            state,
+            note: values.note as string | undefined,
+          }
           : null
 
         return commit({
