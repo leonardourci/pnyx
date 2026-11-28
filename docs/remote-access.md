@@ -8,7 +8,7 @@ Anyone who can reach that name gets in without a password: the page carries the 
 
 1. In the [Tailscale admin console](https://login.tailscale.com/admin/dns), turn on MagicDNS and HTTPS Certificates. Tailscale's certificate puts your computer's name, `<computer>.<tailnet>.ts.net`, in the public Certificate Transparency logs, so give the computer a name you are happy to publish before you turn this on.
 2. On the computer running Othrys, run `tailscale serve --bg 4747`, with the port Othrys listens on. It serves `https://<computer>.<tailnet>.ts.net/` to your tailnet and passes each request to `http://127.0.0.1:4747`, keeping the name as its `Host`. `tailscale serve status` shows it.
-3. Add the name in Settings › Access › Allowed host names, or with `othrys settings set --json '{"allowedHosts":["<computer>.<tailnet>.ts.net"]}'`. The name is allowed as `Host` and as the `Origin` `https://<computer>.<tailnet>.ts.net`; an empty list allows only this computer.
+3. Add the name in Settings › Access › Allowed host names. The name is allowed as `Host` and as the `Origin` `https://<computer>.<tailnet>.ts.net`; an empty list allows only this computer.
 4. On the phone, connect the Tailscale app and open `https://<computer>.<tailnet>.ts.net/`. The phone resolves the name through MagicDNS, which the Tailscale app uses by default.
 
 ## Install it as an app

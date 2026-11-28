@@ -27,7 +27,7 @@ import { AgentPreview, TitanPreview, CardTextPreview, CardUpdatesPreview, ChatTe
 import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './titan-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
 import { AllowedHosts } from './allowed-hosts.tsx'
-import { SETTING_ICONS, SETTINGS_SECTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
+import { SETTING_ICONS, SETTINGS_SECTIONS, UPGRADE_CHANNEL_OPTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
 
 const UNITS: Record<string, string> = {
   fontSize: 'px',
@@ -393,6 +393,15 @@ export function SettingControl({
           }}
           onChange={({ value }) => save({ patch: { logMaxMB: value } })}
           onSlide={slideTo({ key: 'logMaxMB' })}
+        />
+      )
+    case 'upgradeChannel':
+      return (
+        <Segmented
+          label={entry.label}
+          value={settings.upgradeChannel}
+          options={UPGRADE_CHANNEL_OPTIONS}
+          onChange={({ value }) => save({ patch: { upgradeChannel: value } })}
         />
       )
     case 'allowedHosts':

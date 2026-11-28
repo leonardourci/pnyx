@@ -380,7 +380,7 @@ async function titanConfigCommand({ args }: { args: string[] }): Promise<Output>
 
   return {
     ...settings,
-    help: ['These settings apply to every Titan; see `othrys settings show`'],
+    help: ['These settings apply to every Titan; see them on the Settings page'],
   }
 }
 

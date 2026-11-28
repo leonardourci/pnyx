@@ -22,6 +22,7 @@ export const SETTING_ICONS: Record<string, string> = {
   logDays: 'log-days',
   logMaxMB: 'log-size',
   allowedHosts: 'world',
+  upgradeChannel: 'upgrade',
 }
 
 // Every setting the Settings page shows, with the words a search finds it by; the Oracle will move to this list.
@@ -121,6 +122,17 @@ const TEXT_SIZE = [
   'zoom',
   'scale',
   'readable',
+]
+
+export const UPGRADE_CHANNEL_OPTIONS = [
+  {
+    value: 'stable',
+    label: 'Stable',
+  },
+  {
+    value: 'development',
+    label: 'Development',
+  },
 ]
 
 export const SETTINGS_CATALOG: CatalogEntry[] = [
@@ -397,6 +409,14 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
       'license',
       'credits',
     ],
+  },
+  {
+    id: 'upgradeChannel',
+    section: 'about',
+    label: 'Upgrade channel',
+    description: 'Stable follows the newest release tag. Development follows main.',
+    values: UPGRADE_CHANNEL_OPTIONS.map(({ label }) => label),
+    related: ['update'],
   },
 ]
 
