@@ -1,7 +1,6 @@
 import type { Card } from '#tasks/model.ts'
 import { completedOutcome, type OutcomeEvent } from './model.ts'
 
-// Done or cancelled starts the hide clock; older logs' hooks "ended" and "failed" are no task state, so they clear it.
 export function applyOutcome({
   card,
   event,
@@ -10,8 +9,9 @@ export function applyOutcome({
   event: OutcomeEvent
 }): void {
   const after = event.data.after
+  const hasTaskOutcome = completedOutcome({ outcome: after })
 
-  if (!after || !completedOutcome({ outcome: after })) {
+  if (!after || !hasTaskOutcome) {
     delete card.outcome
     delete card.doneAt
     delete card.keepDone

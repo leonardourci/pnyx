@@ -31,7 +31,6 @@ export const waitingQuestions = ({
   }).filter(question =>
     !question.ask?.deferredUntil && !inFlight({ question }))
 
-// The status word: open owner questions, then the agent's own activity, then the state only Titan sets.
 export function cardStatus({
   card,
   cards,
@@ -73,16 +72,17 @@ export function cardStatus({
     }
   }
 
-  if (completedOutcome({ outcome: card.outcome })) {
+  const outcome = card.outcome
+
+  if (outcome && completedOutcome({ outcome })) {
     return {
       kind: 'done',
       state: 'done',
-      text: card.outcome!.state,
+      text: outcome.state,
       at: card.doneAt,
     }
   }
 
-  // Queued, held and waiting tasks keep their mechanics; their badge is idle.
   const parked = Boolean(card.queue || card.hold || card.wait)
 
   if (activity === 'finished' || parked) {

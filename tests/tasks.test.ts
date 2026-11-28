@@ -1416,7 +1416,7 @@ test(
     expect(await status()).toBe('done')
     expect((await full()).doneAt).toBe(done.doneAt)
 
-    await titan.owner({
+    const cleared = await titan.owner({
       args: [
         'outcome',
         'release',
@@ -1427,6 +1427,32 @@ test(
     await othrys.restart()
     expect((await full()).doneAt).toBeUndefined()
     expect(await status()).toBe('idle')
+
+    const reopenedQuestion = await titan.owner({
+      args: [
+        'task',
+        'ask',
+        'release',
+        '--to',
+        'owner',
+        '--question',
+        'Publish the revised notes?',
+        '--context',
+        'The notes changed after the task reopened.',
+        '--actor',
+        'titan',
+      ],
+    })
+    expect(await status()).toBe('needs you')
+    await titan.owner({
+      args: [
+        'undo',
+        cleared.event.id,
+      ],
+    })
+    expect(await status()).toBe('done')
+    expect((await full()).asks.find((ask: { id: string }) => ask.id === reopenedQuestion.ask).closed.reason)
+      .toBe('task marked done')
   },
 )
 

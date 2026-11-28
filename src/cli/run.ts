@@ -1,7 +1,9 @@
 import { acknowledgeInstruction } from '#workers/inbox-cli.ts'
 import { cliArguments } from './arguments.ts'
 import type { Writable } from 'node:stream'
-import { parse, meta, required, guard, WRITE, COMMON, type Options } from '#app/cli-support.ts'
+import { parse, meta, required, guard, commit, WRITE, COMMON, type Options } from '#app/cli-support.ts'
+import { decideOutcome, refuseOutcomeFrom } from '#tasks/delivery/outcome.ts'
+import type { Outcome } from '#tasks/delivery/model.ts'
 import { TitanError } from '#store/errors.ts'
 import { createCommand } from '#workers/create.ts'
 import { sendReply } from '#workers/reply.ts'
@@ -24,7 +26,8 @@ othrys task create --title <title> --brief <instructions> [--project <name|path>
 othrys task ack <task> <instruction> --session <session> --generation <reference>
 othrys send --text <message> [--task <id>] [--idempotency-key <key>]
 othrys answer <task> <question> --text <answer> [--from-message <id>]
-othrys outcome <task> done|cancelled [--note <why>] [--clear]
+othrys outcome <task> done|cancelled [--note <why>]
+othrys outcome <task> --clear
 othrys titan
 othrys serve [--port <n>]
 othrys setup [check|hooks|skills] [--preview]
@@ -287,6 +290,60 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
     })
 
     return home({ titanId })
+  }
+
+  if (command === 'outcome') {
+    const { values, positionals, titanId } = parse({
+      args,
+      options: {
+        ...WRITE,
+        clear: { type: 'boolean' },
+        note: { type: 'string' },
+      },
+      positionals: 2,
+    })
+    const m = meta({ values })
+    return runAction({
+      name: 'outcome',
+      args,
+      run: () => {
+        refuseOutcomeFrom({ actor: m.actor })
+        const ref = required({
+          value: positionals[0],
+          what: 'task id',
+        })
+        const state = positionals[1]
+        const clear = values.clear === true
+        const validState = state === 'done' || state === 'cancelled'
+        const validClear = state === undefined && values.note === undefined
+
+        if (!(clear ? validClear : validState)) {
+          throw new TitanError({
+            message: 'Use outcome <task> done|cancelled [--note <why>] or outcome <task> --clear',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        const outcome: Outcome | null = validState
+          ? { state, note: values.note as string | undefined }
+          : null
+
+        return commit({
+          titanId,
+          meta: m,
+          intent: {
+            type: 'card.outcome',
+            card: ref,
+          },
+          decide: ({ state }) => decideOutcome({
+            state,
+            ref,
+            outcome,
+            meta: m,
+          }),
+        })
+      },
+    })
   }
 
   if (command === 'setup') {

@@ -464,8 +464,7 @@ export function observe({ envelope }: { envelope: HookEnvelope }): Observation[]
     agent: agent({ extra: { transcriptPath: str({ value: p.transcript_path }) } }),
     ...(autoTitle ? { autoTitle } : {}),
   }
-  // A subagent that stopped never takes another turn, so its card reads ended rather than idle.
-  const subagentEnded = envelope.event === 'SubagentStop' && agentId
+  const subagentEnded = envelope.event === 'SubagentStop' && agentId !== undefined
   const observed = subagentEnded ? 'ended' : found.activity
   const activity = observed ? { activity: observed } : {}
   const out: Observation[] = []

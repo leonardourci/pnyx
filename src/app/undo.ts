@@ -10,7 +10,8 @@ import { notUndoable } from './command-validation.ts'
 import { viewFor } from '#preferences/view.ts'
 import { decided } from './decision.ts'
 import { currentHolder } from '#tasks/move.ts'
-import { refuseOutcomeFrom } from '#tasks/delivery/outcome.ts'
+import { decideOutcome, refuseOutcomeFrom } from '#tasks/delivery/outcome.ts'
+import { completedOutcome } from '#tasks/delivery/model.ts'
 import { sessionTaskFields } from '#workers/session-facts.ts'
 
 function editBefore({ target }: { target: Extract<TitanEvent, { type: 'task.edited' }> }): PushFields {
@@ -84,6 +85,14 @@ export function decideUndo({
   target: TitanEvent
   meta: Meta
 }): Decision {
+  if (target.type === 'card.outcome') {
+    refuseOutcomeFrom({ actor: meta.actor })
+
+    if (target.data.after && !completedOutcome({ outcome: target.data.after })) {
+      throw notUndoable({ message: `${target.id} records a retired outcome` })
+    }
+  }
+
   if (target.transaction) {
     throw notUndoable({ message: `${target.id} belongs to apply ${target.transaction}; append a correction with apply` })
   }
@@ -339,24 +348,17 @@ export function decideUndo({
     throw notUndoable({ message: `${target.id} cannot be undone` })
   }
 
-  refuseOutcomeFrom({ actor: meta.actor })
-
-  return decided({
+  const previous = target.data.before
+  const decision = decideOutcome({
     state,
     meta,
-    event: {
-      ...head,
-      type: 'card.outcome',
-      data: {
-        before: target.data.after,
-        after: target.data.before,
-        card: {
-          title: card.title,
-          workspace: card.workspace,
-          tags: card.tags,
-          links: card.links,
-        },
-      },
-    },
+    ref: card.id,
+    outcome: completedOutcome({ outcome: previous }) ? previous : null,
   })
+
+  if ('event' in decision) {
+    decision.event.undoes = target.id
+  }
+
+  return decision
 }

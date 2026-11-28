@@ -7,7 +7,6 @@ import { TitanError } from '#store/errors.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 import { completedOutcome, type Outcome } from './model.ts'
 
-// A task's state is Titan's or the owner's call; a worker reports, it never decides.
 export function refuseOutcomeFrom({ actor }: { actor: string }): void {
   const decider = actor === TITAN_ACTOR || ownerActor({ actor })
 
@@ -19,7 +18,6 @@ export function refuseOutcomeFrom({ actor }: { actor: string }): void {
   }
 }
 
-// Done or cancelled closes the task's open questions, named in the event.
 export function decideOutcome(
   {
     state,

@@ -18,7 +18,6 @@ export const LINK_STATES = [
 
 export type LinkState = (typeof LINK_STATES)[number]
 
-// The task states only Titan or the owner sets; a worker's activity never sets them.
 export const OUTCOME_STATES = [
   'done',
   'cancelled',
@@ -171,7 +170,6 @@ export type OutcomeEvent = EventBase & {
   data: {
     before: Outcome | null
     after: Outcome | null
-    // The open questions this done or cancel closes.
     closes?: string[]
     card: {
       title: string
