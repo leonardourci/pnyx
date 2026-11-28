@@ -53,7 +53,7 @@ describe(
     )
 
     it(
-      'sets and clears a task outcome',
+      'sets and clears a task outcome and closes its owner question',
       async () => {
         await titan.owner({
           args: [
@@ -66,6 +66,22 @@ describe(
             'Plain outcome',
           ],
         })
+        expect((await run({
+          args: [
+            'task',
+            'ask',
+            'plain-outcome',
+            '--to',
+            'owner',
+            '--question',
+            'Publish the result?',
+            '--context',
+            'The result is ready.',
+            '--actor',
+            'titan',
+          ],
+        })).status).toBe(0)
+        expect((await titan.task({ key: 'plain-outcome' })).status).toBe('needs you')
         expect((await run({
           args: [
             'outcome',
@@ -83,7 +99,7 @@ describe(
             '--clear',
           ],
         })).status).toBe(0)
-        expect((await titan.task({ key: 'plain-outcome' })).status).not.toBe('done')
+        expect((await titan.task({ key: 'plain-outcome' })).status).toBe('not started')
       },
     )
 

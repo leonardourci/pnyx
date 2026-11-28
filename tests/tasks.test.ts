@@ -1419,6 +1419,23 @@ test(
     expect(await status()).toBe('done')
     expect((await full()).doneAt).toBe(done.doneAt)
 
+    await titan.owner({
+      args: [
+        'outcome',
+        'release',
+        'cancelled',
+      ],
+    })
+    expect(await status()).toBe('cancelled')
+    const markedDoneAgain = await titan.owner({
+      args: [
+        'outcome',
+        'release',
+        'done',
+      ],
+    })
+    expect((await full()).doneAt).toBe(markedDoneAgain.event.at)
+
     const cleared = await titan.owner({
       args: [
         'outcome',

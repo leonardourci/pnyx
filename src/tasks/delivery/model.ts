@@ -62,7 +62,6 @@ export interface Outcome {
 export const completedOutcome = ({ outcome }: { outcome?: Outcome | null }): boolean =>
   outcome?.state === 'done' || outcome?.state === 'cancelled'
 
-// Older homes saved a doneAt derived from merges and worker lines; only Titan's done or cancelled counts.
 export const doneSince = ({ card }: { card: Pick<Card, 'outcome' | 'doneAt'> }): string | undefined =>
   completedOutcome({ outcome: card.outcome }) ? card.doneAt : undefined
 

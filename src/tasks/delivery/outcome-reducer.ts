@@ -24,11 +24,12 @@ export function applyOutcome({
     return
   }
 
-  const alreadyClosed = completedOutcome({ outcome: card.outcome })
+  const sameOutcome = card.outcome?.state === after.state
   card.outcome = after
 
-  if (!alreadyClosed) {
+  if (!sameOutcome || !card.doneAt) {
     card.doneAt = event.at
+    delete card.keepDone
   }
 
   const closes = new Set(event.data.closes)

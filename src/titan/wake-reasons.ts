@@ -73,7 +73,7 @@ export function readyBacklog({ state }: { state: TitanState }): Card[] {
       return false
     }
 
-    if (card.workerLog?.status?.code === 'done' || taskDone({ card })) {
+    if (taskDone({ card })) {
       return false
     }
 
@@ -437,7 +437,8 @@ function changesReadiness({
       return Boolean(event.data.before) !== Boolean(event.data.after)
         || event.data.before?.state !== event.data.after?.state
     case 'card.outcome':
-      return Boolean(event.undoes) || event.data.before?.state !== event.data.after?.state
+      return Boolean(event.undoes || event.data.closes?.length)
+        || event.data.before?.state !== event.data.after?.state
     case 'task.edited': {
       if (!event.data.attention) {
         return false
