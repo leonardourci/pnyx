@@ -1903,11 +1903,11 @@ test(
 )
 
 test.each([
-  'done',
-  'cancelled',
+  { outcome: 'done' },
+  { outcome: 'cancelled' },
 ])(
-  'a task marked %s settles its unread instruction after a restart',
-  async outcome => {
+  'a task marked $outcome settles its unread instruction after a restart',
+  async ({ outcome }) => {
     const titan = await othrys.titan()
     const { worker } = await titan.startTask({ key: 'done-unread' })
     const held = othrys.claude.plan({
