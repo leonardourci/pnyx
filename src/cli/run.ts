@@ -24,6 +24,7 @@ othrys task create --title <title> --brief <instructions> [--project <name|path>
 othrys task ack <task> <instruction> --session <session> --generation <reference>
 othrys send --text <message> [--task <id>] [--idempotency-key <key>]
 othrys answer <task> <question> --text <answer> [--from-message <id>]
+othrys outcome <task> done|cancelled [--note <why>] [--clear]
 othrys titan
 othrys serve [--port <n>]
 othrys setup [check|hooks|skills] [--preview]
@@ -37,6 +38,7 @@ Send addresses Titan unless --task names a worker. --file <path|-> reads message
 Read titan.log, tasks/<task>/task.log, worker.log and snapshot.json directly.
 Add --json when a script reads an action receipt or the Titan.
 Workers append needs-you, blocked, done, link or note lines to their worker.log.
+Only Titan and the owner set a task's outcome.
 `
 
 const CREATE_OPTIONS: Options = {
