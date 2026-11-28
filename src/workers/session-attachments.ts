@@ -248,14 +248,6 @@ export function projectSession({
       session,
     }),
   ]
-
-  if (!task.outcome || task.outcome.source === 'hooks') {
-    if (session.outcome) {
-      task.outcome = { ...session.outcome }
-    } else {
-      delete task.outcome
-    }
-  }
 }
 
 export function applyAttachment({
@@ -349,10 +341,6 @@ export function applyAttachment({
     delete old.workingSince
     delete old.stoppedAt
     old.attention = old.attention.filter(a => !a.key.startsWith('hook:') && a.key !== INTERRUPTED)
-
-    if (old.outcome?.source === 'hooks') {
-      delete old.outcome
-    }
 
     touch({
       card: old,
@@ -480,16 +468,6 @@ export function observeSession({
     const objectId = `${session.agent.sessionId}${session.agent.agentId ? `/${session.agent.agentId}` : ''}`
     session.sourceRefs = card.sourceRefs.filter(r => (r.adapter === 'hooks' && r.objectId === objectId)
       || (r.adapter === 'transcript' && r.objectId === session.agent.transcriptPath)).map(r => ({ ...r }))
-  }
-
-  if (event.type === 'card.outcome' && (event.data.after?.source === 'hooks' || event.data.before?.source === 'hooks')) {
-    assignDefined({
-      target: session,
-      values: {
-        outcome: event.data.after?.source === 'hooks' ? event.data.after : undefined,
-        stoppedAt: card.stoppedAt,
-      },
-    })
   }
 
   projectSession({

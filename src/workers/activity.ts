@@ -35,7 +35,7 @@ export function agentActivity({
   const observed = session?.sessionActivity ?? session?.activity
   const activity = observed ?? card.sessionActivity ?? card.activity
 
-  if (activity === 'ended' || activity === 'interrupted' || card.outcome?.state === 'ended') {
+  if (activity === 'ended' || activity === 'interrupted') {
     return 'stopped'
   }
 

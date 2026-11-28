@@ -1,7 +1,6 @@
 import type { RepliedEvent } from '#tasks/model.ts'
 import type { Harness } from './providers.ts'
 import type { EventBase } from '#store/events.ts'
-import type { Outcome } from '#tasks/delivery/model.ts'
 import type { SourceRef } from '#app/model.ts'
 import type { TaskCopy } from '#projects/model.ts'
 
@@ -276,7 +275,6 @@ export interface AgentSession {
   workingSince?: string
   stoppedAt?: string
   attention: Attention[]
-  outcome?: Outcome
   sourceRefs: SourceRef[]
 }
 

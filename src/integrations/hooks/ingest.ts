@@ -6,7 +6,6 @@ import type { Meta } from '#app/command-meta.ts'
 import { decidePush } from '#tasks/push.ts'
 import { joinedKey } from '#tasks/push-rules.ts'
 import { decideLink, parseLink } from '#tasks/delivery/links.ts'
-import { decideOutcome } from '#tasks/delivery/outcome.ts'
 import { decideSession } from '#workers/sessions.ts'
 import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
@@ -29,7 +28,6 @@ const HARVEST_AFTER = [
   'PostCompact',
   'SessionEnd',
 ]
-const HOOKS = 'hooks'
 
 function ingest({
   writer,
@@ -217,25 +215,6 @@ function ingest({
       decision: pushed,
     })
     const target = writer.state.cards[writer.state.keys[key] ?? '']
-    const stale = 'skipped' in pushed && pushed.skipped === 'stale'
-    const canUpdateOutcome = !target?.outcome || target.outcome.source === HOOKS
-
-    if (o.outcome !== undefined && target && !stale && canUpdateOutcome) {
-      const outcome = o.outcome && { state: o.outcome }
-      applyDecision({
-        writer,
-        decision: decideOutcome({
-          state: writer.state,
-          ref: key,
-          outcome,
-          meta: {
-            ...m,
-            id: `${m.id}:outcome`,
-          },
-          source: HOOKS,
-        }),
-      })
-    }
 
     if (o.link && target) {
       applyDecision({
