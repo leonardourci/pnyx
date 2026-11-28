@@ -1940,16 +1940,25 @@ test.each([
 
     const state = loadTitan({ titanId: titan.id }).state
     const task = state.cards[state.keys['done-unread']!]!
-    expect(task.steering?.find(message => message.text === 'Never read this')?.ack).toBeUndefined()
-    expect(pendingSteering({ card: task })).toEqual([])
-    expect(steeringToFollow({ state })).toBe(false)
+    const instruction = task.steering?.find(message => message.text === 'Never read this')
 
-    // A snapshot saved before the outcome settled instructions restores them unsettled.
-    for (const message of task.steering ?? []) {
-      delete message.stopped
+    if (!instruction) {
+      throw new Error('Expected the unread instruction to survive the restart')
     }
 
-    expect(steeringToFollow({ state })).toBe(false)
+    expect(instruction.ack).toBeUndefined()
+    expect(pendingSteering({ card: task })).toEqual([])
+
+    const stateFromOlderSnapshot = structuredClone(state)
+    const restoredInstruction = stateFromOlderSnapshot.cards[task.id]?.steering?.find(message => message.id === instruction.id)
+
+    if (!restoredInstruction) {
+      throw new Error('Expected the older snapshot to contain the unread instruction')
+    }
+
+    delete restoredInstruction.stopped
+
+    expect(steeringToFollow({ state: stateFromOlderSnapshot })).toBe(false)
   },
 )
 
