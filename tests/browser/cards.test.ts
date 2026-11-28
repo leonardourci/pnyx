@@ -1571,6 +1571,7 @@ test(
 
     onTestFinished(async () => {
       turn.release()
+      await chrome({ args: ['emulate'] })
     })
     await titan.owner({
       args: [
@@ -1581,6 +1582,13 @@ test(
       ],
     })
     await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/titan/${titan.id}/`)});` })
+    await chrome({
+      args: [
+        'emulate',
+        '--viewport',
+        '1440x900',
+      ],
+    })
     const workspace = `[data-titan-workspace="${titan.id}"]`
     const uprightCounts = `({ roots }) => ['.waiting-count', '.running-count > span'].every(selector => {
         const counts = roots.flatMap(root => [...root.querySelectorAll(selector)]);

@@ -154,12 +154,12 @@ for (const engine of ENGINES) {
         scrollers: 0,
       })
       await expect(column.getByRole(
-        'button',
+        'heading',
         {
           name: 'orbit',
           exact: true,
         },
-      ).count()).resolves.toBe(0)
+      ).isVisible()).resolves.toBe(true)
 
       await header.getByRole(
         'button',

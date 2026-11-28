@@ -38,7 +38,7 @@ export function ProjectColumnHeader({
       <div className={`contents ${hint ? 'invisible' : ''}`} aria-hidden={hint}>
         {fold ? (
           <Button
-            className="min-w-0 touch-none justify-start gap-2 group-[.folded]/project:self-start group-[.folded]/project:writing-vertical max-phone:touch-auto [&>strong]:truncate"
+            className="min-w-0 touch-none justify-start gap-2 group-[.folded]/project:self-start group-[.folded]/project:writing-vertical [&>strong]:truncate"
             {...drag.attributes}
             onKeyDown={keyDown}
             aria-disabled={undefined}
@@ -51,6 +51,8 @@ export function ProjectColumnHeader({
         ) : (
           <div
             className="flex min-w-0 items-center gap-2 [&>strong]:truncate"
+            role="heading"
+            aria-level={2}
             tabIndex={-1}
             data-column-heading={column.id}
             aria-label={column.title}

@@ -6,6 +6,8 @@ import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { ContextMenu,menuPoint,opensMenu } from '#web-shared/ui/menu.tsx'
 import { useCallback,useState,type ReactNode } from 'react'
 import { TITAN_ICONS,TitanNameEditor,type TitanIdentity } from './titan-title.tsx'
+import { useWorkspaceViewport } from '#web-app/workspace-viewport.tsx'
+import { phoneLayout } from '#web-shared/card-sizing.ts'
 
 export function TitanHead({
   name,
@@ -40,7 +42,9 @@ export function TitanHead({
     () => setMenu(null),
     [],
   )
-  const canEdit = !!editTitan && connected
+  const viewport = useWorkspaceViewport()
+  const phone = phoneLayout({ width: viewport.width })
+  const canEdit = !!editTitan && connected && !phone
 
   const openMenu = ({ event }: { event: Parameters<typeof menuPoint>[0]['event'] & { preventDefault(): void } }) => {
     event.preventDefault(); setMenu(menuPoint({ event }))
@@ -57,7 +61,7 @@ export function TitanHead({
         },
       })}
     >
-      {editing && editTitan ? (
+      {!phone && (editing && editTitan ? (
         <TitanNameEditor
           saved={{
             name,
@@ -99,9 +103,9 @@ export function TitanHead({
           ><span className={name ? 'titan-label' : 'titan-label muted'}>{titanTitle({ name })}</span>
           </Button>
         </>
-      )}
+      ))}
       {children}
-      {menu && (
+      {!phone && menu && (
         <ContextMenu label={`${titanTitle({ name })} menu`} at={menu} close={closeMenu}>
           <Button onClick={() => setEditing(true)}>Edit</Button>
         </ContextMenu>
