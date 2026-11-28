@@ -21,6 +21,8 @@ import { git } from './setup/upgrade.ts'
 import { legacyDuplicate } from './setup/legacy.ts'
 import { createTaskBranch } from '#projects/git.ts'
 import { createProject } from './setup/projects.ts'
+import { loadTitan } from '#app/store.ts'
+import { followPullRequests } from '#tasks/delivery/follow.ts'
 
 let othrys: Othrys
 const github = join(
@@ -703,6 +705,71 @@ const merges = ({ number }: { number: number }) => readFileSync(
   'utf8',
 ).split('\n')
   .filter(line => line.includes('PUT') && line.includes(`/pulls/${number}/merge`)).length
+
+test(
+  'a saved refresh for a done task survives restart without another wake',
+  async () => {
+    const titan = await othrys.titan()
+    await createProject({
+      titan,
+      landing: 'pr',
+      name: 'refresh-once',
+    })
+    await titan.chat({ text: 'Watch the refresh' })
+    await titan.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Ship the refresh',
+        '--key',
+        'refresh',
+        '--project',
+        'refresh-once',
+      ],
+    })
+    pullRequest({
+      number: 31,
+      state: 'merged',
+    })
+    const url = 'https://github.com/o/shop/pull/31'
+    await titan.owner({
+      args: [
+        'link',
+        'refresh',
+        '--url',
+        url,
+      ],
+    })
+    const { id } = await titan.task({ key: 'refresh' })
+    const refreshed = () => loadTitan({ titanId: titan.id }).state.cards[id]?.projectRefresh?.[url]
+    const first = await until({
+      what: 'the merged pull request to refresh its project',
+      check: refreshed,
+    })
+    await titan.owner({
+      args: [
+        'outcome',
+        'refresh',
+        'done',
+        '--actor',
+        'titan',
+      ],
+    })
+
+    const refreshWakes = () => othrys.claude.sessions.flatMap(session => session.received)
+      .filter(text => text.includes(`othrys-task:${id}`) && text.includes('project refresh')).length
+    const before = refreshWakes()
+
+    await othrys.restart()
+    expect(refreshed()).toEqual(first)
+    await followPullRequests({ titanId: titan.id })
+    await titan.chat({ text: 'Anything new after the restart?' })
+    expect(refreshWakes()).toBe(before)
+    expect(refreshed()).toEqual(first)
+  },
+)
 
 test(
   'Titan submits a merge despite owner defaults, Hold and red checks, shows the facts, and submits once after restart',

@@ -17,7 +17,6 @@ export function durableEvent({ event }: { event: TitanEvent }): boolean {
     case 'titan.dispatch-progress':
     case 'task.steering.notified':
     case 'task.steering.recovery':
-    case 'project.refreshed':
       return false
     case 'titan.operation':
       return event.data.kind === 'compaction'
