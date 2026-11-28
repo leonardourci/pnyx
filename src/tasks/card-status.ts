@@ -2,7 +2,7 @@ import type { Card, TaskStatus } from './model.ts'
 import { ownerQuestions, type OwnerQuestion } from './questions.ts'
 import type { AgentSession } from '#workers/model.ts'
 import { agentActivity } from '#workers/activity.ts'
-import { readyForReview } from '#tasks/delivery/model.ts'
+import { completedOutcome } from '#tasks/delivery/model.ts'
 
 export interface CardStatus {
   state?: TaskStatus
@@ -16,18 +16,6 @@ export interface CardStatus {
 // An answer on its way leaves its question with the worker; a failed one comes back to the owner.
 const inFlight = ({ question }: { question: OwnerQuestion }) =>
   question.delivery?.state === 'queued' || question.delivery?.state === 'delivery_unknown'
-
-export const hasCompletedOutcome = ({ card }: { card: Card }): boolean =>
-  card.outcome?.closed === true || card.outcome?.state === 'done' || card.outcome?.state === 'cancelled'
-
-export const hasBlockedWork = ({ card }: { card: Card }): boolean =>
-  card.workerLog?.status?.code === 'blocked' || (card.outcome?.state === 'failed' && !card.outcome.closed)
-
-export function hasMergedDelivery({ card }: { card: Card }): boolean {
-  const requests = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
-
-  return requests.length > 0 && requests.every(link => link.state === 'merged')
-}
 
 // What the owner still has to answer, failed sends included; the status word and closed card share it.
 export const waitingQuestions = ({
@@ -43,45 +31,29 @@ export const waitingQuestions = ({
   }).filter(question =>
     !question.ask?.deferredUntil && !inFlight({ question }))
 
-// The status word's rule, newest information first; the page adds elapsed times to done and stopped.
+// The status word: open owner questions, then the agent's own activity, then the state only Titan sets.
 export function cardStatus({
   card,
   cards,
   sessions,
   sessionsWithWorkingChild,
-  countDoneAt = true,
 }: {
   card: Card
   cards?: Record<string, Card>
   sessions?: Record<string, AgentSession>
   sessionsWithWorkingChild?: ReadonlySet<string>
-  countDoneAt?: boolean
 }): CardStatus {
-  const doneAt = countDoneAt ? card.doneAt : undefined
   const waiting = waitingQuestions({
     card,
     cards,
   })
-  const worker = card.workerLog?.status
-  const completedOutcome = hasCompletedOutcome({ card })
-  const complete = worker?.code === 'done' || completedOutcome
 
-  if (waiting.length || worker?.code === 'needs-you') {
+  if (waiting.length) {
     return {
       kind: 'asks',
       state: 'needs_you',
       text: 'needs you',
       count: waiting.length > 1 ? waiting.length : undefined,
-      at: worker?.code === 'needs-you' ? worker.at : undefined,
-    }
-  }
-
-  if (hasBlockedWork({ card })) {
-    return {
-      kind: 'blocked',
-      state: 'blocked',
-      text: 'blocked',
-      at: worker?.code === 'blocked' ? worker.at : undefined,
     }
   }
 
@@ -101,60 +73,22 @@ export function cardStatus({
     }
   }
 
-  if (card.queue) {
-    return {
-      kind: 'queued',
-      text: 'queued',
-    }
-  }
-
-  if (card.hold) {
-    return {
-      kind: 'paused',
-      state: 'paused',
-      text: 'on hold',
-      at: card.hold.at,
-    }
-  }
-
-  if (card.wait) {
-    const title = cards?.[card.wait.task]?.title ?? card.facts?.waitTitle ?? card.wait.task
-
-    return {
-      kind: 'waiting',
-      state: 'paused',
-      text: `waiting: ${title}`,
-      at: card.wait.at,
-    }
-  }
-
-  if (hasMergedDelivery({ card })) {
-    return {
-      kind: 'merged',
-      text: 'PR merged',
-    }
-  }
-
-  if (card.links.some(link => link.kind === 'github_pr' && link.state === 'open')) {
-    return {
-      kind: 'review',
-      text: 'PR open',
-    }
-  }
-
-  if (activity === 'finished' && !doneAt && !completedOutcome) {
-    return {
-      kind: 'finished',
-      text: 'idle',
-    }
-  }
-
-  if (complete || doneAt) {
+  if (completedOutcome({ outcome: card.outcome })) {
     return {
       kind: 'done',
       state: 'done',
-      text: 'done',
-      at: worker?.code === 'done' ? worker.at : doneAt,
+      text: card.outcome!.state,
+      at: card.doneAt,
+    }
+  }
+
+  // Queued, held and waiting tasks keep their mechanics; their badge is idle.
+  const parked = Boolean(card.queue || card.hold || card.wait)
+
+  if (activity === 'finished' || parked) {
+    return {
+      kind: 'finished',
+      text: 'idle',
     }
   }
 
@@ -200,7 +134,7 @@ export const statusLabel = ({ status }: { status: CardStatus }) => {
 interface CardUpdate {
   text: string
   at: string
-  source: 'note' | 'reminder' | 'review'
+  source: 'note' | 'reminder'
 }
 
 export function currentState({
@@ -221,40 +155,11 @@ export function currentState({
     return workerUpdate
   }
 
-  const reviewUpdates = card.links.flatMap<CardUpdate>(link => {
-    const at = link.checkedAt
-    const openDecision = (card.asks ?? []).some(ask =>
-      ask.kind === 'merge' && ask.url === link.url && !ask.closed && !ask.answered)
-
-    if (!at || openDecision || !readyForReview({ link })) {
-      return []
-    }
-
-    const title = (link.title ?? 'Pull request').replace(
-      /[\\[\]]/g,
-      '\\$&',
-    )
-
-    return [
-      {
-        text: `[${title}](${link.url}) is ready for review.`,
-        at,
-        source: 'review',
-      },
-    ]
-  })
   const reminder = card.reminder
 
-  if (reminder?.dueAt) {
-    reviewUpdates.push({
-      text: 'Reminder due',
-      at: reminder.dueAt,
-      source: 'reminder',
-    })
-  }
-
-  return reviewUpdates.sort((
-    a,
-    b,
-  ) => a.at.localeCompare(b.at)).at(-1)
+  return reminder?.dueAt ? {
+    text: 'Reminder due',
+    at: reminder.dueAt,
+    source: 'reminder',
+  } : undefined
 }

@@ -264,7 +264,7 @@ export interface PushFields {
   attention?: Attention[]
 }
 
-export type TaskStatus = 'working' | 'needs_you' | 'paused' | 'blocked' | 'done'
+export type TaskStatus = 'working' | 'needs_you' | 'done'
 
 export interface TaskWait {
   task: string
