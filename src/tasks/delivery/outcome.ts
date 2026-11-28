@@ -6,7 +6,7 @@ import { ownerActor, TITAN_ACTOR } from '#app/actors.ts'
 import { TitanError } from '#store/errors.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 import { isManagedTask } from '#tasks/select.ts'
-import { completedOutcome, type Outcome } from './model.ts'
+import type { Outcome } from './model.ts'
 
 export function refuseOutcomeFrom({ actor }: { actor: string }): void {
   const decider = actor === TITAN_ACTOR || ownerActor({ actor })
