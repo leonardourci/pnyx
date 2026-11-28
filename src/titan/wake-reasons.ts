@@ -341,7 +341,7 @@ function ordinaryReasons({
 
   switch (event.type) {
     case 'project.refreshed':
-      return event.data.state === 'needs-attention' || event.data.state === 'unknown' ? [
+      return !taskDone({ card }) && (event.data.state === 'needs-attention' || event.data.state === 'unknown') ? [
         {
           kind: 'project refresh',
           card: card.id,
