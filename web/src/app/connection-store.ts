@@ -456,7 +456,10 @@ export function createTitanConnection() {
       next: visible({ scope: scopeFor({ id }) }),
     }))
     const unchanged = next.length === shownWorkspaces.length
-      && next.every((workspace, index) => workspace === shownWorkspaces[index])
+      && next.every((
+        workspace,
+        index,
+      ) => workspace === shownWorkspaces[index])
 
     if (!unchanged) {
       shownWorkspaces = next

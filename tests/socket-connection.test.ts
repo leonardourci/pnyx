@@ -52,9 +52,15 @@ function connectPage({ primary }: { primary: string }) {
     'meta[name=othrys-installation]': titanIdentity({ titanId: '' }),
     'meta[name=othrys-titan]': primary,
     'meta[name=othrys-token]': localToken(),
-  }).map(([selector, content]) => [
+  }).map(([
     selector,
-    { content, setAttribute: () => {} },
+    content,
+  ]) => [
+    selector,
+    {
+      content,
+      setAttribute: () => {},
+    },
   ]))
   const document = Object.assign(
     new EventTarget(),
@@ -193,7 +199,9 @@ test(
     const shown = ({ id }: { id: string }) => client.shownWorkspaces()
       .find(workspace => workspace.navigation.titanId === id)
     let notified = false
-    const unsubscribe = client.subscribe(() => { notified = true })
+    const unsubscribe = client.subscribe(() => {
+      notified = true
+    })
 
     try {
       await until({

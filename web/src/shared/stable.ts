@@ -62,7 +62,10 @@ export function shareUnchangedBranches<Value>({
   const comparable = plain({ value: previous }) && plain({ value: next })
     && Array.isArray(previous) === Array.isArray(next)
 
-  if (Object.is(previous, next) || !comparable) {
+  if (Object.is(
+    previous,
+    next,
+  ) || !comparable) {
     return next
   }
 
@@ -72,26 +75,45 @@ export function shareUnchangedBranches<Value>({
   const previousKeys = Object.keys(before)
   const nextIsArray = Array.isArray(next)
   const sameLength = !nextIsArray || (Array.isArray(previous) && previous.length === next.length)
-  const sameKeys = keys.length === previousKeys.length && keys.every((key, index) => key === previousKeys[index])
+  const sameKeys = keys.length === previousKeys.length && keys.every((
+    key,
+    index,
+  ) => key === previousKeys[index])
   let unchanged = sameLength && sameKeys
   let result: Record<string, unknown> | undefined
 
   for (const key of keys) {
-    const hadKey = Object.hasOwn(before, key)
+    const hadKey = Object.hasOwn(
+      before,
+      key,
+    )
     const value = shareUnchangedBranches({
       previous: hadKey ? before[key] : undefined,
       next: after[key],
     })
-    unchanged = unchanged && hadKey && Object.is(value, before[key])
+    unchanged = unchanged && hadKey && Object.is(
+      value,
+      before[key],
+    )
 
-    if (!Object.is(value, after[key])) {
-      result ??= (nextIsArray ? Object.assign(new Array(next.length), next) : { ...after }) as Record<string, unknown>
-      Object.defineProperty(result, key, {
-        value,
-        writable: true,
-        enumerable: true,
-        configurable: true,
-      })
+    if (!Object.is(
+      value,
+      after[key],
+    )) {
+      result ??= (nextIsArray ? Object.assign(
+        new Array(next.length),
+        next,
+      ) : { ...after }) as Record<string, unknown>
+      Object.defineProperty(
+        result,
+        key,
+        {
+          value,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        },
+      )
     }
   }
 

@@ -42,7 +42,13 @@ function findTask<Task>({
   return tasks[ref] ?? (id === undefined ? undefined : tasks[id])
 }
 
-function findColumn({ ref, columns }: { ref: string; columns: ProjectGroup[] }) {
+function findColumn({
+  ref,
+  columns,
+}: {
+  ref: string
+  columns: ProjectGroup[]
+}) {
   return columns.find(column => column.id === ref
     || column.title.toLowerCase() === ref.toLowerCase())
 }
@@ -71,9 +77,15 @@ export function othrysLookup({ state }: { state(): TitanState }): OthrysLookup {
 
 export function useOthrysLookup({ state }: { state: TitanState }): OthrysLookup {
   const tasks = useKept({
-    value: Object.fromEntries(Object.entries(knownCards({ state })).map(([id, card]) => [
+    value: Object.fromEntries(Object.entries(knownCards({ state })).map(([
       id,
-      { id: card.id, title: card.title },
+      card,
+    ]) => [
+      id,
+      {
+        id: card.id,
+        title: card.title,
+      },
     ])),
   })
   const columns = useKept({ value: projectGroups({ state }) })
@@ -81,8 +93,15 @@ export function useOthrysLookup({ state }: { state: TitanState }): OthrysLookup 
 
   return useMemo<OthrysLookup>(
     () => ({
-      task: ({ ref }) => findTask({ ref, tasks, keys }),
-      column: ({ ref }) => findColumn({ ref, columns }),
+      task: ({ ref }) => findTask({
+        ref,
+        tasks,
+        keys,
+      }),
+      column: ({ ref }) => findColumn({
+        ref,
+        columns,
+      }),
     }),
     [
       tasks,
