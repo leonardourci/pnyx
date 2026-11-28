@@ -1434,7 +1434,11 @@ test(
         'done',
       ],
     })
-    expect((await full()).doneAt).toBe(markedDoneAgain.event.at)
+    const doneAgain = readEvents({
+      titanId: titan.id,
+      types: ['card.outcome'],
+    }).find(event => event.id === markedDoneAgain.event.id)
+    expect((await full()).doneAt).toBe(doneAgain?.at)
 
     const cleared = await titan.owner({
       args: [

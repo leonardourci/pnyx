@@ -642,7 +642,6 @@ test(
     })
     expect(checkedCart.links[0].state).toBe('open')
     expect(checkedCart.doneAt).toBeUndefined()
-    const statusBeforeMerge = (await titan.task({ key: 'cart' })).status
 
     pullRequest({
       number: 8,
@@ -679,7 +678,8 @@ test(
       },
     })
     expect(merged.doneAt).toBeUndefined()
-    expect((await titan.task({ key: 'cart' })).status).toBe(statusBeforeMerge)
+    expect((await titan.task({ key: 'cart' })).status).toBe('not started, no reason given')
+    expect((await titan.task({ key: 'notes' })).status).toBe('not started, no reason given')
     expect(merges({ number: 7 })).toBe(0)
 
     await titan.owner({

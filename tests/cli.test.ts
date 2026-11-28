@@ -107,7 +107,7 @@ describe(
             '--clear',
           ],
         })).status).toBe(0)
-        expect((await titan.task({ key: 'plain-outcome' })).status).toBe('not started')
+        expect((await titan.task({ key: 'plain-outcome' })).status).toBe('not started, no reason given')
       },
     )
 
