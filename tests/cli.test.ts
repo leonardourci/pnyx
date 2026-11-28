@@ -55,6 +55,14 @@ describe(
     it(
       'sets and clears a task outcome and closes its owner question',
       async () => {
+        const managedOutcome = await run({
+          args: [
+            'outcome',
+            '$titan',
+            'done',
+          ],
+        })
+        expect(managedOutcome.status).toBe(2)
         await titan.owner({
           args: [
             'task',

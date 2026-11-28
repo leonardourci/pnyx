@@ -5,6 +5,7 @@ import { decided } from '#app/decision.ts'
 import { ownerActor, TITAN_ACTOR } from '#app/actors.ts'
 import { TitanError } from '#store/errors.ts'
 import { openAsks } from '#tasks/ask-state.ts'
+import { isManagedTask } from '#tasks/select.ts'
 import { completedOutcome, type Outcome } from './model.ts'
 
 export function refuseOutcomeFrom({ actor }: { actor: string }): void {
@@ -36,9 +37,15 @@ export function decideOutcome(
     state,
     ref,
   })
-  const closes = completedOutcome({ outcome })
-    ? openAsks({ card }).map(ask => ask.id)
-    : []
+
+  if (isManagedTask({ card })) {
+    throw new TitanError({
+      message: 'Choose a work task for the outcome',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  const closes = outcome ? openAsks({ card }).map(ask => ask.id) : undefined
 
   return decided({
     state,
@@ -53,7 +60,7 @@ export function decideOutcome(
       data: {
         before: card.outcome ?? null,
         after: outcome,
-        ...(closes.length ? { closes } : {}),
+        closes,
         card: {
           title: card.title,
           workspace: card.workspace,
