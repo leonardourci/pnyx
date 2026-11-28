@@ -4,9 +4,10 @@ import type { Card } from '#tasks/model.ts'
 import { loadTitan } from '#app/store.ts'
 import { settleCopy } from './copy-settle.ts'
 import { trimPool } from './copy-pool.ts'
+import { doneSince } from '#tasks/delivery/model.ts'
 
 // A task in Done whose agent is still working keeps its copy until the agent stops.
-export const settles = ({ card }: { card: Card }) => Boolean(card.doneAt) && card.copy?.state === 'active'
+export const settles = ({ card }: { card: Card }) => Boolean(doneSince({ card })) && card.copy?.state === 'active'
   && card.activity !== 'working'
 
 export async function settleDone({

@@ -62,6 +62,10 @@ export interface Outcome {
 export const completedOutcome = ({ outcome }: { outcome?: Outcome | null }): boolean =>
   outcome?.state === 'done' || outcome?.state === 'cancelled'
 
+// Older homes saved a doneAt derived from merges and worker lines; only Titan's done or cancelled counts.
+export const doneSince = ({ card }: { card: Pick<Card, 'outcome' | 'doneAt'> }): string | undefined =>
+  completedOutcome({ outcome: card.outcome }) ? card.doneAt : undefined
+
 // How a project's work lands: a pull request, or a commit on the task's branch only.
 export const LANDINGS = [
   'pr',

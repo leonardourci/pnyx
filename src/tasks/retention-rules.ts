@@ -2,6 +2,7 @@ import { openAsks } from './ask-state.ts'
 import type { TitanState } from '#app/model.ts'
 import type { Card } from './model.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
+import { doneSince } from '#tasks/delivery/model.ts'
 
 export const DEFAULT_DONE_HOURS = 1
 export const MAX_DONE_HOURS = 876000
@@ -35,11 +36,13 @@ export function cardDoneDeadline({
     audience: 'owner',
   }).length > 0
 
-  if (pendingOwnerChoice || card.hidden || card.keepDone || !card.doneAt || kept) {
+  const doneAt = doneSince({ card })
+
+  if (pendingOwnerChoice || card.hidden || card.keepDone || !doneAt || kept) {
     return undefined
   }
 
-  const deadline = Date.parse(card.doneAt) + delay * HOUR_MS
+  const deadline = Date.parse(doneAt) + delay * HOUR_MS
 
   return Number.isFinite(deadline) ? deadline : undefined
 }
